@@ -431,16 +431,41 @@ d519a85 Add shared semiprime generation utilities
 
 ---
 
-## 11. Proposed Next Steps
+## 11. The Dimension Barrier (E9 Analysis)
 
-The experimental program has systematically closed multiple corridors. E7e closed cheap analytic proxies on Jacobi data. E8a showed that even "genuinely global" L-function values reduce to gcd testing at the local level, with global information (zeros) requiring O(N²) to extract.
+### The complexity constraint
 
-**Remaining corridors (success-focused, per user directive):**
+Any factoring algorithm must run in poly(log N) time. Since dim S_k(Γ_0(N)) = O(N), any computation that enumerates basis elements, builds Hecke matrices, or iterates over eigenforms costs at least O(N) = O(2^n) where n = log₂N. This kills all "work inside the level-N space" approaches, including the proposed E9 experiment (Hecke moment sketches at level N), which was abandoned before completion on complexity grounds.
 
-1. **Multi-moment inverse problem (Proxy 2):** Use a family of L-values across multiple modular forms simultaneously. Fit a bulk + residual model to the joint L-value matrix. Test whether the residual correlates with factor rows. The non-CRT coupling comes from joint constraints across many moments — no single L-value suffices, but the system of constraints may be over-determined.
+### The succinct representation question
 
-2. **Langlands functoriality / higher-rank L-functions:** The symmetric square L(s, Sym²f ⊗ χ_N) or Rankin-Selberg L(s, f×g ⊗ χ_N) couples primes in qualitatively different ways. The Euler factor at p|N for Sym² involves tau(p²) rather than tau(p), potentially carrying more factor-specific information.
+The Eichler-Selberg trace formula provides a "succinct" representation of Tr(T_ℓ | S_k(Γ_0(N))): the formula has O(√ℓ) terms involving class numbers and local embedding numbers. But evaluating the local factors at p|N requires:
 
-3. **Zero density / explicit formula approach:** The explicit formula relates a sum over zeros to a sum over primes. An N-dependent test function tuned to "resonate" at factor primes could in principle extract factor information from zero statistics — but the precision requirements are the bottleneck.
+    ∏_{p|N} (1 + χ_D(p)) = 1 + (χ_D(p) + χ_D(q)) + χ_D(N)
 
-4. **Spectral decomposition of the trace formula:** Instead of working with individual L-functions, use the full Arthur-Selberg trace formula to express the spectral side as a sum over automorphic representations. The "beyond endoscopy" approach (Langlands, Altug) subtracts the continuous spectrum to isolate the cuspidal part. This is the theoretically cleanest path but computationally most demanding.
+The Jacobi symbol χ_D(N) is poly(log N)-computable. The "missing piece" χ_D(p) + χ_D(q) = r_D(N) - 1 - χ_D(N), where r_D(N) counts representations of N by the principal quadratic form of discriminant D.
+
+**Therefore:** A poly(log N) algorithm for r_D(N) would break the missing-bit barrier. No such algorithm is known; all methods require O(√N).
+
+### What remains
+
+See `ACCESS_MODEL_REQUIREMENTS.md` for the full access-model audit, formal no-go template, and open questions.
+
+---
+
+## 12. Current Status and Remaining Corridors
+
+The experimental program has systematically closed all "accessible" corridors:
+
+- **E7-E7e:** Finite-place Jacobi observables collapse to CRT products (structural proof + experiments)
+- **E8a-E8b:** Twisted GL(2) L-functions carry ~0 extractable bits (χ(p)=0 structural argument + experiments)
+- **E9 (abandoned):** Level-N space computations are exponential in input size (dimension barrier)
+
+**Remaining corridors (speculative, all require new poly(log N) primitives):**
+
+1. **Succinct spectral projectors:** Evaluate trace formula terms without enumerating divisors of N. No known method.
+2. **Analytic continuation shortcuts:** Evaluate automorphic kernels (BK/Ngô) at specific points in poly(log N). No known fast evaluation.
+3. **p-adic methods:** p-adic L-functions or modular forms with special-value computations. Unexplored.
+4. **Arithmetic topology / QFT invariants:** Kim's arithmetic Chern-Simons, partition functions. No algorithmic content.
+
+The fundamental bottleneck across all remaining corridors: computing r_D(N) — or an equivalent quantity that resolves χ_D(p) + χ_D(q) from N alone — in poly(log N) time.
