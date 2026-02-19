@@ -180,10 +180,15 @@ The obstruction has been verified for:
 5. Theta functions / quadratic Gauss sums (E7d Part A)
 6. Kloosterman sums (E7d Parts B-C)
 7. All pointwise Jacobi symbol functions and their nonlinear combinations (E7c: 8 observables)
+8. Arithmetic weightings: J*Lambda, J*mu (E7e)
+9. Dirichlet character twists: J*chi_m for m in {3,4,5,7,8} (E7e)
+10. Multi-discriminant elimination: 12-discriminant families with equal, alternating, SVD, and kurtosis-optimized weights (E7e)
+11. Discriminant coherence analysis across families (E7e)
+12. Functional equation reflection symmetry (E7e: trivial because J is even)
 
 ### What Has NOT Been Tested
 
-1. **Analytic continuation / functional equation manipulation** — manipulations that use the L-function's global structure (poles, residues, functional equation) rather than pointwise evaluation
+1. **Genuinely global analytic objects** — L-function poles/residues, spectral projectors onto automorphic representations, functional equations of non-abelian L-functions. These cannot be implemented as cheap transforms on Jacobi sequences.
 2. **Spectral isolation via the trace formula** — projecting onto individual automorphic representations (known to require O(N²) in general)
 3. **Global coherence constraints** — epsilon factors, root numbers, L-value special relationships that couple the local data across primes in ways that individual Euler factors don't
 
@@ -201,6 +206,10 @@ The obstruction has been verified for:
 | E6 | GL₂ count | ~1 | → 0 | 20% | O(N) | Signal dilutes |
 | E7d | Theta function | = E7 (R=0.999) | = E7 | = E7 | = E7 | = E7 |
 | E7d | Kloosterman |  anomaly real | — | — | O(N^{3/2}) | Too expensive |
+| E7e | J*Lambda, J*mu | ~1 (flat) | ~0.016 | 0-7% | O(N log N) | No signal |
+| E7e | J*chi_m twists | ~1 (flat) | ~0.015 | 0-7% | O(N log N) | No signal |
+| E7e | Multi-disc (12 d's) | N^{-0.25} | ~0.0002 | 0% | O(N log N) | Anti-peaks |
+| E7e | SVD/max-kurt optim | N^{-0.25} | ~0.0002 | 0% | O(N log N) | Anti-peaks |
 | E5 | Dimension formula | — | — | — | O(N^{1.91}) | Killed |
 
 ---
