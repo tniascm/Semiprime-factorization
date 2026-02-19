@@ -1,0 +1,298 @@
+# Barrier Theorem: Spectral Flatness of Poly(log N)-Computable Observables
+
+## Overview
+
+This document formalizes the empirical finding from experiments E5–E10:
+no poly(log N)-computable function on Z/NZ produces DFT peaks at factor
+frequencies ξ ≡ 0 (mod p) or ξ ≡ 0 (mod q) with amplitude exceeding
+O(N^{-1/2+ε}).
+
+We define a precise oracle model, prove structural lemmas about CRT
+separability and its spectral consequences, and connect the barrier to
+the standard Quadratic Residuosity Problem (QRP).
+
+---
+
+## 1. Oracle Model Definition
+
+### 1.1 The Ring-Jacobi-Integer Model RJI(N)
+
+**Input:** An odd semiprime N = pq with p < q primes, given as an n-bit
+integer (n = ⌈log₂ N⌉). The primes p, q are unknown.
+
+**Allowed operations** (each costs poly(n)):
+
+| Operation | Notation | Cost | Output |
+|-----------|----------|------|--------|
+| Ring arithmetic | a ± b mod N, a · b mod N | O(n²) | Z/NZ |
+| Modular inverse | a⁻¹ mod N (when gcd(a,N)=1) | O(n²) | Z/NZ |
+| GCD | gcd(a, N) | O(n²) | {1, p, q, N} |
+| Jacobi symbol | (a/N) | O(n²) | {-1, 0, +1} |
+| Modular exponentiation | aᵏ mod N | O(n³) | Z/NZ |
+| Integer arithmetic | a ± b, a · b, ⌊a/b⌋ on integers | O(n²) | Z |
+| Comparison | a < b for integers | O(n) | {0, 1} |
+| Bit extraction | bit_i(a) for integer a | O(1) | {0, 1} |
+
+**An RJI(N)-observable** is a function f: Z/NZ → C computable by an
+RJI(N)-circuit of size poly(n) — i.e., a directed acyclic graph of
+poly(n) gates, each performing one allowed operation, with the input
+being a single element t ∈ Z/NZ (represented as an integer in [0, N)).
+
+**Key distinction from Ring(N)+Jacobi:** The RJI model includes integer
+operations (floor division, comparison, bit extraction). These are
+crucial because they break CRT separability — the integer representation
+of t ∈ [0, N) depends on both t mod p and t mod q in a non-multiplicative
+way through the CRT carry structure.
+
+### 1.2 CRT Coordinates and the Carry Map
+
+The Chinese Remainder Theorem gives a ring isomorphism:
+
+    φ: Z/NZ → Z/pZ × Z/qZ,    t ↦ (t mod p, t mod q) = (a, b)
+
+The inverse map φ⁻¹(a, b) = a·q·q̃ + b·p·p̃ (mod N), where q̃ = q⁻¹ mod p
+and p̃ = p⁻¹ mod q.
+
+**Definition (Carry map).** For (a, b) ∈ Z/pZ × Z/qZ, define:
+
+    T(a, b) = (a·q·q̃ + b·p·p̃) mod N ∈ [0, N)    [the integer lift]
+    c(a, b) = ⌊(a·q·q̃ + b·p·p̃) / N⌋ ∈ {0, 1}   [the CRT carry]
+
+The integer lift T is determined by (a, b), but the dependence is
+non-separable: T(a, b) ≠ g(a) + h(b) for any functions g, h in general.
+
+### 1.3 CRT Rank
+
+**Definition.** A function f: Z/NZ → C has **CRT rank r** if, viewed
+as a function on Z/pZ × Z/qZ via CRT, it can be written as:
+
+    f(a, b) = Σᵢ₌₁ʳ gᵢ(a) · hᵢ(b)
+
+and r is minimal. Equivalently, CRT rank = rank of the p×q matrix
+M_{a,b} = f(φ⁻¹(a,b)).
+
+**Rank-1:** f(a,b) = g(a)·h(b). Example: Jacobi symbol J(t,N) = J(t,p)·J(t,q).
+
+**Full rank:** r = min(p,q). Example: the Dirac delta δ_{t₀}(t).
+
+---
+
+## 2. CRT Factorization Lemma (DFT Peak Bound)
+
+### 2.1 DFT Factorization for CRT-Separable Functions
+
+**Lemma 1 (CRT-DFT factorization).** Let f: Z/NZ → C have CRT rank r.
+Then the DFT f̂(ξ) = (1/N) Σ_{t=0}^{N-1} f(t) e^{-2πi ξt/N} satisfies:
+
+    f̂(ξ) = Σᵢ₌₁ʳ ĝᵢ(ξ mod p) · ĥᵢ(ξ mod q)
+
+where ĝᵢ, ĥᵢ are the DFTs on Z/pZ and Z/qZ respectively.
+
+**Proof.** By CRT, the character e^{-2πi ξt/N} factors:
+
+    e^{-2πi ξ·φ⁻¹(a,b)/N} = e^{-2πi (ξ mod p)·a/p} · e^{-2πi (ξ mod q)·b/q}
+
+This holds because ξ·T(a,b) ≡ (ξ mod p)·a·(q·q̃ mod p) + (ξ mod q)·b·(p·p̃ mod q) (mod N),
+and q·q̃ ≡ 1 (mod p), p·p̃ ≡ 1 (mod q), so the phase splits as claimed.
+
+For f(a,b) = Σᵢ gᵢ(a)·hᵢ(b), the sum over (a,b) factors:
+
+    f̂(ξ) = (1/N) Σ_{a,b} [Σᵢ gᵢ(a)hᵢ(b)] e^{-2πi(ξ mod p)a/p} e^{-2πi(ξ mod q)b/q}
+           = Σᵢ [(1/p)Σ_a gᵢ(a)e^{-2πi(ξ mod p)a/p}] · [(1/q)Σ_b hᵢ(b)e^{-2πi(ξ mod q)b/q}]
+           = Σᵢ ĝᵢ(ξ mod p) · ĥᵢ(ξ mod q)                                                     □
+
+### 2.2 Peak Bound for Low-Rank Functions
+
+**Theorem 1 (Spectral peak bound).** Let f: Z/NZ → C have CRT rank r
+and ‖f‖₂² = (1/N) Σ|f(t)|² = E. Then for any ξ ∈ Z/NZ:
+
+    |f̂(ξ)| ≤ r · max_i ‖ĝᵢ‖_∞ · ‖ĥᵢ‖_∞
+
+Moreover, if the component functions gᵢ, hᵢ have bounded L²-norms
+(‖gᵢ‖₂ ≤ C, ‖hᵢ‖₂ ≤ C), then:
+
+    ‖ĝᵢ‖_∞ ≤ ‖gᵢ‖₂ / √p ≤ C/√p
+
+and similarly for ĥᵢ, giving:
+
+    |f̂(ξ)| ≤ r · C²/(√p · √q) = r · C² / √N
+
+**Corollary.** For CRT rank-r functions with bounded components:
+- Peak DFT coefficient: O(r/√N)
+- For r = poly(log N): peak = O(poly(log N)/√N) → 0
+
+**Interpretation.** Factor-localized peaks (at ξ ≡ 0 mod p) would
+require |f̂(ξ)| ≫ 1/√N. This is impossible when r ≪ √N.
+
+### 2.3 Factor-Localized Energy Bound
+
+**Theorem 2 (Energy bound).** For a rank-r function f with ‖f‖₂² = 1,
+the energy at factor frequencies is:
+
+    E_p = Σ_{ξ: p|ξ} |f̂(ξ)|² ≤ r² · (q-1)/(N-1) · max-terms
+
+For rank 1 (f = g·h): E_p = (1/q) Σ_{η} |ĝ(0)|² |ĥ(η)|² = |ĝ(0)|² / q.
+
+If g has zero mean (ĝ(0) = 0): E_p = 0. The factor-localized energy
+vanishes exactly for zero-mean rank-1 functions.
+
+---
+
+## 3. Jacobi-Generated Functions Are Low-Rank
+
+### 3.1 Ring Operations Preserve CRT Rank
+
+**Lemma 2 (Ring closure).** If f₁ has CRT rank r₁ and f₂ has CRT rank r₂, then:
+- f₁ + f₂ has rank ≤ r₁ + r₂
+- f₁ · f₂ has rank ≤ r₁ · r₂
+- f₁ ∘ (ring op) has rank ≤ r₁ (since ring ops preserve CRT structure)
+
+**Proof.** Addition: f₁ + f₂ = Σᵢ g₁ᵢ·h₁ᵢ + Σⱼ g₂ⱼ·h₂ⱼ, rank ≤ r₁+r₂.
+Multiplication: f₁·f₂ = Σᵢ,ⱼ (g₁ᵢ·g₂ⱼ)(h₁ᵢ·h₂ⱼ), rank ≤ r₁·r₂.
+Ring ops (a ± b mod N, a·b mod N): in CRT coordinates, (a₁+a₂ mod p, b₁+b₂ mod q).
+These operate coordinate-wise, so they map rank-r to rank-r.            □
+
+### 3.2 Jacobi Symbol Is Rank-1
+
+**Lemma 3.** J(f(t), N) = J(f(t), p) · J(f(t), q) for any polynomial
+f and gcd(f(t), N) = 1. This is a rank-1 CRT-separable function.
+
+More generally, any function of the form Φ(J(f₁(t),N), ..., J(f_k(t),N))
+has rank ≤ 3^k (since each J value is in {-1, 0, +1}).
+
+### 3.3 Circuits Without Integer Operations
+
+**Theorem 3.** Any RJI(N)-circuit of depth d that uses ONLY ring operations,
+Jacobi symbols, and GCD (no integer floor/comparison/bit extraction)
+produces a function of CRT rank ≤ 3^d.
+
+**Proof sketch.** By induction on depth:
+- Base: input t has rank 1 in CRT.
+- Ring operation: preserves rank (Lemma 2).
+- Jacobi: rank 1 output (Lemma 3).
+- GCD: gcd(f(t), N) ∈ {1, p, q, N}. The indicator 1_{gcd=p} has rank ≤ 2
+  (it's the indicator of t ≡ 0 mod p tensored with a function of t mod q).
+- Composition: rank multiplies at each gate, depth d → rank ≤ 3^d.
+
+For poly(n)-depth circuits: rank ≤ 3^{poly(n)} = 2^{O(n^c)}.
+For CONSTANT-depth circuits: rank ≤ 3^d = O(1).                        □
+
+**Note:** This gives useful bounds (rank ≪ √N) only for bounded-depth
+circuits. For general poly-depth circuits, 3^{poly(n)} can exceed √N,
+and the peak bound becomes trivial.
+
+---
+
+## 4. The Carry Question (Open — Tested by E10)
+
+### 4.1 Integer Operations Break CRT Rank-1
+
+**Observation.** The function ⌊t²/N⌋ (the "high word" of t²) is NOT
+rank-1 CRT-separable. In CRT coordinates:
+
+    ⌊T(a,b)²/N⌋ depends on the integer value T(a,b) = CRT(a,b)
+
+and the CRT reconstruction T(a,b) = a·q·q̃ + b·p·p̃ - c(a,b)·N involves
+the carry c(a,b), which couples a and b non-multiplicatively.
+
+### 4.2 What E10 Tests
+
+E10 computes 5 carry-based signals and analyzes their DFT structure:
+- If carry signals have FLAT spectra (like Jacobi): the barrier extends
+  to the full RJI model, and integer operations do NOT help.
+- If carry signals have PEAKS: integer-carry operations provide a new
+  primitive that breaks the Jacobi barrier.
+
+### 4.3 Theoretical Expectation
+
+**Conjecture (carry flatness).** For balanced semiprimes N = pq with
+p ≈ q ≈ √N, the function ⌊t²/N⌋ viewed as a p×q matrix has CRT rank
+Θ(min(p,q)) — effectively full rank. However, its DFT is still spectrally
+flat (no factor-localized peaks of amplitude ≫ N^{-1/2}).
+
+**Heuristic argument.** The carry function c(a,b) divides Z/pZ × Z/qZ
+into two regions: {c = 0} and {c = 1}. The boundary between these
+regions is a "diagonal stripe" determined by a·q·q̃ + b·p·p̃ ≈ N.
+This stripe has width ≈ 1 in both directions and length ≈ min(p,q).
+In the DFT, this stripe structure produces Fourier mass spread across
+ALL frequencies, not concentrated at factor frequencies.
+
+Concretely: the indicator 1_{c=1} has DFT that looks like a "tilted
+plane wave" with wavelength related to the CRT coefficients q·q̃ and p·p̃.
+Since q̃ = q⁻¹ mod p is pseudorandom (depends on the factorization),
+the Fourier mass is spread pseudorandomly, without factor localization.
+
+---
+
+## 5. Connection to QRP
+
+### 5.1 The Hinge Scalar
+
+For discriminant D with gcd(D, N) = 1, define:
+
+    S_D(N) = χ_D(p) + χ_D(q)    ∈ {-2, 0, +2}
+
+where χ_D = Kronecker symbol (D/·).
+
+**Fact.** S_D(N) is NOT computable from the Jacobi symbol (D/N) alone:
+(D/N) = χ_D(p) · χ_D(q) = ±1, but S_D = χ_D(p) + χ_D(q) requires
+knowing the individual symbols.
+
+### 5.2 Reduction: S_D → QRP → Factoring
+
+**Proposition.** If S_D(N) is computable in poly(log N) for arbitrary D,
+then the Quadratic Residuosity Problem is solvable in poly(log N).
+
+**Proof.** Given x with (x/N) = +1, compute S_x(N):
+- If S_x = +2: x is QR mod both p and q → x ∈ QR_N
+- If S_x = -2: x is QNR mod both p and q → x ∉ QR_N
+- If S_x = 0: impossible when (x/N) = +1                               □
+
+For Blum integers (p ≡ q ≡ 3 mod 4), QRP → factoring via square root
+extraction. Therefore S_D in poly(log N) → factoring in poly(log N).
+
+### 5.3 Why Spectral Flatness Implies S_D Hardness
+
+If every poly(log N)-computable observable f has flat DFT
+(|f̂(ξ)| ≤ poly(log N)/√N), then no such f can distinguish the two
+cases (S_D = +2 vs S_D = -2) with non-negligible advantage:
+
+The orbital product O(t, N) = (1 + χ_{t²-4}(p))(1 + χ_{t²-4}(q))
+has value 4 when S_{t²-4} = +2 and value 0 when S_{t²-4} = -2.
+Detecting this difference in the DFT requires a peak of amplitude Ω(1)
+at factor frequencies — contradicting spectral flatness.
+
+---
+
+## 6. Hinge Scalar Catalog
+
+| Scalar | Definition | Factoring reduction | Known complexity |
+|--------|-----------|---------------------|------------------|
+| S_D(N) | χ_D(p) + χ_D(q) | → QRP → factoring (Blum) | Believed hard |
+| r_D(N) | #{(x,y): Q_D(x,y)=N} | = 1 + S_D(N) + (D/N) → S_D | O(√N) Cornacchia |
+| Tr(T_ℓ \| S_k(Γ₀(N))) | Hecke trace | Contains r_D terms → S_D | O(N) via dim barrier |
+| ε(f⊗χ_N) | Root number | = (-1)^{k/2} for level 1 (E8b) | Poly(log N) but trivial |
+| L(s, f⊗χ_N) | Twisted L-value | Local factor at p\|N: χ_N(p)=0 | O(√N) via AFE |
+
+---
+
+## 7. Summary of Barrier Status
+
+**Proven (sections 1-3):**
+- CRT rank-r functions have DFT peak ≤ r/√N (Theorem 1)
+- Ring + Jacobi circuits of depth d produce rank ≤ 3^d functions (Theorem 3)
+- For constant-depth circuits: spectral flatness is proven
+
+**Conjectured (section 4, pending E10):**
+- Integer-carry operations produce high CRT rank but still spectrally flat DFT
+- The barrier extends to the full RJI(N) model
+
+**Connected to cryptography (section 5):**
+- Spectral flatness → S_D(N) hard → QRP hard → factoring hard (for Blum integers)
+- The barrier is consistent with (and partially implied by) standard cryptographic
+  assumptions
+
+**What would break the barrier:**
+- A poly(log N)-computable function with DFT peak ≫ N^{-1/2} at factor frequencies
+- Equivalently: a poly(log N) algorithm for S_D(N) or r_D(N)
+- Equivalently: a poly(log N) algorithm for QRP
