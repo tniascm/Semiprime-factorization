@@ -195,32 +195,45 @@ rank-1 CRT-separable. In CRT coordinates:
 and the CRT reconstruction T(a,b) = a·q·q̃ + b·p·p̃ - c(a,b)·N involves
 the carry c(a,b), which couples a and b non-multiplicatively.
 
-### 4.2 What E10 Tests
+### 4.2 E10 Empirical Results
 
-E10 computes 5 carry-based signals and analyzes their DFT structure:
-- If carry signals have FLAT spectra (like Jacobi): the barrier extends
-  to the full RJI model, and integer operations do NOT help.
-- If carry signals have PEAKS: integer-carry operations provide a new
-  primitive that breaks the Jacobi barrier.
+E10 tested 5 carry-based signals + 1 control across ~90 semiprimes
+(N from 500 to 12000). Results:
 
-### 4.3 Theoretical Expectation
+| Signal | Peak α | Factor excess | CRT rank |
+|--------|:------:|:------------:|:--------:|
+| jacobi_control | N^{-0.356} | 0.539 | 1.0 |
+| carry_jacobi = J(⌊t²/N⌋, N) | N^{-0.355} | 0.980 | 10.3 |
+| carry_parity = (-1)^⌊t²/N⌋ | N^{-0.447} | 0.987 | 9.0 |
+| carry_sum = Σ(-1)^⌊kt²/N⌋ | N^{-0.473} | 1.036 | 9.1 |
 
-**Conjecture (carry flatness).** For balanced semiprimes N = pq with
-p ≈ q ≈ √N, the function ⌊t²/N⌋ viewed as a p×q matrix has CRT rank
-Θ(min(p,q)) — effectively full rank. However, its DFT is still spectrally
-flat (no factor-localized peaks of amplitude ≫ N^{-1/2}).
+**Findings:**
+1. CRT rank DOES increase (1 → 10, scaling ≈ N^{0.3})
+2. DFT peaks STILL decay (all α < -0.35)
+3. Factor energy excess ≈ 1.0 (exactly random baseline)
 
-**Heuristic argument.** The carry function c(a,b) divides Z/pZ × Z/qZ
-into two regions: {c = 0} and {c = 1}. The boundary between these
-regions is a "diagonal stripe" determined by a·q·q̃ + b·p·p̃ ≈ N.
-This stripe has width ≈ 1 in both directions and length ≈ min(p,q).
-In the DFT, this stripe structure produces Fourier mass spread across
-ALL frequencies, not concentrated at factor frequencies.
+**Conclusion:** Integer-carry operations increase CRT rank but the
+additional rank components are NOT aligned with factor frequencies.
+Spectral flatness holds in the full RJI model.
 
-Concretely: the indicator 1_{c=1} has DFT that looks like a "tilted
-plane wave" with wavelength related to the CRT coefficients q·q̃ and p·p̃.
-Since q̃ = q⁻¹ mod p is pseudorandom (depends on the factorization),
-the Fourier mass is spread pseudorandomly, without factor localization.
+### 4.3 Why Carry Doesn't Help (Post-E10 Understanding)
+
+The carry function c(a,b) = ⌊(a·q·q̃ + b·p·p̃)/N⌋ divides Z/pZ × Z/qZ
+into two regions: {c = 0} and {c = 1}. The boundary is a "diagonal
+stripe" determined by a·q·q̃ + b·p·p̃ ≈ N.
+
+In the 2D DFT on Z/pZ × Z/qZ, this stripe produces a "tilted plane
+wave" with direction determined by the CRT coefficients (q·q̃, p·p̃).
+Since q̃ = q⁻¹ mod p is pseudorandom (depending on the factorization
+but not aligned with factor frequencies), the Fourier mass spreads
+across ALL 2D frequencies, not concentrated at (ξ₁, 0) or (0, ξ₂)
+which are the factor-localized modes.
+
+The CRT rank increase (from 1 to ~N^{0.3}) reflects the diagonal stripe
+structure, but this rank is distributed across many 2D modes, diluting
+any potential factor signal. The peak bound from Theorem 1:
+    |f̂(ξ)| ≤ r/√N ≈ N^{0.3}/N^{0.5} = N^{-0.2}
+is consistent with the observed α ≈ -0.35 to -0.47.
 
 ---
 

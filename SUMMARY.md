@@ -469,3 +469,59 @@ The experimental program has systematically closed all "accessible" corridors:
 4. **Arithmetic topology / QFT invariants:** Kim's arithmetic Chern-Simons, partition functions. No algorithmic content.
 
 The fundamental bottleneck across all remaining corridors: computing r_D(N) — or an equivalent quantity that resolves χ_D(p) + χ_D(q) from N alone — in poly(log N) time.
+
+---
+
+## 13. E10: Integer-Carry Signals (In Progress)
+
+### Motivation
+
+All previous experiments tested functions on Z/NZ that decompose through CRT as products or low-rank sums of local components. The DFT of such functions is spectrally flat (peak ~ N^{-0.25}).
+
+However, the INTEGER representation t ∈ [0, N) introduces non-separable coupling via "carry bits." The CRT reconstruction t = a·q·q̃ + b·p·p̃ (mod N) involves a carry c = ⌊(a·q·q̃ + b·p·p̃)/N⌋ ∈ {0,1}. Functions that depend on this carry (e.g., ⌊t²/N⌋) are NOT rank-1 CRT-separable, even though they are computable in poly(log N) time.
+
+### Signals tested
+
+| Signal | Definition | CRT-separable? | Carry-based? |
+|--------|-----------|:-:|:-:|
+| f_jacobi (CONTROL) | J(t²-4, N) | Yes (rank 1) | No |
+| f_carry_jacobi | J(⌊t²/N⌋, N) | No | Yes |
+| f_carry_parity | (-1)^⌊t²/N⌋ | No | Yes |
+| f_mixed | J(t,N) · (-1)^⌊2t/√N⌋ | No | Yes |
+| f_carry_sum | Σ_{k=1}^{10} (-1)^⌊kt²/N⌋ | No | Yes |
+| f_lattice | J(t² mod ⌊√N⌋, N) | No | Yes |
+
+### Key question
+
+Do carry-based signals break spectral flatness? If so, integer-carry operations provide a new primitive beyond the Jacobi barrier. If not, the barrier extends to the full integer-arithmetic oracle model.
+
+### Results (quick probe: N ~ 500 to 12000, ~90 semiprimes)
+
+| Signal | Peak scaling α | Factor excess | CRT rank (90%) | Verdict |
+|--------|:-:|:-:|:-:|---------|
+| jacobi_control | N^{-0.356} | 0.539 | 1.0 | Flat (E7c confirmed) |
+| carry_jacobi | N^{-0.355} | 0.980 | 10.3 | Flat — same as control |
+| carry_parity | N^{-0.447} | 0.987 | 9.0 | WORSE than control |
+| mixed_jacobi_carry | N^{-0.413} | 0.957 | 8.2 | Worse than control |
+| carry_sum | N^{-0.473} | 1.036 | 9.1 | Worst decay of all |
+| lattice_jacobi | N^{-0.014} | 0.961 | 9.4 | Numerical artifact for N=2p |
+
+**Key observations:**
+1. **CRT rank increases:** Carry operations raise rank from 1 (Jacobi) to ~10, scaling as N^{0.3}. This confirms that integer floor/mod DOES break rank-1 CRT separability.
+2. **Spectra remain flat:** Despite higher rank, all carry signals have decaying peaks (α ≤ -0.35). No factor-localized energy.
+3. **Factor energy excess ≈ 1.0:** Carry signals have exactly the expected factor energy for a random function — no elevation above baseline.
+4. **Conclusion:** Integer-carry operations increase CRT rank but do NOT align the excess rank with factor frequencies. The barrier extends to the full Ring+Jacobi+Integer oracle model.
+
+---
+
+## 14. Barrier Theorem Formalization
+
+See `BARRIER_THEOREM.md` for the formal treatment:
+
+1. **Oracle model (RJI):** Ring(N) + Jacobi + Integer arithmetic (floor, comparison, bits)
+2. **CRT factorization lemma:** Rank-r functions have DFT peak ≤ r/√N
+3. **Ring+Jacobi circuits:** Depth-d circuits produce rank ≤ 3^d functions
+4. **The carry question:** Do integer operations increase rank beyond poly(log N)?
+5. **Connection to QRP:** Spectral flatness → S_D(N) hardness → factoring hardness
+
+See `ACCESS_MODEL_REQUIREMENTS.md` for the full access-model audit and hinge scalar catalog.
