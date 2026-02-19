@@ -191,6 +191,34 @@ Results for N = 3127 (= 53 × 59): |S| at factor primes ≈ 7.2 (predicted ~ N^{
 
 ---
 
+### E8b: Multi-Form L-function Amplification
+
+**File:** `E8_global_projector/run_E8b_multi_form_amplification.sage`
+**Data:** `data/E8b_multi_form_results.json`, `data/E8b_r2_vs_K.png`
+
+**What it tests:** Whether a FAMILY of twisted L-functions L(s, f_i x chi_N) for 19 level-1 Hecke eigenforms (weights 12–36) carries factor information that scales with the number of forms K. Treats factorization as a noisy-channel decoding problem.
+
+**Setup:** 19 eigenforms, 10 s-values per form (7 critical line + 3 slightly right), 60 semiprimes (N up to 33043). Features: z-scored log|L|, PCA-reduced. Target: log(min(p,q)). Metric: LOOCV R² via ridge regression.
+
+**Results:**
+
+| K (forms) | R² | Null 95th | Significant? |
+|:-:|:-:|:-:|:-:|
+| 1 (k=12) | -0.005 | +0.060 | No |
+| 5 | -0.020 | +0.053 | No |
+| 10 | -0.028 | +0.057 | No |
+| 14 (best) | +0.093 | +0.072 | Marginal |
+| 19 (all) | +0.058 | +0.070 | No |
+
+- R² trend: marginally increasing (first half mean -0.019, second half +0.038) but within noise
+- Critical line more sensitive (R² = 0.21) than convergent region (R² = -0.03), confirming user's prediction
+- Best individual correlation: |r| = 0.49 for k=36 forms at s = k/2 + 0.5i (p = 7×10⁻⁵), but does not generalize in LOOCV
+- Root number ε = (-1)^{k/2} is independent of N for ALL level-1 forms twisted by quadratic χ_N (proven algebraically, not just empirical)
+
+**Verdict:** No amplification. Adding forms does not increase factor information. The "noisy-channel decoding" model fails: each form carries the same ~0 bits of factor information, not independent noisy measurements. Closes the level-1 GL(2) × quadratic-twist amplification corridor.
+
+---
+
 ### E4: Hirano Dijkgraaf-Witten Invariants (NOT YET EXECUTED)
 
 **File:** `E4_hirano_dw_invariants/E4_hirano_mod2_dw.ipynb`
@@ -237,6 +265,9 @@ The obstruction has been verified for:
 14. Euler factor removal scoring for factor candidate primes (E8a: reduces to gcd)
 15. Root number epsilon for L(s, Delta x chi_N) (E8a: determined by N mod 4, no factor signal)
 16. L-value profiles for confusable semiprimes of similar size (E8a: differences not systematically exploitable)
+17. Multi-form L-function amplification: 19 level-1 eigenforms (weights 12-36) twisted by chi_N (E8b: R^2 ~ 0, no amplification)
+18. Critical line vs convergent region sensitivity comparison (E8b: critical line R^2=0.21 > convergent -0.03)
+19. Root number independence from N for level-1 quadratic twists: epsilon = (-1)^{k/2} (E8b: algebraic proof)
 
 ### What Has NOT Been Tested
 
@@ -267,6 +298,8 @@ The obstruction has been verified for:
 | E8a | Euler factor scoring | factors #1,#2 | — | 100% | O(√N) | = trial division |
 | E8a | Root number epsilon | +1 for all | — | — | O(√N) | No factor signal |
 | E8a | Confusable L-values | diff 0.28-0.37 | — | — | O(√N per s) | Not exploitable |
+| E8b | 19-form amplification | R^2 ~ 0 | — | — | O(K√N) | No signal |
+| E8b | Critical vs right | R^2=0.21 vs -0.03 | — | — | — | Critical more sensitive |
 | E5 | Dimension formula | — | — | — | O(N^{1.91}) | Killed |
 
 ---
@@ -366,6 +399,8 @@ Epsilon factors, root numbers, and L-value special relationships enforce global 
 ## 9. Git History
 
 ```
+df26a30 E8b: Multi-form L-function amplification shows no factor signal
+4e67d8f Update SUMMARY.md with E8a L-function tomography results
 5d314ce E8a: L-function tomography shows twisted L-values reduce to gcd testing
 5c63423 Update SUMMARY.md with E7e analytic proxy results
 0ff9c7a E7e: Analytic proxy tests confirm Jacobi-flat data resists all cheap transforms
