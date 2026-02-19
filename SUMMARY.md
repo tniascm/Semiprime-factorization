@@ -143,6 +143,54 @@ Results for N = 3127 (= 53 × 59): |S| at factor primes ≈ 7.2 (predicted ~ N^{
 
 ---
 
+### E7e: Analytic Proxy Tests
+
+**File:** `E7_altug_beyond_endoscopy/run_E7e_analytic_proxies.sage`
+**Data:** `data/E7e_analytic_proxies_results.json`
+
+**What it tests:** Whether any computable analytic proxy — arithmetic weightings, Dirichlet character twists, multi-discriminant elimination, or functional equation reflection — can extract factor information from Jacobi-accessible data.
+
+**13 signals tested, all failed (0% top-1 factor extraction):**
+- J*Lambda (von Mangoldt weighting), J*mu (Mobius weighting), Gaussian-smoothed J
+- J*chi_m twists for m in {3,4,5,7,8}
+- Multi-discriminant elimination with 12 discriminants d=1,...,12 using equal weights, alternating weights, SVD projection, max-kurtosis optimization
+- Cross-discriminant coherence analysis
+
+**Key discoveries:**
+1. Multi-discriminant anti-peaks scale as N^{-0.25} (R²=0.98-0.99): opposite of factor peaks
+2. Jacobsthal sum gives f̂_d(0) = -1/p universally across discriminants, causing structural suppression
+3. Coherence ratio factor/bulk = 0.92 — no cross-discriminant resonance at factor frequencies
+4. J(t) = J(N-t) makes functional equation reflection trivial (zero information)
+
+**Verdict:** Empirically closes the "cheap analytic proxy" corridor for single-/few-pass linear or mildly nonlinear signal transforms on Jacobi-accessible sequences.
+
+---
+
+### E8a: Twisted GL(2) L-function Tomography
+
+**File:** `E8_global_projector/run_E8a_Lfunction_tomography.sage`
+**Data:** `data/E8a_Lfunction_tomography_results.json`
+
+**What it tests:** Whether a genuinely global analytic object — L(s, Delta x chi_N), the Ramanujan Delta function twisted by the Kronecker character mod N — carries factor information beyond gcd/trial-division through its global analytic properties (zeros, central value, functional equation).
+
+**Setup:** Fixed form Delta (weight 12, level 1), twist chi_N = kronecker(., N). Evaluated using approximate functional equation near critical line (s=6+it) and partial sums in convergent region (s=8+it). 12 semiprimes from N=3127 to N=126727, 17 s-values, 5 confusable pairs.
+
+**Results:**
+
+| Test | Finding | Factor Signal? |
+|------|---------|:-:|
+| A. L-value profiles | Values computed at 17 s-points | Computed successfully |
+| B. Confusable pairs | mag_diff 0.28-0.37, all same epsilon | Not systematically exploitable |
+| C. Root number | epsilon = +1 for all 12 semiprimes | No factor signal beyond N mod 4 |
+| D. Euler factor scoring | Factors always rank #1, #2 | YES — but = gcd test (chi_N(m)=0 iff m\|N) |
+| E. L-value sensitivity | max |r| = 0.44 with p, PC1 explains 43% variance | Weak, no consistent direction |
+
+**Critical structural observation:** chi_N(p) = 0 for p|N, so the Euler product at factor primes is trivial: L_p(s) = (1 + p^{11-2s})^{-1}. Testing chi_N(m) = 0 IS gcd computation. The global properties (zeros, central value) do depend on which primes are "missing," but extracting this would require resolving O(N log N) zeros to O(1/log N) precision — cost O(N²).
+
+**Verdict:** The locally-computable part of L-function values reduces to trial division. Global coupling exists in principle but is not extractable at sub-exponential cost through L-value sampling.
+
+---
+
 ### E4: Hirano Dijkgraaf-Witten Invariants (NOT YET EXECUTED)
 
 **File:** `E4_hirano_dw_invariants/E4_hirano_mod2_dw.ipynb`
@@ -185,12 +233,17 @@ The obstruction has been verified for:
 10. Multi-discriminant elimination: 12-discriminant families with equal, alternating, SVD, and kurtosis-optimized weights (E7e)
 11. Discriminant coherence analysis across families (E7e)
 12. Functional equation reflection symmetry (E7e: trivial because J is even)
+13. Twisted GL(2) L-function values L(s, Delta x chi_N) at critical and convergent s-values (E8a)
+14. Euler factor removal scoring for factor candidate primes (E8a: reduces to gcd)
+15. Root number epsilon for L(s, Delta x chi_N) (E8a: determined by N mod 4, no factor signal)
+16. L-value profiles for confusable semiprimes of similar size (E8a: differences not systematically exploitable)
 
 ### What Has NOT Been Tested
 
-1. **Genuinely global analytic objects** — L-function poles/residues, spectral projectors onto automorphic representations, functional equations of non-abelian L-functions. These cannot be implemented as cheap transforms on Jacobi sequences.
+1. **L-function zero distribution** — E8a tested L-values at sampled s-points but NOT the detailed zero pattern. Resolving zeros to the precision needed for factor extraction requires O(N²) computation.
 2. **Spectral isolation via the trace formula** — projecting onto individual automorphic representations (known to require O(N²) in general)
-3. **Global coherence constraints** — epsilon factors, root numbers, L-value special relationships that couple the local data across primes in ways that individual Euler factors don't
+3. **Non-abelian L-functions** — L-functions of higher-rank groups (GL(3), etc.) where the Langlands correspondence could provide qualitatively different coupling between primes
+4. **Multi-moment inverse problems** — using families of L-values across multiple forms/twists simultaneously to constrain factor locations through joint analytic structure
 
 ---
 
@@ -210,6 +263,10 @@ The obstruction has been verified for:
 | E7e | J*chi_m twists | ~1 (flat) | ~0.015 | 0-7% | O(N log N) | No signal |
 | E7e | Multi-disc (12 d's) | N^{-0.25} | ~0.0002 | 0% | O(N log N) | Anti-peaks |
 | E7e | SVD/max-kurt optim | N^{-0.25} | ~0.0002 | 0% | O(N log N) | Anti-peaks |
+| E8a | L(s,Δ⊗χ_N) profiles | varies | — | — | O(√N per s) | = gcd test |
+| E8a | Euler factor scoring | factors #1,#2 | — | 100% | O(√N) | = trial division |
+| E8a | Root number epsilon | +1 for all | — | — | O(√N) | No factor signal |
+| E8a | Confusable L-values | diff 0.28-0.37 | — | — | O(√N per s) | Not exploitable |
 | E5 | Dimension formula | — | — | — | O(N^{1.91}) | Killed |
 
 ---
@@ -282,6 +339,8 @@ Epsilon factors, root numbers, and L-value special relationships enforce global 
 | `E7_altug_beyond_endoscopy/run_E7c_jacobi_probes.sage` | E7c Jacobi probes | ~500 |
 | `E6_luo_ngo_kernel/run_E6.sage` | E6 BK transform | ~400 |
 | `E7_altug_beyond_endoscopy/run_E7d_global_separators.sage` | E7d separators | ~319 |
+| `E7_altug_beyond_endoscopy/run_E7e_analytic_proxies.sage` | E7e analytic proxies | ~490 |
+| `E8_global_projector/run_E8a_Lfunction_tomography.sage` | E8a L-function tomography | ~565 |
 | `E4_hirano_dw_invariants/E4_hirano_mod2_dw.ipynb` | E4 DW (not executed) | — |
 
 ### Data Files
@@ -292,7 +351,9 @@ Epsilon factors, root numbers, and L-value special relationships enforce global 
 | `data/E7c_jacobi_probes_results.json` | E7c 10-observable probe (25 semiprimes to N=497k) |
 | `data/E6_bk_transform_results.json` | E6 BK analysis (20 semiprimes to N=47k) |
 | `data/E7d_global_separators_results.json` | E7d theta + Kloosterman (20 semiprimes to N=256k) |
-| `data/*_plots.png` | Visualization plots for E7, E7b, E7c, E6 |
+| `data/E7e_analytic_proxies_results.json` | E7e proxy tests (15 semiprimes, 13 signals) |
+| `data/E8a_Lfunction_tomography_results.json` | E8a L-function values (12 semiprimes, 5 confusable pairs) |
+| `data/*_plots.png` | Visualization plots for E7, E7b, E7c, E6, E7e |
 
 ### Configuration
 | File | Purpose |
@@ -305,6 +366,10 @@ Epsilon factors, root numbers, and L-value special relationships enforce global 
 ## 9. Git History
 
 ```
+5d314ce E8a: L-function tomography shows twisted L-values reduce to gcd testing
+5c63423 Update SUMMARY.md with E7e analytic proxy results
+0ff9c7a E7e: Analytic proxy tests confirm Jacobi-flat data resists all cheap transforms
+f789d92 Add comprehensive research summary covering E5-E7d experiments
 d15a82c E7d: Global analytic separators (theta, Kloosterman) hit same CRT obstruction
 6a6fd6e Add .sage.py cache files to gitignore
 dcc676b E6: BK transform reduces to orbital integral, adds nothing to E7
@@ -333,10 +398,14 @@ d519a85 Add shared semiprime generation utilities
 
 ## 11. Proposed Next Steps
 
-The experimental program has reached a natural decision point. Three directions have been proposed:
+The experimental program has systematically closed multiple corridors. E7e closed cheap analytic proxies on Jacobi data. E8a showed that even "genuinely global" L-function values reduce to gcd testing at the local level, with global information (zeros) requiring O(N²) to extract.
 
-1. **Research decision memo:** Formally state the tested obstruction class and remaining corridors as a concise document for scoping the next research cycle.
+**Remaining corridors (success-focused, per user directive):**
 
-2. **Pole-subtraction proxy experiment:** Apply smoothing/subtractive operations imitating beyond-endoscopy residue removal to test whether Jacobi-flatness changes under such operations.
+1. **Multi-moment inverse problem (Proxy 2):** Use a family of L-values across multiple modular forms simultaneously. Fit a bulk + residual model to the joint L-value matrix. Test whether the residual correlates with factor rows. The non-CRT coupling comes from joint constraints across many moments — no single L-value suffices, but the system of constraints may be over-determined.
 
-3. **Global analytic separator toy problems:** Design 2-3 concrete Langlands-native test problems where a global operation (spectral projection, epsilon factor computation) could theoretically distinguish ++ from −− configurations.
+2. **Langlands functoriality / higher-rank L-functions:** The symmetric square L(s, Sym²f ⊗ χ_N) or Rankin-Selberg L(s, f×g ⊗ χ_N) couples primes in qualitatively different ways. The Euler factor at p|N for Sym² involves tau(p²) rather than tau(p), potentially carrying more factor-specific information.
+
+3. **Zero density / explicit formula approach:** The explicit formula relates a sum over zeros to a sum over primes. An N-dependent test function tuned to "resonate" at factor primes could in principle extract factor information from zero statistics — but the precision requirements are the bottleneck.
+
+4. **Spectral decomposition of the trace formula:** Instead of working with individual L-functions, use the full Arthur-Selberg trace formula to express the spectral side as a sum over automorphic representations. The "beyond endoscopy" approach (Langlands, Altug) subtracts the continuous spectrum to isolate the cuspidal part. This is the theoretically cleanest path but computationally most demanding.
