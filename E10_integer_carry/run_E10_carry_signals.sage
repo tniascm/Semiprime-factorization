@@ -53,21 +53,43 @@ from semiprime_gen import generate_semiprimes
 
 def _py(v):
     """Convert Sage types to native Python for JSON serialization."""
-    if isinstance(v, (int, float, str, bool, type(None))):
+    if isinstance(v, (bool, type(None), str)):
+        return v
+    if isinstance(v, (int, float)):
         return v
     if isinstance(v, np.integer):
         return int(v)
-    if isinstance(v, np.floating):
+    if isinstance(v, (np.floating, np.float64)):
         return float(v)
     if isinstance(v, np.ndarray):
         return v.tolist()
+    # Sage RealDoubleElement, Integer, Rational, etc.
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        pass
     try:
         return int(v)
     except (TypeError, ValueError):
+        return str(v)
+
+
+def _py_dict(d):
+    """Recursively convert all values in a dict for JSON."""
+    return {k: _py(v) for k, v in d.items()}
+
+
+class SageEncoder(json.JSONEncoder):
+    """JSON encoder that handles Sage types."""
+    def default(self, obj):
         try:
-            return float(v)
+            return float(obj)
         except (TypeError, ValueError):
-            return str(v)
+            pass
+        try:
+            return int(obj)
+        except (TypeError, ValueError):
+            return str(obj)
 
 # ── Signal definitions ────────────────────────────────────────────────
 
@@ -293,9 +315,9 @@ def main():
                     'ratio_pq': float(min(p, q)) / float(max(p, q)),
                     'signal': sname,
                 }
-                row.update({k: _py(v) for k, v in metrics.items()})
-                row['time_signals'] = round(dt_signals, 4)
-                row['time_analysis'] = round(dt_analysis, 4)
+                row.update(_py_dict(metrics))
+                row['time_signals'] = round(float(dt_signals), 4)
+                row['time_analysis'] = round(float(dt_analysis), 4)
                 all_results.append(row)
 
                 print(f"{N:>7} {p:>5} {q:>5} {sname:>20} "
@@ -310,7 +332,7 @@ def main():
     os.makedirs(data_dir, exist_ok=True)
     out_path = os.path.join(data_dir, 'E10_carry_signals_results.json')
     with open(out_path, 'w') as f:
-        json.dump(all_results, f, indent=2)
+        json.dump(all_results, f, indent=int(2), cls=SageEncoder)
     print(f"\nResults saved to {out_path}", flush=True)
 
     # ── Statistical analysis: scaling exponents per signal ────────────
