@@ -375,6 +375,9 @@ Epsilon factors, root numbers, and L-value special relationships enforce global 
 | `E7_altug_beyond_endoscopy/run_E7e_analytic_proxies.sage` | E7e analytic proxies | ~490 |
 | `E8_global_projector/run_E8a_Lfunction_tomography.sage` | E8a L-function tomography | ~565 |
 | `E4_hirano_dw_invariants/E4_hirano_mod2_dw.ipynb` | E4 DW (not executed) | — |
+| `E8_global_projector/run_E8b_multiL.sage` | E8b multi-form amplification | ~600 |
+| `E10_integer_carry/run_E10_carry_signals.sage` | E10 carry signals | ~540 |
+| `E11_feature_extraction/run_E11_feature_extraction.sage` | E11 ML feature extraction | ~870 |
 
 ### Data Files
 | File | Contents |
@@ -386,7 +389,9 @@ Epsilon factors, root numbers, and L-value special relationships enforce global 
 | `data/E7d_global_separators_results.json` | E7d theta + Kloosterman (20 semiprimes to N=256k) |
 | `data/E7e_analytic_proxies_results.json` | E7e proxy tests (15 semiprimes, 13 signals) |
 | `data/E8a_Lfunction_tomography_results.json` | E8a L-function values (12 semiprimes, 5 confusable pairs) |
-| `data/*_plots.png` | Visualization plots for E7, E7b, E7c, E6, E7e |
+| `data/E10_carry_signals_results.json` | E10 carry signal metrics |
+| `data/E11_feature_extraction_results.json` | E11 ML results (111 features x 600 semiprimes) |
+| `data/*_plots.png` | Visualization plots for E7, E7b, E7c, E6, E7e, E10, E11 |
 
 ### Configuration
 | File | Purpose |
@@ -525,3 +530,96 @@ See `BARRIER_THEOREM.md` for the formal treatment:
 5. **Connection to QRP:** Spectral flatness → S_D(N) hardness → factoring hardness
 
 See `ACCESS_MODEL_REQUIREMENTS.md` for the full access-model audit and hinge scalar catalog.
+
+---
+
+## 15. E11: Comprehensive Poly(log N) Feature Extraction
+
+### Motivation
+
+E10 closed carry-based signals individually. E11 asks: can ANY combination of ~111 poly(log N)-computable features predict the hinge scalar S_D(N) = chi_D(p) + chi_D(q)?
+
+This is the "universal test" — ridge regression with LOOCV searches the full linear span of all features for predictive combinations. Permutation tests provide statistical significance.
+
+### Feature groups (111 features total)
+
+| Group | Count | Examples |
+|-------|:-----:|---------|
+| Jacobi symbols | 20 | J(k, N) for first 20 primes |
+| Modular exponentiations | 25 | g^N mod N, g^{(N-1)/2} mod N, J(g^N, N) |
+| Euler residuals | 5 | g^{N-2*isqrt(N)+1} mod N (encodes p+q error) |
+| Integer carry | 15 | floor(t^2/N), carry parity, J of carry |
+| CF convergents | 20 | Partial quotients, CF remainders, J of remainders |
+| Pollard p-1 | 6 | g^{20!} mod N indicators + values |
+| Mixed interactions | 10 | Cross-group products (J x modexp, etc.) |
+| N-arithmetic controls | 5 | N mod k for small k |
+| Random controls | 5 | Null hypothesis baseline |
+
+### Key design choice: balanced semiprimes only
+
+Only semiprimes with p/q >= 0.3 were generated, ensuring trial-division-equivalent features cannot succeed. This is the regime relevant to the barrier question (RSA-type semiprimes).
+
+### Results (600 semiprimes, 16-22 bit, balanced)
+
+**Hinge scalars (the barrier test):**
+
+| Target | R^2_CV | p-value | Verdict |
+|--------|:------:|:-------:|---------|
+| S_{-3}(N) | 0.013 | 0.020 | Flat |
+| S_{-4}(N) | 0.002 | 0.130 | Flat |
+| S_5(N) | 0.025 | 0.000 | Flat (inconsistent across bit sizes) |
+| S_{-7}(N) | -0.008 | 0.995 | Flat |
+| S_8(N) | 0.003 | 0.140 | Flat |
+
+**Non-hinge targets (expected predictability):**
+
+| Target | R^2_CV | Top features |
+|--------|:------:|-------------|
+| p/sqrt(N) | 0.353 | carry_hw, cf_pq_0, cf_rem (balance detection) |
+| log(q/p) | 0.350 | Same as above |
+
+**Critical diagnostics:**
+- Random control mean |r| = 0.035; Real feature mean |r| = 0.034 (identical — no feature group outperforms random)
+- High ANOVA F for J_cf_rem on S_{-4} (F=44577) is the known Jacobi mechanism: J(|r_k|, N) = J(-1, N) when r_k < 0, which detects S_{-4}=0 vs S_{-4}!=0 but CANNOT distinguish +2 from -2 (the QRP)
+- Per-bit-size R^2 for S_5: 16-bit=-0.003, 18-bit=0.108, 20-bit=0.074, 22-bit=0.002 — inconsistent scaling confirms noise
+
+### Conclusion
+
+No combination of 111 poly(log N)-computable features achieves meaningful prediction of any hinge scalar. The barrier extends to the full feature space including modular exponentiations, CF convergents, and mixed interactions. All apparent "signals" reduce to known mechanisms (Jacobi S_D=0/!=0 discrimination, CFRAC-equivalent CF remainder gcd hits, Pollard p-1 smoothness).
+
+---
+
+## 16. Literature Survey (2023-2026)
+
+A systematic search of recent literature found no new poly(log N) classical primitive:
+
+| Direction | Best known | New results (2023-2026) |
+|-----------|-----------|------------------------|
+| Classical factoring | GNFS at L(1/3) | Schnorr lattice tested but unproven |
+| Dequantize Shor | Quantum only | Regev (2023) still quantum; dequantization doesn't reach period-finding |
+| Succinct Hecke traces | O(N) via modular symbols | All methods require factoring N |
+| r_D(N) in poly time | O(sqrt(N)) | No progress |
+| Langlands -> factoring | No algorithmic content | Sakellaridis (2023) pure theory |
+| Class groups | L(1/2) subexponential | Incremental only |
+
+Notable: The Jacobi Factoring Circuit (STOC 2025) factors N=P^2*Q using Jacobi in quantum superposition. For semiprimes PQ, J(a,PQ) is rank-1 CRT — confirming our barrier is overcome by quantum parallelism, not classical tricks.
+
+---
+
+## 17. Final Status
+
+### Closed corridors (with evidence type)
+
+| Corridor | Closed by | Evidence |
+|----------|-----------|----------|
+| Jacobi observables | E7c | Structural proof + experiments |
+| Analytic proxies (13 types) | E7e | Anti-peaks N^{-0.25} |
+| Twisted GL(2) L-functions | E8a-b | chi(p)=0 + multi-form R^2=0 |
+| Level-N computations | E9 | Dimension barrier O(N) |
+| Integer-carry signals | E10 | Flat spectra despite rank increase |
+| 111-feature ML sweep | E11 | All R^2_CV <= 0.025, random=real |
+| Literature (6 directions) | Survey | No new primitives 2023-2026 |
+
+### The barrier in one sentence
+
+Every poly(log N)-computable observable on Z/NZ that we can construct or find in the literature has spectrally flat DFT at factor frequencies, consistent with (and partially implied by) the hardness of the Quadratic Residuosity Problem.
