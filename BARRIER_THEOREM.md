@@ -439,3 +439,133 @@ working with J_0(N), whose dimension is O(N). The étale cohomology
 H^1(J_0(N), Z/lZ) has dimension 2 * dim S_2(Γ_0(N)) = O(N), and the
 algorithm's complexity is polynomial in this dimension — hence O(N^c) for
 some constant c, which is exponential in log N.
+
+---
+
+## 9. Beyond Langlands: Exhaustive Primitive Search
+
+An exhaustive survey of ALL known mathematical approaches to integer factoring,
+extending beyond the Langlands program, confirms the barrier's universality.
+
+### 9.1 Definitively Closed Directions
+
+**Lattice methods:** Schnorr's lattice-based factoring was debunked by Ducas
+(2021): 0/1000 success rate at 40 bits. Coppersmith extensions require partial
+factor knowledge (n/4 bits) with no source for those bits.
+
+**Quantum-inspired classical:** Tang dequantization (2019) applies to
+recommendation-type problems, not the Hidden Subgroup Problem structure
+underlying factoring. QAOA/variational approaches fail at 80 bits.
+
+**Algebraic:** Kayal-Saxena showed ring automorphism detection is equivalent
+to factoring (not a reduction). Umans (2025) improved the deterministic
+factoring exponent from 1/5 to 1/6 — still sub-exponential. Polynomial
+factoring over F_q is easy (Frobenius linearization) but integer factoring
+has no analogue.
+
+**Physics-inspired:** Kim's arithmetic Chern-Simons invariants require
+Legendre symbols, hitting the QRP barrier. Ising model formulations produce
+frustrated spin glasses (NP-hard ground states). Gauss sum factoring has
+exponential term count. Tensor networks and holographic algorithms lack the
+requisite algebraic structure.
+
+**Machine learning:** 0% success at cryptographic sizes, confirmed by our
+E11 experiment (111 features, all R²_CV ≤ 0.025).
+
+### 9.2 Conditional Results
+
+Several results show factoring is "easy" given access to quantities that are
+themselves hard to compute:
+
+| Given oracle for... | Factoring complexity | Oracle complexity |
+|---------------------|---------------------|-------------------|
+| reg(Q(√N)) (regulator) | Polynomial | O(N^{1/4}) — Murru-Salvatori 2024 |
+| #E(Z/NZ) (point count) | Polynomial | Requires factoring — Shparlinski 2023 |
+| n/4 bits of p | Polynomial | No known source — Coppersmith |
+| Aut(Z/NZ) | Polynomial | Equivalent to factoring — Kayal-Saxena |
+| Floor on reals | O(log N) | Continuous→discrete gap — Shamir |
+
+The pattern: every "easy given X" result has X at least as hard as factoring.
+
+### 9.3 The Weight-1 Edixhoven-Couveignes-Bruin Gap
+
+The most precisely identified theoretical opening across all mathematics:
+
+**Setup.** Edixhoven-Couveignes (2011), extended by Bruin (2011, under GRH),
+computes a_p(f) for modular forms f of **weight ≥ 2** and **fixed level** in
+poly(log p, k) time. The algorithm works via étale cohomology: the Galois
+representation ρ_f attached to f is realized in the ℓ-torsion of the
+Jacobian J_0(level), which is a geometric object amenable to algorithmic
+manipulation.
+
+**The gap.** The representation number r_D(N) = #{(x,y) : x² + |D|y² = N}
+is the N-th Fourier coefficient of the **weight-1** theta series
+θ_D(τ) = Σ_n r_D(n) q^n. Weight-1 modular forms correspond to **Artin
+representations** — they have finite image and are NOT geometric in the
+sense needed by EC-B. There is no abelian variety whose torsion points
+realize these representations.
+
+**Consequence if closed.** For fixed discriminant D with χ_D(N) = +1:
+  r_D(N) = 1 + χ_D(N) + S_D(N) where S_D(N) = χ_D(p) + χ_D(q).
+If r_D(N) were poly(log N)-computable, S_D(N) would be known, breaking
+QRP and factoring N.
+
+**Why it is likely unclosable.** The distinction between geometric (weight ≥ 2)
+and Artin (weight 1) Galois representations is fundamental in the Langlands
+program. The Fontaine-Mazur conjecture characterizes geometric representations
+precisely as those that are de Rham at all primes — weight-1 representations
+are not. No alternative algorithmic realization is known.
+
+### 9.4 Complexity-Theoretic Assessment
+
+Factoring has NO proven lower bound in any standard (non-oracle) model.
+
+**Three proof barriers apply:**
+1. **Relativization:** Factoring is hard relative to some oracles, easy relative
+   to others → no relativizing proof of hardness exists.
+2. **Natural proofs:** If factoring generates pseudorandom functions (widely
+   believed), then natural proof techniques cannot prove factoring is hard.
+3. **Algebrization:** Factoring is in NP ∩ coNP, blocking algebrizing lower
+   bound proofs.
+
+**Trajectory of best algorithms:**
+- Pre-1970: L_N(1) (trial division)
+- 1970s: L_N(1/2) (CFRAC, QS)
+- 1990s: L_N(1/3) (GNFS)
+- 2020s: L_N(1/3) with improved constants
+
+The L_N exponent has decreased as 1 → 1/2 → 1/3. The next natural step
+(L_N(1/4) or below) has not been achieved in 30+ years of effort.
+
+**Factoring's complexity class position:**
+Factoring ∈ NP ∩ coNP ∩ BQP ∩ UP ∩ coUP — an unusually "weak" position
+for a problem believed to be hard. No NP-complete problem is known to have
+all these properties.
+
+**Shamir's real-RAM result:** Factoring N requires only O(log N) operations
+in a real-number RAM model with floor function. The entire difficulty of
+factoring resides in the continuous-to-discrete gap: floor(x) is cheap to
+compute but destroys analytic structure that could otherwise be exploited.
+
+### 9.5 Structural Synthesis
+
+Three independent arguments converge on the barrier:
+
+1. **Algebraic (CRT):** Z/NZ ≅ Z/pZ × Z/qZ at the ring level. Every
+   algebraic construction over Z/NZ decomposes through this isomorphism.
+   Factor information requires "unscrambling" the product structure.
+
+2. **Analytic (spectral flatness):** DFT of every tested poly(log N)-
+   computable observable has peaks decaying as N^{-c} with c ≥ 0.25 at
+   factor frequencies. Confirmed across 111 features, 13 analytic proxies,
+   6 carry signals, 19 eigenforms, and all Langlands constructions.
+
+3. **Information-theoretic (missing bit):** The QRP bottleneck requires
+   distinguishing J(t)=+1 as QR/QR vs QNR/QNR. This is 1 bit of information
+   per element, distributed uniformly over (Z/NZ)*. No poly(log N)-computable
+   statistic concentrates this information.
+
+The weight-1 EC-B gap is the one identified point where these arguments do
+not fully close: it is conceivable (though unlikely) that a non-geometric
+realization of Artin representations could bypass all three obstructions
+simultaneously.

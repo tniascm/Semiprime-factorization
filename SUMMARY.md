@@ -664,7 +664,84 @@ The Langlands program is built on the **local-global principle**: pi = tensor pr
 
 ---
 
-## 18. Final Status
+## 18. Beyond Langlands: Exhaustive Poly(log N) Primitive Search
+
+A comprehensive web search across ALL known mathematical and computational
+approaches to integer factoring, not limited to the Langlands program.
+
+### Definitively closed directions
+
+| Approach | Why it fails | Reference |
+|----------|-------------|-----------|
+| Schnorr lattice factoring | Debunked: 0/1000 success at 40 bits | Ducas (2021) |
+| QAOA/quantum-inspired | Fails at 80 bits; exponential scaling | Yan et al. refutations |
+| Tang dequantization | Inapplicable to HSP structure | Tang (2019) |
+| D-Wave/annealing | Exponential scaling; 90-bit record only | Multiple studies |
+| Gauss sum factoring | Exponential number of terms | Known |
+| Tensor networks | Worse than brute force for factoring | Known |
+| Tropical geometry | Optimization formulations are NP-hard | Known |
+| Neural networks/ML | 0% success at cryptographic sizes | E11 + literature |
+| Kim arithmetic CS | DW invariants require Legendre symbols → QRP barrier | Kim (2018) |
+| Primon gas/Bost-Connes | No way to zoom in on factors of specific N | Known |
+| Ising model of N | Frustrated spin glass; NP-hard ground state | Known |
+| SDP/SOS relaxation | Exponential levels needed | Known |
+| Berlekamp-over-composites | Probability → 0 for generic semiprimes | Known |
+
+### Conditional results (not poly(log N) unconditionally)
+
+| Result | Condition | Gap |
+|--------|-----------|-----|
+| Factoring in P given regulator | reg(Q(√N)) known | reg is O(N^{1/4}) to compute |
+| Factoring from #E(Z/NZ) oracle | Point count over composite | Requires factoring to compute |
+| Coppersmith partial info | n/4 bits of factor known | No source for the bits |
+| Umans improved exponent | Conjecture: 1/5 → 1/6 | Still sub-exponential, not poly(log) |
+| Kayal-Saxena ring automorphism | Aut(Z/NZ) computed | Finding automorphisms ≡ factoring |
+| Shamir real-RAM factoring | Floor function on reals | Continuous → discrete gap unbridged |
+
+### The weight-1 Edixhoven-Couveignes-Bruin gap ★
+
+The single most precisely identified open direction across all mathematics:
+
+- **Edixhoven-Couveignes-Bruin (EC-B)** computes a_p(f) in poly(log p) for
+  weight ≥ 2 modular forms of FIXED level, via étale cohomology of Jacobians.
+- **r_D(N)** = #{(x,y): x² + |D|y² = N} is the N-th Fourier coefficient of
+  a **weight-1** theta series θ_D(τ) = Σ r_D(n) q^n.
+- Weight-1 forms correspond to **Artin representations**, not geometric Galois
+  representations. The EC-B algorithm relies on J_0(level) torsion points,
+  which exist for weight ≥ 2 but have no direct analogue for weight 1.
+- **Bruin (2011)** extended EC-B to arbitrary level under GRH, but still weight ≥ 2.
+- **If weight-1 EC-B existed**: for any fixed discriminant D, compute r_D(N) in
+  poly(log N). Then S_D(N) = r_D(N) - 1 - χ_D(N) = χ_D(p) + χ_D(q). This breaks
+  QRP and factors N.
+- **Why it probably can't work**: Artin representations are finite image (not
+  geometric), so there are no abelian variety torsion points to compute with.
+  The weight-1 gap may be as hard as the underlying factoring problem.
+
+### Complexity-theoretic perspective
+
+The hardness of factoring is **unproven**, and arguably the evidence for eventual
+polynomial-time factoring is stronger than for impossibility:
+
+| Evidence for possibility | Evidence for impossibility |
+|-------------------------|---------------------------|
+| L_n exponent trajectory: 1 → 1/2 → 1/3 (improving) | 50+ years without poly(log N) |
+| Factoring in NP ∩ coNP ∩ BQP ∩ UP ∩ coUP (weak class) | Generic ring model Ω(N^{1/6}) |
+| All three proof barriers block hardness proofs | Quantum advantage consistent with classical hardness |
+| Coppersmith: 1/4 of bits are "free" | Random self-reducibility: worst = average case |
+| Shamir: O(log N) in real RAM with floor | No natural algebraic handle on integer structure |
+| Carmichael numbers factorable in P | — |
+
+Henry Cohn's assessment: classical factoring is "two-thirds of the way to
+polynomial time" (in L_n exponent terms).
+
+**Key structural insight**: The hardness of factoring appears to reside specifically
+in the **continuous-to-discrete gap** — the integer lattice Z embeds in ℝ in a way
+that makes floor/carry operations cheap, but the number-theoretic structure
+(prime decomposition) is not captured by any known algebraic or analytic shortcut.
+
+---
+
+## 19. Final Status
 
 ### Closed corridors (with evidence type)
 
@@ -678,7 +755,21 @@ The Langlands program is built on the **local-global principle**: pi = tensor pr
 | 111-feature ML sweep | E11 | All R^2_CV <= 0.025, random=real |
 | Literature (6 directions) | Survey | No new primitives 2023-2026 |
 | Langlands ecosystem (20+ tools) | Web survey | Three universal obstructions |
+| Non-Langlands primitives (13+) | Web survey | All fail or conditional |
+| Complexity-theoretic shortcuts | Web survey | No proof of hardness, but no poly(log N) algorithm |
+
+### The one open direction
+
+**Weight-1 Edixhoven-Couveignes-Bruin**: If EC-B could be extended from weight ≥ 2
+to weight 1 (Artin representations), r_D(N) would be poly(log N)-computable for
+fixed D, yielding S_D(N) = χ_D(p) + χ_D(q) and breaking QRP. The gap is that
+weight-1 forms have finite-image Galois representations with no geometric (abelian
+variety torsion) realization.
 
 ### The barrier in one sentence
 
-Every poly(log N)-computable observable on Z/NZ that we can construct or find in the Langlands program literature has spectrally flat DFT at factor frequencies, consistent with (and partially implied by) the hardness of the Quadratic Residuosity Problem.
+Every poly(log N)-computable observable on Z/NZ that we can construct or find in
+the mathematical literature has spectrally flat DFT at factor frequencies,
+consistent with (and partially implied by) the hardness of the Quadratic
+Residuosity Problem — with the weight-1 EC-B gap as the single identified
+theoretical opening.
