@@ -742,3 +742,66 @@ E13 demonstrates that the factoring barrier has a precise character:
 The congruence is a structural relation between the VALUE of a_N and
 the factors, but it does not provide a COMPUTATIONAL shortcut to obtain
 that value. The bottleneck is evaluation, not inversion.
+
+---
+
+## 13. E13b: Formal Reduction — Channel Evaluation ≡ Factoring
+
+### 13.1 The reduction theorem
+
+**Theorem.** Let N = pq be a balanced semiprime with n = ⌈log₂ N⌉ bits.
+Define the Eisenstein channel oracle C_ℓ(N) = a_N(f_k) mod ℓ for 7 channels
+(k, ℓ) ∈ {(12,691), (16,3617), (18,43867), (20,283), (20,617), (22,131), (22,593)}.
+
+**(a) Forward reduction:** poly(log N) access to all 7 channels ⇒ poly(log N) factoring.
+
+*Proof:* Each C_ℓ(N) determines {p mod ℓ, q mod ℓ} via polynomial solving (degree
+k-1 in F_ℓ, cost poly(k, log ℓ)). CRT yields p mod M where M = ∏ℓ ≈ 1.49 × 10²¹
+(70.3 bits). For n ≤ 140, this exceeds the Coppersmith n/4 threshold.
+Experimentally verified: 12/12 semiprimes (15-23 bit) factored with 100% success.
+
+**(b) Converse:** Poly(log N) channel evaluation implies poly(log N) factoring,
+so under standard complexity assumptions (factoring ∉ P), no such evaluation exists.
+
+### 13.2 Four routes to channel evaluation — all blocked
+
+| Route | Cost | Requires factoring? | Status |
+|-------|------|-------------------|--------|
+| 1. q-expansion in F_ℓ[[q]] | O(N) | No, but cost is Ω(N) | Exponential |
+| 2. Trace formula | O(√N) + ??? | Yes (Eisenstein correction) | Blocked |
+| 3. Congruence shortcut | poly(log N) | Yes (σ_{k-1} multiplicative) | Circular |
+| 4. Galois representation | poly(log p) | Yes (need p prime) | Blocked |
+
+### 13.3 Trace formula obstruction (detailed)
+
+The Eichler-Selberg trace formula decomposes τ(N) into:
+- **Class number sum:** Σ_{t²<4N} P_{k-2}(t,N) · H(4N-t²) — O(√N) terms,
+  each involving class numbers of imaginary quadratic fields. Does NOT require
+  knowing divisors of N.
+- **Eisenstein correction:** -½ Σ_{d|N} min(d, N/d)^{k-1}. For N = pq:
+  E(N) = -1 - min(p,q)^{k-1}. **Requires the divisors of N.**
+
+Experimental measurement: |E(N)/τ(N)| ranges from 0.40 to 2.64 for small
+semiprimes — the Eisenstein correction is comparable in magnitude to τ(N)
+itself. It cannot be approximated or ignored.
+
+### 13.4 Congruence circularity (detailed)
+
+The Ramanujan-type congruence τ(N) ≡ σ_{11}(N) (mod 691) is verified
+experimentally. But σ_{11} is multiplicative:
+    σ_{11}(pq) = (1 + p^{11})(1 + q^{11})
+Computing σ_{11}(N) mod 691 requires knowing p, q — the congruence
+reduces channel evaluation to factoring rather than bypassing it.
+
+### 13.5 Summary: the precise shape of the barrier
+
+The factoring barrier has a clean decomposition:
+
+1. **Information:** ABUNDANT. 7 Eisenstein channels provide 70.3 bits of
+   factor information, far exceeding Coppersmith thresholds.
+2. **Inversion:** TRIVIAL. Polynomial solving + CRT, all poly(log N).
+3. **Evaluation:** HARD. Computing a_N(f_k) mod ℓ at composite N is
+   equivalent to factoring N (by the reduction theorem).
+
+The barrier resides entirely in step 3. Any breakthrough must provide
+a new evaluation primitive — not more information or better inversion.

@@ -846,6 +846,26 @@ Factor information exists abundantly in eigenform products; it costs
 O(N) to extract. No structural loophole via Eisenstein congruences
 evades the poly(log N) obstruction.
 
+### E13b: Formal reduction — channel evaluation ≡ factoring
+
+Formalizes the reduction chain and exhausts all evaluation routes:
+
+| Route | Cost | Blocked by |
+|-------|------|-----------|
+| q-expansion in F_ℓ[[q]] | O(N) | Exponential in input size |
+| Trace formula (Eichler-Selberg) | O(√N) + ??? | Eisenstein correction needs divisors of N |
+| Congruence shortcut | poly(log N) | σ_{k-1}(pq) is multiplicative — circular |
+| Galois representations | poly(log p) | Only works at primes, not composites |
+
+**Key findings:**
+- M = ∏ℓ ≈ 1.49 × 10²¹ (70.3 bits) — sufficient for Coppersmith up to n ≤ 140
+- 12/12 semiprimes (15-23 bit) factored via channel oracle with 100% success
+- Trace formula Eisenstein correction |E(N)/τ(N)| = 0.40-2.64 — not a small perturbation
+- Congruence circularity verified: τ(N) ≡ σ₁₁(N) (mod 691) exactly
+
+**The barrier resides entirely in evaluation.** Any breakthrough must provide
+a new evaluation primitive — not more information or better inversion.
+
 ---
 
 ## 21. Final Status
