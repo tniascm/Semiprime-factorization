@@ -1,0 +1,2018 @@
+[
+  {
+    "N": 323,
+    "p": 17,
+    "q": 19,
+    "bits_N": 9,
+    "e1_true": 36,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 138,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2003,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 27212,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 254,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 191,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 97,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 541,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 2,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 667,
+    "p": 23,
+    "q": 29,
+    "bits_N": 10,
+    "e1_true": 52,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 23,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2161,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 10786,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 183,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 127,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 87,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 479,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 2,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 1147,
+    "p": 31,
+    "q": 37,
+    "bits_N": 11,
+    "e1_true": 68,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 313,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2998,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 28110,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 152,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 442,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 3,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 91,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 2,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 1763,
+    "p": 41,
+    "q": 43,
+    "bits_N": 11,
+    "e1_true": 84,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 368,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2048,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 31426,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 144,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 137,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 102,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 266,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 2,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 2491,
+    "p": 47,
+    "q": 53,
+    "bits_N": 12,
+    "e1_true": 100,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 394,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 739,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 35679,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 213,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 338,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 113,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 139,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 3599,
+    "p": 59,
+    "q": 61,
+    "bits_N": 12,
+    "e1_true": 120,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 594,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 561,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 14235,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 179,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 144,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 111,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 322,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 1517,
+    "p": 37,
+    "q": 41,
+    "bits_N": 11,
+    "e1_true": 78,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 216,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 1845,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 33200,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 21,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 334,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 52,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 98,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 2,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 2021,
+    "p": 43,
+    "q": 47,
+    "bits_N": 11,
+    "e1_true": 90,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 458,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 1104,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 12070,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 70,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 573,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 38,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 391,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 2,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 3127,
+    "p": 53,
+    "q": 59,
+    "bits_N": 12,
+    "e1_true": 112,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 305,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 331,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 5066,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 237,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 386,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 84,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 251,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 4087,
+    "p": 61,
+    "q": 67,
+    "bits_N": 12,
+    "e1_true": 128,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 63,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 1675,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 31630,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 110,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 270,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 9,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 94,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 5183,
+    "p": 71,
+    "q": 73,
+    "bits_N": 13,
+    "e1_true": 144,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 98,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 742,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 26535,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 1,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 314,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 49,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 279,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 6557,
+    "p": 79,
+    "q": 83,
+    "bits_N": 13,
+    "e1_true": 162,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 40,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 1884,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 3145,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 168,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 354,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 30,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 128,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 4757,
+    "p": 67,
+    "q": 71,
+    "bits_N": 13,
+    "e1_true": 138,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 152,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2312,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 32772,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 256,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 476,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 16,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 375,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 5767,
+    "p": 73,
+    "q": 79,
+    "bits_N": 13,
+    "e1_true": 152,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 588,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2897,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 21797,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 4,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 320,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 71,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 367,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 7387,
+    "p": 83,
+    "q": 89,
+    "bits_N": 13,
+    "e1_true": 172,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 206,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 1152,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 16004,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 137,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 196,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 76,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 385,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 9797,
+    "p": 97,
+    "q": 101,
+    "bits_N": 14,
+    "e1_true": 198,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 594,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 289,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 32882,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 144,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 365,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 109,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 465,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 11021,
+    "p": 103,
+    "q": 107,
+    "bits_N": 14,
+    "e1_true": 210,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 664,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2083,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 33494,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 159,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 413,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 87,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 592,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 12317,
+    "p": 109,
+    "q": 113,
+    "bits_N": 14,
+    "e1_true": 222,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 108,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 1852,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 42403,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 244,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 577,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 14,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 528,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 17947,
+    "p": 131,
+    "q": 137,
+    "bits_N": 15,
+    "e1_true": 268,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 406,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 3578,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 33432,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 173,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 178,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 111,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 476,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 20711,
+    "p": 139,
+    "q": 149,
+    "bits_N": 15,
+    "e1_true": 288,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 351,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 3236,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 29056,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 246,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 612,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 54,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 225,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 23707,
+    "p": 151,
+    "q": 157,
+    "bits_N": 15,
+    "e1_true": 308,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 197,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 865,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 7247,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 68,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 328,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 74,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 263,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 27221,
+    "p": 163,
+    "q": 167,
+    "bits_N": 15,
+    "e1_true": 330,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 300,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 43,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 25776,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 212,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 254,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 125,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 321,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 30967,
+    "p": 173,
+    "q": 179,
+    "bits_N": 15,
+    "e1_true": 352,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 560,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 284,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 32690,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 104,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 528,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 105,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 547,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 3,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  },
+  {
+    "N": 34571,
+    "p": 181,
+    "q": 191,
+    "bits_N": 16,
+    "e1_true": 372,
+    "channels": [
+      {
+        "weight": 12,
+        "ell": 691,
+        "a_N_mod_ell": 91,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 16,
+        "ell": 3617,
+        "a_N_mod_ell": 2211,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 10
+      },
+      {
+        "weight": 18,
+        "ell": 43867,
+        "a_N_mod_ell": 42293,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 14
+      },
+      {
+        "weight": 20,
+        "ell": 283,
+        "a_N_mod_ell": 23,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 7
+      },
+      {
+        "weight": 20,
+        "ell": 617,
+        "a_N_mod_ell": 532,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      },
+      {
+        "weight": 22,
+        "ell": 131,
+        "a_N_mod_ell": 74,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 6
+      },
+      {
+        "weight": 22,
+        "ell": 593,
+        "a_N_mod_ell": 435,
+        "n_e1_candidates": 1,
+        "n_p_candidates": 2,
+        "e1_true_found": true,
+        "p_true_found": true,
+        "bits": 8
+      }
+    ],
+    "total_bits": 63,
+    "bits_needed": 4,
+    "crt_candidate_product": 128,
+    "total_ell_product": 1487175010978381361737,
+    "crt_reduction_ratio": 8.606922457350293e-20
+  }
+]
