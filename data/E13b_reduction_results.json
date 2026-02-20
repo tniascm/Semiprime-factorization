@@ -1,0 +1,201 @@
+{
+  "trace_formula": [
+    {
+      "N": 143,
+      "p": 11,
+      "q": 13,
+      "tau_N": -308865667656,
+      "eis_corr": -285311670612,
+      "class_sum": -23553997044,
+      "eis_ratio": 0
+    },
+    {
+      "N": 323,
+      "p": 17,
+      "q": 19,
+      "tau_N": -73627062866280,
+      "eis_corr": -34271896307634,
+      "class_sum": -39355166558646,
+      "eis_ratio": 0
+    },
+    {
+      "N": 667,
+      "p": 23,
+      "q": 29,
+      "tau_N": 2393919729693360,
+      "eis_corr": -952809757913928,
+      "class_sum": 3346729487607288,
+      "eis_ratio": 0
+    },
+    {
+      "N": 323,
+      "p": 17,
+      "q": 19,
+      "tau_N": -73627062866280,
+      "eis_corr": -34271896307634,
+      "class_sum": -39355166558646,
+      "eis_ratio": 0
+    },
+    {
+      "N": 667,
+      "p": 23,
+      "q": 29,
+      "tau_N": 2393919729693360,
+      "eis_corr": -952809757913928,
+      "class_sum": 3346729487607288,
+      "eis_ratio": 0
+    },
+    {
+      "N": 1147,
+      "p": 31,
+      "q": 37,
+      "tau_N": 9628728763538752,
+      "eis_corr": -25408476896404832,
+      "class_sum": 35037205659943584,
+      "eis_ratio": 2
+    }
+  ],
+  "reduction": [
+    {
+      "N": 17947,
+      "p": 131,
+      "q": 137,
+      "bits": 15,
+      "recovered_p": 131,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 20711,
+      "p": 139,
+      "q": 149,
+      "bits": 15,
+      "recovered_p": 139,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 23707,
+      "p": 151,
+      "q": 157,
+      "bits": 15,
+      "recovered_p": 157,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 27221,
+      "p": 163,
+      "q": 167,
+      "bits": 15,
+      "recovered_p": 163,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 272483,
+      "p": 521,
+      "q": 523,
+      "bits": 19,
+      "recovered_p": 521,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 295927,
+      "p": 541,
+      "q": 547,
+      "bits": 19,
+      "recovered_p": 541,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 313591,
+      "p": 557,
+      "q": 563,
+      "bits": 19,
+      "recovered_p": 557,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 324899,
+      "p": 569,
+      "q": 571,
+      "bits": 19,
+      "recovered_p": 569,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 4235339,
+      "p": 2053,
+      "q": 2063,
+      "bits": 23,
+      "recovered_p": 2053,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 4305589,
+      "p": 2069,
+      "q": 2081,
+      "bits": 23,
+      "recovered_p": 2069,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 4347221,
+      "p": 2083,
+      "q": 2087,
+      "bits": 23,
+      "recovered_p": 2087,
+      "correct": true,
+      "reduction_time": 0
+    },
+    {
+      "N": 4384811,
+      "p": 2089,
+      "q": 2099,
+      "bits": 23,
+      "recovered_p": 2099,
+      "correct": true,
+      "reduction_time": 0
+    }
+  ],
+  "success_rate": 1,
+  "total_modulus": 1487175010978381361737,
+  "total_bits": 70,
+  "channels": [
+    {
+      "weight": 12,
+      "ell": 691
+    },
+    {
+      "weight": 16,
+      "ell": 3617
+    },
+    {
+      "weight": 18,
+      "ell": 43867
+    },
+    {
+      "weight": 20,
+      "ell": 283
+    },
+    {
+      "weight": 20,
+      "ell": 617
+    },
+    {
+      "weight": 22,
+      "ell": 131
+    },
+    {
+      "weight": 22,
+      "ell": 593
+    }
+  ]
+}
