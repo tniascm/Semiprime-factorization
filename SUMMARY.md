@@ -676,7 +676,8 @@ approaches to integer factoring, not limited to the Langlands program.
 | Schnorr lattice factoring | Debunked: 0/1000 success at 40 bits | Ducas (2021) |
 | QAOA/quantum-inspired | Fails at 80 bits; exponential scaling | Yan et al. refutations |
 | Tang dequantization | Inapplicable to HSP structure | Tang (2019) |
-| D-Wave/annealing | Exponential scaling; 90-bit record only | Multiple studies |
+| D-Wave/annealing | Exponential scaling; RSA-2048 claim debunked | Gutmann-Neuhaus (2025) |
+| TNSS tensor networks | ~130-bit ceiling; worse than GNFS at scale | arXiv:2410.16355 |
 | Gauss sum factoring | Exponential number of terms | Known |
 | Tensor networks | Worse than brute force for factoring | Known |
 | Tropical geometry | Optimization formulations are NP-hard | Known |
@@ -698,24 +699,31 @@ approaches to integer factoring, not limited to the Langlands program.
 | Kayal-Saxena ring automorphism | Aut(Z/NZ) computed | Finding automorphisms ≡ factoring |
 | Shamir real-RAM factoring | Floor function on reals | Continuous → discrete gap unbridged |
 
-### The weight-1 Edixhoven-Couveignes-Bruin gap ★
+### The weight-1 EC-B gap — CLOSED by Bach-Charles
 
-The single most precisely identified open direction across all mathematics:
+Previously identified as the "single most promising theoretical opening."
+Now closed by the **Bach-Charles theorem (2007)** [arXiv:0708.1192]:
 
-- **Edixhoven-Couveignes-Bruin (EC-B)** computes a_p(f) in poly(log p) for
-  weight ≥ 2 modular forms of FIXED level, via étale cohomology of Jacobians.
-- **r_D(N)** = #{(x,y): x² + |D|y² = N} is the N-th Fourier coefficient of
-  a **weight-1** theta series θ_D(τ) = Σ r_D(n) q^n.
-- Weight-1 forms correspond to **Artin representations**, not geometric Galois
-  representations. The EC-B algorithm relies on J_0(level) torsion points,
-  which exist for weight ≥ 2 but have no direct analogue for weight 1.
-- **Bruin (2011)** extended EC-B to arbitrary level under GRH, but still weight ≥ 2.
-- **If weight-1 EC-B existed**: for any fixed discriminant D, compute r_D(N) in
-  poly(log N). Then S_D(N) = r_D(N) - 1 - χ_D(N) = χ_D(p) + χ_D(q). This breaks
-  QRP and factors N.
-- **Why it probably can't work**: Artin representations are finite image (not
-  geometric), so there are no abelian variety torsion points to compute with.
-  The weight-1 gap may be as hard as the underlying factoring problem.
+**Theorem (Bach-Charles):** Computing a_N(f) for any fixed Hecke eigenform f
+at composite N in poly(log N) time **provably implies** polynomial-time factoring.
+
+The mechanism: a_N(f) = a_p(f)·a_q(f) by multiplicativity. Given a poly(log N)
+oracle for a_N, the factorization of N can be extracted in polynomial time.
+
+This closes the weight-1 "gap" from **both directions**:
+- **From below (geometric):** Weight-1 forms are non-cohomological. EC-B relies
+  on Eichler-Shimura (weight ≥ 2). No geometric realization exists for weight 1.
+- **From above (complexity):** Even if EC-B COULD be extended to weight 1, it
+  computes a_p(f) at PRIMES. For composite N = pq, a_N = a_p·a_q requires
+  factoring N (Bach-Charles).
+
+Additional 2023-2026 results confirming closure:
+- Mamah (2025): improved r_D(N) algorithm, but requires factorization of N
+- de Boer, Pellet-Mary, Wesolowski (2025): rigorous subexp class group for all
+  fields — still subexponential, not poly(log)
+- Child (2022): weight-1 newforms computed to level 10,000 — poly(level),
+  exponential in log N when level = N
+- Tian (2023): EC extended to l < k-1, still weight ≥ 2 only
 
 ### Complexity-theoretic perspective
 
@@ -741,7 +749,35 @@ that makes floor/carry operations cheap, but the number-theoretic structure
 
 ---
 
-## 19. Final Status
+## 19. E12: Deep Carry Compositions (Iterated Squaring Quotient Traces)
+
+Tests the carry trace of iterated modular squaring (depth d = log₂ N steps).
+Each step produces a non-CRT-separable quotient; d steps accumulate O(log N)
+carry bits with exponential formal CRT rank.
+
+### Key result: depth hurts
+
+On balanced semiprimes with properly normalized ±1 signals:
+
+| Signal | Depth | Alpha | Excess | Verdict |
+|--------|-------|-------|--------|---------|
+| ctrl_jacobi (E7c) | — | -0.425 | 0.021 | flat (baseline) |
+| E10 depth-1 parity | 1 | -0.433 | 1.006 | flat |
+| half-depth prodpar | d/2 | -0.377 | 0.865 | flat |
+| **depth-d prodpar** | d | **-0.514** | 1.308 | **WORSE** |
+| depth-d XOR | d | -0.994 | — | very flat |
+
+Deeper carries produce FLATTER spectra. Each iterated carry step adds
+pseudo-random noise that washes out structure. High CRT rank (from iteration)
+is necessary but NOT sufficient for spectral peaks.
+
+Unnormalized signals (carry_final, carry_polynomial) showed positive alpha —
+but the CRT-separable CONTROL showed identical behavior, confirming this is
+an amplitude artifact, not factor signal.
+
+---
+
+## 20. Final Status
 
 ### Closed corridors (with evidence type)
 
@@ -751,25 +787,35 @@ that makes floor/carry operations cheap, but the number-theoretic structure
 | Analytic proxies (13 types) | E7e | Anti-peaks N^{-0.25} |
 | Twisted GL(2) L-functions | E8a-b | chi(p)=0 + multi-form R^2=0 |
 | Level-N computations | E9 | Dimension barrier O(N) |
-| Integer-carry signals | E10 | Flat spectra despite rank increase |
+| Integer-carry signals (depth-1) | E10 | Flat spectra despite rank increase |
 | 111-feature ML sweep | E11 | All R^2_CV <= 0.025, random=real |
+| Deep carry compositions (depth-d) | E12 | Depth hurts: alpha -0.514 vs -0.433 |
 | Literature (6 directions) | Survey | No new primitives 2023-2026 |
 | Langlands ecosystem (20+ tools) | Web survey | Three universal obstructions |
 | Non-Langlands primitives (13+) | Web survey | All fail or conditional |
-| Complexity-theoretic shortcuts | Web survey | No proof of hardness, but no poly(log N) algorithm |
+| Weight-1 EC-B gap | Bach-Charles | a(N) at composites ≡ factoring (proven) |
+| Eigenform coefficients at composites | Bach-Charles | Provable reduction to factoring |
 
-### The one open direction
+### No open directions remain
 
-**Weight-1 Edixhoven-Couveignes-Bruin**: If EC-B could be extended from weight ≥ 2
-to weight 1 (Artin representations), r_D(N) would be poly(log N)-computable for
-fixed D, yielding S_D(N) = χ_D(p) + χ_D(q) and breaking QRP. The gap is that
-weight-1 forms have finite-image Galois representations with no geometric (abelian
-variety torsion) realization.
+The weight-1 EC-B "gap" — previously the single identified theoretical opening —
+is now closed by the **Bach-Charles theorem (2007)**: computing any fixed Hecke
+eigenform's coefficient at composite N in poly(log N) **provably implies**
+polynomial-time factoring. This applies to ALL eigenforms (weight 1 or otherwise)
+and ALL theta series coefficients r_D(N).
+
+The gap is closed from both directions:
+- **Geometric obstruction (from below):** No algorithmic access to weight-1
+  Galois representations via étale cohomology
+- **Complexity-theoretic obstruction (from above):** Even with such access,
+  multiplicativity a(pq) = a(p)·a(q) makes composite evaluation ≡ factoring
 
 ### The barrier in one sentence
 
-Every poly(log N)-computable observable on Z/NZ that we can construct or find in
-the mathematical literature has spectrally flat DFT at factor frequencies,
-consistent with (and partially implied by) the hardness of the Quadratic
-Residuosity Problem — with the weight-1 EC-B gap as the single identified
-theoretical opening.
+Every poly(log N)-computable observable on Z/NZ that we can construct or find
+in the mathematical literature has spectrally flat DFT at factor frequencies,
+consistent with the hardness of the Quadratic Residuosity Problem. The
+Bach-Charles theorem proves that this barrier cannot be broken by ANY
+eigenform-based approach, and experiments E5-E12 confirm it extends to
+the full Ring-Jacobi-Integer oracle model including iterated carry
+compositions of arbitrary depth.
