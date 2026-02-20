@@ -606,7 +606,65 @@ Notable: The Jacobi Factoring Circuit (STOC 2025) factors N=P^2*Q using Jacobi i
 
 ---
 
-## 17. Final Status
+## 17. Langlands Ecosystem Survey: Exhaustive Poly(log N) Audit
+
+A comprehensive web search across the full Langlands program ecosystem found **no new poly(log N) primitive**. Every tool hits one of three obstructions:
+
+### Obstruction 1: Local Langlands Decomposition (CRT at finite places)
+
+All functorial constructions decompose through local Langlands at each prime. Computations at p|N require knowing p.
+
+| Method | Status | Why it fails |
+|--------|--------|-------------|
+| Base change GL(2) (Langlands, Arthur-Clozel) | Closed | Splitting of p,q in extension K requires factoring |
+| Symmetric powers (Newton-Thorne 2021-2026) | Closed | Bad Euler factors at p\|N require knowing p, q |
+| Rankin-Selberg convolutions | Closed | Level-1 case = E8b (R^2~0); level-N = Obstruction 2 |
+| Endoscopic transfer (Arthur classification) | Closed | Local endoscopy at p\|N needs the prime |
+| Theta correspondence / Weil representation | Closed | Factors through CRT on Z/NZ (E7d: R=0.999) |
+| Braverman-Kazhdan generalized Fourier transform | Closed | Local BK = Euler product (E6 proved); no algorithmic content |
+
+### Obstruction 2: Dimension Barrier (dim O(N) = exponential)
+
+| Method | Status | Bottleneck |
+|--------|--------|-----------|
+| Waldspurger formula (central L-values) | Closed | c(N) lives in level-4N space, dim O(N) |
+| Arakelov theory on X_0(N) | Closed | Heights/Green's functions need automorphic forms at level N |
+| Spectral projection (individual eigenforms) | Closed | O(N^2) Hecke matrices |
+| Edixhoven-Couveignes at level N | Closed | Poly(log p) for FIXED level; level N gives dim O(N) |
+
+### Obstruction 3: O(sqrt(N)) — not poly(log N)
+
+| Method | Complexity | Bottleneck |
+|--------|-----------|-----------|
+| Hilbert class polynomial H_D | O(\|D\|^{1+eps}) | Root-finding mod composites = factoring |
+| Heegner points at level N | O(N^{1/2}) | Heegner hypothesis needs chi_D(p) per prime |
+| Class field of Q(sqrt(-N)) | O(N^{1/2+eps}) | Class number h(-N) |
+| r_D(N) representation numbers | O(sqrt(N)) | THE hinge scalar bottleneck |
+| Harvey/Kedlaya point counting | Poly(log p) over F_p | Requires knowing the prime p |
+| Lauder's p-adic Rankin L-functions | Poly in p-adic precision | Requires knowing which prime p to localize at |
+
+### Additional areas checked (all negative)
+
+| Area | Assessment |
+|------|-----------|
+| Etale cohomology of Spec(Z/NZ) | Decomposes via CRT: H^i(Z/NZ) = H^i(Z/pZ) x H^i(Z/qZ) |
+| K-theory of Z/NZ | K_1 = (Z/NZ)* encodes phi(N), but computing it requires phi(N) |
+| Brauer-Manin obstruction | CRT decomposition at finite places |
+| Isogenies over Z/NZ (ECM) | Sub-exponential, not poly(log N) |
+| Castryck-Decru SIDH attack (2022) | Poly-time but requires auxiliary torsion data with no factoring analogue |
+| Polynomial splitting mod N (Berlekamp) | Known technique; probability -> 0 for generic semiprimes |
+
+### The structural argument
+
+The Langlands program is built on the **local-global principle**: pi = tensor product of pi_v over all places v. Every functorial construction preserves this tensor product structure. Any computation that "sees" the bad primes p|N requires local data at those primes, which requires knowing them. This is not a limitation of current algorithms — it is structural to the theory.
+
+### The one genuinely poly(log N) tool
+
+**Edixhoven-Couveignes (Princeton 2011)**: Computes a_p(f) for fixed-level forms at a prime p in poly(log p, k) via etale cohomology. For our problem: a_N(f) = a_p(f) * a_q(f) (multiplicativity) — requires factoring. And extending to level N faces dim O(N).
+
+---
+
+## 18. Final Status
 
 ### Closed corridors (with evidence type)
 
@@ -619,7 +677,8 @@ Notable: The Jacobi Factoring Circuit (STOC 2025) factors N=P^2*Q using Jacobi i
 | Integer-carry signals | E10 | Flat spectra despite rank increase |
 | 111-feature ML sweep | E11 | All R^2_CV <= 0.025, random=real |
 | Literature (6 directions) | Survey | No new primitives 2023-2026 |
+| Langlands ecosystem (20+ tools) | Web survey | Three universal obstructions |
 
 ### The barrier in one sentence
 
-Every poly(log N)-computable observable on Z/NZ that we can construct or find in the literature has spectrally flat DFT at factor frequencies, consistent with (and partially implied by) the hardness of the Quadratic Residuosity Problem.
+Every poly(log N)-computable observable on Z/NZ that we can construct or find in the Langlands program literature has spectrally flat DFT at factor frequencies, consistent with (and partially implied by) the hardness of the Quadratic Residuosity Problem.

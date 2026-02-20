@@ -337,7 +337,105 @@ at factor frequencies — contradicting spectral flatness.
 - The barrier is consistent with (and partially implied by) standard cryptographic
   assumptions
 
+**Langlands ecosystem audit (section 8):**
+- All 7 functorial constructions hit local Langlands decomposition (CRT at finite places)
+- All level-N approaches hit the dimension barrier (dim O(N))
+- All sub-exponential approaches (H_D, Heegner, class fields) require O(sqrt(N)), not poly(log N)
+- The one poly(log N) tool (Edixhoven-Couveignes) requires fixed level + prime index
+- No Langlands construction provides a global shortcut avoiding local decomposition
+
 **What would break the barrier:**
 - A poly(log N)-computable function with DFT peak ≫ N^{-1/2} at factor frequencies
 - Equivalently: a poly(log N) algorithm for S_D(N) or r_D(N)
 - Equivalently: a poly(log N) algorithm for QRP
+
+---
+
+## 8. Langlands Ecosystem Audit
+
+### 8.1 The Universal Obstruction
+
+Every computational tool in the Langlands program falls into one of three
+categories when applied to the factoring problem at composite N = pq:
+
+**Category A: Local Langlands decomposition.** The tool decomposes through
+local representations at each prime, meaning computations at p|N require
+knowing p. This is structural to the theory — the local-global principle
+states that an automorphic representation π = ⊗_v π_v, and every
+functorial construction preserves this tensor product structure.
+
+Affected: base change, symmetric powers, Rankin-Selberg, endoscopic transfer,
+theta correspondence, Braverman-Kazhdan, Waldspurger formula (local periods).
+
+**Category B: Dimension barrier.** The tool requires working in a space of
+dimension O(N), making it exponential in the input size n = log N.
+
+Affected: Arakelov theory on X_0(N), spectral projection, Hecke eigenvalue
+computation at level N, Waldspurger formula (half-integral weight spaces),
+Edixhoven-Couveignes extension to level N.
+
+**Category C: Sub-exponential but not poly(log N).** The tool runs in
+O(N^α) time for some α > 0, typically α = 1/2.
+
+Affected: Hilbert class polynomials, Heegner points, class field computations,
+representation numbers r_D(N), Harvey/Kedlaya point counting (needs F_p).
+
+### 8.2 Detailed Assessment of 20+ Methods
+
+| Method | Category | Obstruction |
+|--------|:--------:|------------|
+| Base change GL(2) | A | Splitting behavior at p\|N needs factors |
+| Symmetric powers (Newton-Thorne) | A | Bad Euler factors need p, q |
+| Rankin-Selberg convolutions | A+B | Level-1: E8b R²~0; Level-N: dim O(N) |
+| Endoscopic transfer (Arthur) | A | Local character identities need p |
+| Theta/Weil representation | A | CRT-separable on Z/NZ (E7d proved) |
+| Braverman-Kazhdan | A | Local BK = Euler product (E6 proved) |
+| Waldspurger formula | A+B | c(N) in level-4N space; local periods need p |
+| Arakelov on X_0(N) | B | Heights need automorphic data at level N |
+| Edixhoven-Couveignes | B | Poly(log p) for FIXED level only |
+| Etale cohomology of Z/NZ | A | H^i decomposes via CRT |
+| K-theory K_1(Z/NZ) | A | = (Z/NZ)*, needs phi(N) |
+| Brauer-Manin obstruction | A | CRT decomposition at finite places |
+| Hilbert class polynomial | C | O(\|D\|^{1+ε}); root-finding mod N ≡ factoring |
+| Heegner points at level N | C | O(N^{1/2}); Heegner hypothesis needs chi_D(p) |
+| Class field of Q(√(-N)) | C | O(N^{1/2+ε}) for h(-N) |
+| r_D(N) | C | O(√N); THE hinge scalar bottleneck |
+| Harvey/Kedlaya point counting | C | Poly(log p) over F_p; need p |
+| Lauder p-adic L-functions | C | Poly in precision; need the prime |
+| Isogenies over Z/NZ (ECM) | C | Sub-exponential L(1/2) |
+| Castryck-Decru SIDH | — | Different problem; no factoring analogue |
+
+### 8.3 Why No Langlands Shortcut Exists
+
+The absence of a poly(log N) primitive in the Langlands ecosystem is not
+accidental. It follows from two structural features:
+
+1. **Local-global tensor product:** π = ⊗_v π_v means any automorphic
+   computation at N = pq decomposes into local computations at p and q.
+   A "global" quantity that avoids this decomposition would need to somehow
+   access inter-prime coupling that is not visible locally.
+
+2. **The only known inter-prime coupling is weak:** The functional equation
+   ε-factor, root number, and Rankin-Selberg inner products provide global
+   constraints. But E8a proved ε = +1 for all tested N (determined by
+   N mod 4), and E8b proved ε = (-1)^{k/2} independent of N for level-1
+   quadratic twists. The inter-prime coupling visible in L-values is
+   O(N^{-1/2}) per sample point — consistent with our spectral flatness
+   barrier.
+
+### 8.4 The One Poly(log N) Tool and Why It Doesn't Help
+
+Edixhoven-Couveignes (2011) computes a_p(f) for level-1 modular forms in
+poly(log p, k) time via étale cohomology of modular curves. Concretely:
+tau(p) can be computed in poly(log p) time.
+
+For factoring N = pq: a_N(Δ) = tau(N) = tau(p) * tau(q) by Hecke
+multiplicativity. This is a PRODUCT of local factors — CRT again. Computing
+tau(N) doesn't help because it equals tau(p) * tau(q) and we can't extract
+the individual factors without factoring N.
+
+For level-N forms: extending Edixhoven-Couveignes to level N requires
+working with J_0(N), whose dimension is O(N). The étale cohomology
+H^1(J_0(N), Z/lZ) has dimension 2 * dim S_2(Γ_0(N)) = O(N), and the
+algorithm's complexity is polynomial in this dimension — hence O(N^c) for
+some constant c, which is exponential in log N.
