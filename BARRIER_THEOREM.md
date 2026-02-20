@@ -675,3 +675,70 @@ including iterated carry compositions of arbitrary depth. Combined with:
 
 No poly(log N)-computable observable in the RJI model produces spectral
 peaks at factor frequencies.
+
+---
+
+## 12. E13: Eisenstein Congruence Channel (Information vs Computation)
+
+### 12.1 Setup
+
+The Bach-Charles theorem (Section 10) blocks computing a_N(f) at composites
+in poly(log N). E13 tests the "structural loophole": Eisenstein congruences
+provide algebraic relations between eigenform coefficients that might bypass
+the single-form barrier.
+
+For weight k with dim S_k(Γ₀(1)) = 1 and Bernoulli congruence prime ℓ | B_k
+(with ℓ > k-1 for valid Galois representation):
+
+    a_p(f_k) ≡ σ_{k-1}(p) = 1 + p^{k-1}  (mod ℓ)
+
+For N = pq:
+
+    a_N(f_k) ≡ (1 + p^{k-1})(1 + q^{k-1}) = 1 + s_{k-1} + N^{k-1}  (mod ℓ)
+
+where s_{k-1} = p^{k-1} + q^{k-1}. By Newton's identity, s_m is a polynomial
+of degree m in e₁ = p+q with pq = N. Solving the degree-(k-1) polynomial
+mod ℓ yields candidates for p+q mod ℓ, then the quadratic x² - e₁x + N
+gives p mod ℓ.
+
+### 12.2 Results
+
+Seven channels (k = 12, 16, 18, 20, 22) with primes ℓ ranging from 131 to 43867.
+On 24 balanced semiprimes (10-16 bit):
+
+- **Every channel yields exactly 2 p-candidates** = {p mod ℓ, q mod ℓ}
+- **100% accuracy** in finding the true factor across all channels and semiprimes
+- **63.3 bits total** per semiprime (vs ~3 bits needed for Coppersmith at this scale)
+- Each channel extracts **maximal information**: log₂(ℓ) - 1 bits per channel
+
+The degree-(k-1) polynomial has at most k-1 roots mod ℓ, but in practice
+has exactly 1 (the true p+q mod ℓ). The quadratic then gives both p and q
+mod ℓ.
+
+### 12.3 The computational gap
+
+The information content is enormous: 7 channels provide ~63 bits from
+moduli whose product exceeds 10²⁶. CRT combination would determine p
+to high precision.
+
+**But the cost is O(N)**. Computing a_N(f_k) requires expanding the
+q-series to N terms. Even computing a_N(f_k) mod ℓ requires the full
+expansion, because a_N is not independently accessible — it's the N-th
+coefficient of a power series.
+
+### 12.4 Barrier classification
+
+E13 demonstrates that the factoring barrier has a precise character:
+
+1. **Information-theoretic barrier**: ABSENT. Factor information is
+   abundantly present in eigenform coefficients at composites.
+2. **Computational barrier**: PRESENT. Accessing a_N(f) costs O(N)
+   via q-expansion (exponential in input size).
+3. **Poly(log N) barrier**: ABSOLUTE. Bach-Charles proves that any
+   poly(log N) method to compute a_N(f) would factor N. The
+   Eisenstein congruence does not provide a shortcut because the
+   congruence relation itself requires a_N(f_k) as input.
+
+The congruence is a structural relation between the VALUE of a_N and
+the factors, but it does not provide a COMPUTATIONAL shortcut to obtain
+that value. The bottleneck is evaluation, not inversion.

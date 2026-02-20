@@ -777,7 +777,78 @@ an amplitude artifact, not factor signal.
 
 ---
 
-## 20. Final Status
+## 20. E13: Eisenstein Congruence Factoring Channel (Bach-Charles Test)
+
+Tests the "structural loophole" in the Bach-Charles barrier: Eisenstein
+congruences provide relations between eigenform Fourier coefficients
+and power sums of the factors.
+
+### Mechanism
+
+For weight k with unique eigenform f_k and Bernoulli congruence prime ℓ:
+
+    a_p(f_k) ≡ 1 + p^{k-1}  (mod ℓ)
+
+For N = pq, multiplicativity gives:
+
+    a_N(f_k) ≡ (1 + p^{k-1})(1 + q^{k-1})  (mod ℓ)
+             = 1 + s_{k-1} + N^{k-1}  (mod ℓ)
+
+where s_{k-1} = p^{k-1} + q^{k-1} is a degree-(k-1) polynomial in
+e₁ = p+q (via Newton's identity, with pq = N known).
+
+Solving this polynomial mod ℓ yields p+q mod ℓ, then a quadratic
+gives p mod ℓ.
+
+### Channels tested (ℓ > k-1 required for valid congruence)
+
+| Weight k | ℓ | Max roots | Approx bits |
+|----------|-------|-----------|-------------|
+| 12 | 691 | 11 | 6.0 |
+| 16 | 3617 | 15 | 7.9 |
+| 18 | 43867 | 17 | 11.3 |
+| 20 | 283 | 19 | 3.9 |
+| 20 | 617 | 19 | 5.0 |
+| 22 | 131 | 21 | 2.6 |
+| 22 | 593 | 21 | 4.8 |
+
+### Key results
+
+On 24 balanced semiprimes (10-16 bit):
+
+| Metric | Value |
+|--------|-------|
+| p-candidates per channel | **exactly 2** (= {p mod ℓ, q mod ℓ}) |
+| True factor found | **100%** across all channels, all N |
+| Mean bits per semiprime | **63.3** (across 7 channels) |
+| Coppersmith n/4 threshold | ~3 bits |
+| Bits/needed ratio | **22.7x** |
+| CRT candidate product | 2^7 = 128 (out of ∏ℓ ≈ 10^26) |
+
+Each channel extracts **maximal information**: log₂(ℓ) - 1 bits (the
+-1 is for the p↔q symmetry). The degree-(k-1) polynomial typically has
+only 1 root mod ℓ (the true p+q), far fewer than the degree bound.
+
+### The computational barrier
+
+The congruence channel WORKS — the information is real and abundant.
+But computing a_N(f_k) requires the q-expansion to N terms: cost O(N),
+exponential in input size n = log₂(N).
+
+For poly(log N) access, one would need to compute a_N(f_k) mod ℓ
+without the full q-expansion. But:
+- Edixhoven-Couveignes computes a_p(f) at PRIMES p in poly(log p)
+- For composite N = pq, a_N = a_p · a_q — requires FACTORING
+- This is exactly the Bach-Charles barrier
+
+**Verdict**: The barrier is COMPUTATIONAL, not INFORMATION-THEORETIC.
+Factor information exists abundantly in eigenform products; it costs
+O(N) to extract. No structural loophole via Eisenstein congruences
+evades the poly(log N) obstruction.
+
+---
+
+## 21. Final Status
 
 ### Closed corridors (with evidence type)
 
@@ -795,6 +866,7 @@ an amplitude artifact, not factor signal.
 | Non-Langlands primitives (13+) | Web survey | All fail or conditional |
 | Weight-1 EC-B gap | Bach-Charles | a(N) at composites ≡ factoring (proven) |
 | Eigenform coefficients at composites | Bach-Charles | Provable reduction to factoring |
+| Eisenstein congruence loophole | E13 | 63.3 bits extracted but O(N) cost |
 
 ### No open directions remain
 
