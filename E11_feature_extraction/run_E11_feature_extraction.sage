@@ -76,34 +76,41 @@ class SageEncoder(json.JSONEncoder):
 # Semiprime generation
 # ============================================================
 
-def generate_semiprimes_fixed_bits(bit_size, count):
-    """Generate semiprimes N=pq with exactly `bit_size` bits.
+def generate_semiprimes_fixed_bits(bit_size, count, min_ratio=0.3):
+    """Generate balanced semiprimes N=pq with exactly `bit_size` bits.
 
-    Sweeps p across a range of sizes to produce varied balance ratios.
-    Deterministic given Sage random seed.
+    Only produces semiprimes with p/q >= min_ratio (balanced).
+    This ensures trial-division-equivalent features cannot succeed,
+    which is the regime relevant to the barrier question.
     """
     results = []
     seen = set()
     half = bit_size // 2
 
-    for p_bits in range(max(3, half - 3), half + 2):
-        if len(results) >= count:
-            break
-        p = next_prime(2**(p_bits - 1))
-        while len(results) < count and p < 2**p_bits:
-            q_lo = max(int(p) + 2, (2**(bit_size - 1) + int(p) - 1) // int(p))
-            q_hi = (2**bit_size - 1) // int(p)
-            if q_lo > q_hi:
-                p = next_prime(p + 1)
-                continue
-            q = next_prime(q_lo)
-            if int(q) <= q_hi and q != p:
-                N = int(p) * int(q)
-                if N not in seen and N.bit_length() == bit_size:
-                    pmin, pmax = sorted([int(p), int(q)])
-                    results.append((N, pmin, pmax))
-                    seen.add(N)
+    # p ranges from ~2^{half-2} to ~2^{half} to get varied but balanced pairs
+    p_lo = max(int(3), int(2**(half - 2)))
+    p_hi = int(2**(half + 1))
+
+    p = next_prime(p_lo)
+    while len(results) < count and int(p) < p_hi:
+        q_lo = max(int(p) + 2, (2**(bit_size - 1) + int(p) - 1) // int(p))
+        q_hi = (2**bit_size - 1) // int(p)
+        if q_lo > q_hi:
             p = next_prime(p + 1)
+            continue
+
+        q = next_prime(q_lo)
+        while int(q) <= q_hi and len(results) < count:
+            if q != p:
+                pmin, pmax = sorted([int(p), int(q)])
+                ratio = float(pmin) / float(pmax)
+                if ratio >= min_ratio:
+                    N = pmin * pmax
+                    if N not in seen and N.bit_length() == bit_size:
+                        results.append((N, pmin, pmax))
+                        seen.add(N)
+            q = next_prime(q + 1)
+        p = next_prime(p + 1)
 
     return results[:count]
 
@@ -262,7 +269,8 @@ def compute_features(N):
 
     if g2N >= 0 and g3N >= 0:
         features['mix_g2g3_diff'] = abs(g2N - g3N)
-        features['mix_g2g3_xor'] = (int(g2N * N) ^ int(g3N * N)) / float(max(N, 1))
+        # Use int.__xor__ because Sage preparser converts ^ to **
+        features['mix_g2g3_xor'] = int.__xor__(int(g2N * N), int(g3N * N)) / float(max(N, 1))
     else:
         features['mix_g2g3_diff'] = 0.0
         features['mix_g2g3_xor'] = 0.0
@@ -850,8 +858,10 @@ def run_experiment(bit_sizes, count_per_size, output_dir='../data'):
 # ============================================================
 
 if __name__ == '__main__':
+    # Balanced semiprimes only (p/q >= 0.3) to exclude trial-division regime.
+    # Bit sizes 16-24 ensure n_samples >> n_features (111) at each size.
     results = run_experiment(
-        bit_sizes=[14, 16, 18, 20],
-        count_per_size=int(100),
+        bit_sizes=[16, 18, 20, 22],
+        count_per_size=int(150),
         output_dir='../data'
     )
