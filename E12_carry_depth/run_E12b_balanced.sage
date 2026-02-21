@@ -22,50 +22,22 @@ depth-1 carries? Or does each step add noise that washes out structure?
 
 import sys
 import os
-import json
 import time
 
 import numpy as np
 from scipy import stats
 
+# ── Reproducibility ──────────────────────────────────────────────────
+set_random_seed(42)
+np.random.seed(42)
+
+# ── Shared utilities ─────────────────────────────────────────────────
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from semiprime_gen import balanced_semiprimes
-
-class SageEncoder(json.JSONEncoder):
-    def default(self, obj):
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            pass
-        try:
-            return int(obj)
-        except (TypeError, ValueError):
-            return str(obj)
-
-
-def _py(v):
-    if isinstance(v, (bool, type(None), str)):
-        return v
-    if isinstance(v, (int, float)):
-        return v
-    if isinstance(v, np.integer):
-        return int(v)
-    if isinstance(v, (np.floating, np.float64)):
-        return float(v)
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        pass
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return str(v)
-
-
-def _py_dict(d):
-    return {k: _py(v) for k, v in d.items()}
+from sage_encoding import _py, _py_dict, safe_json_dump
+from spectral import precompute_gcd_classes
+from spectral import analyze_signal as _spectral_analyze_signal
 
 
 def carry_trace(t, N_int, depth):
@@ -201,63 +173,15 @@ def compute_signals(N):
     return signals, depth
 
 
-def analyze_signal(sig, N, p, q):
-    """DFT analysis with factor-localized metrics."""
-    N_int = int(N)
-    p_int = int(p)
-    q_int = int(q)
-
-    X = np.fft.fft(sig) / N_int
-    mags = np.abs(X)
-    mags2 = mags ** 2
-
-    mags_ac = mags[1:]
-    mags2_ac = mags2[1:]
-
-    peak = np.max(mags_ac)
-    median_val = np.median(mags_ac)
-    peak_to_bulk = float(peak / median_val) if median_val > 0 else float('inf')
-
-    energy_total = float(np.sum(mags2_ac))
-    energy_factor = 0.0
-    n_factor_modes = 0
-    for xi in range(1, N_int):
-        g = gcd(xi, N_int)
-        if g > 1:
-            energy_factor += mags2[xi]
-            n_factor_modes += 1
-    expected_factor_frac = float(n_factor_modes) / (N_int - 1)
-    factor_frac = float(energy_factor / energy_total) if energy_total > 0 else 0.0
-
-    # Top modes: check if highest DFT modes are at factor frequencies
-    sorted_indices = np.argsort(mags_ac)[::-1] + 1
-    top_10_factor = sum(1 for idx in sorted_indices[:10] if gcd(int(idx), N_int) > 1)
-
-    # CRT rank
-    M = np.zeros((p_int, q_int), dtype=np.float64)
-    for t in range(N_int):
-        a = t % p_int
-        b = t % q_int
-        M[a, b] = sig[t]
-    sv = np.linalg.svd(M, compute_uv=False)
-    sv_total = float(np.sum(sv))
-    if sv_total > 0:
-        sv_norm = sv / sv_total
-        cumsum = np.cumsum(sv_norm)
-        eff_rank_90 = int(np.searchsorted(cumsum, 0.90)) + 1
-    else:
-        eff_rank_90 = 0
-
-    return {
-        'peak': float(peak),
-        'median': float(median_val),
-        'peak_to_bulk': peak_to_bulk,
-        'factor_energy_frac': factor_frac,
-        'expected_factor_frac': expected_factor_frac,
-        'factor_energy_excess': factor_frac / expected_factor_frac if expected_factor_frac > 0 else 0.0,
-        'top_10_factor_count': top_10_factor,
-        'crt_eff_rank_90': eff_rank_90,
-    }
+def analyze_signal(sig, N, p, q, gcd_class=None, n_factor_modes=None):
+    """DFT analysis with factor-localized metrics.
+    Delegates to shared spectral.analyze_signal with Parseval verification.
+    """
+    return _spectral_analyze_signal(
+        sig, N, p, q,
+        gcd_class=gcd_class,
+        n_factor_modes=n_factor_modes,
+    )
 
 
 def main():
@@ -304,8 +228,13 @@ def main():
         sigs, depth = compute_signals(N)
         dt = time.time() - t0
 
+        # Precompute gcd classes once per semiprime
+        gcd_class, n_factor_modes = precompute_gcd_classes(int(N), int(p), int(q))
+
         for sname in signal_names:
-            metrics = analyze_signal(sigs[sname], N, p, q)
+            metrics = analyze_signal(sigs[sname], N, p, q,
+                                     gcd_class=gcd_class,
+                                     n_factor_modes=n_factor_modes)
             row = {
                 'N': int(N), 'p': int(p), 'q': int(q),
                 'ratio_pq': float(min(p, q)) / float(max(p, q)),
@@ -325,9 +254,7 @@ def main():
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     out_path = os.path.join(data_dir, 'E12b_balanced_results.json')
-    with open(out_path, 'w') as f:
-        json.dump(all_results, f, indent=int(2), cls=SageEncoder)
-    print(f"\nResults saved to {out_path}", flush=True)
+    safe_json_dump(all_results, out_path)
 
     # ── Scaling analysis ──────────────────────────────────────────────
     print("\n" + "=" * 76, flush=True)
@@ -353,21 +280,21 @@ def main():
             print(f"  Peak scaling:   alpha = {sl:+.4f} +/- {se:.4f}  "
                   f"(R2={rv**2:.4f}, p={pv:.2e})", flush=True)
 
-        excess_alpha = 0
+        excess_alpha, excess_se = 0, 0
         mask = excess > 0
         if np.sum(mask) >= 5:
             sl2, _, rv2, pv2, se2 = stats.linregress(
                 np.log10(Ns[mask]), np.log10(excess[mask]))
-            excess_alpha = sl2
+            excess_alpha, excess_se = sl2, se2
             print(f"  Excess scaling: beta = {sl2:+.4f} +/- {se2:.4f}  "
                   f"(R2={rv2**2:.4f}, p={pv2:.2e})", flush=True)
 
-        rank_alpha = 0
+        rank_alpha, rank_se = 0, 0
         mask = ranks > 0
         if np.sum(mask) >= 5:
             sl3, _, rv3, pv3, se3 = stats.linregress(
                 np.log10(Ns[mask]), np.log10(ranks[mask]))
-            rank_alpha = sl3
+            rank_alpha, rank_se = sl3, se3
             print(f"  Rank scaling:   gamma = {sl3:+.4f} +/- {se3:.4f}  "
                   f"(R2={rv3**2:.4f}, p={pv3:.2e})", flush=True)
 
@@ -379,8 +306,8 @@ def main():
         scaling[sname] = {
             'alpha': float(alpha), 'alpha_se': float(alpha_se),
             'alpha_r2': float(alpha_r2),
-            'excess_alpha': float(excess_alpha),
-            'rank_alpha': float(rank_alpha),
+            'excess_alpha': float(excess_alpha), 'excess_se': float(excess_se),
+            'rank_alpha': float(rank_alpha), 'rank_se': float(rank_se),
             'mean_excess': mean_excess, 'mean_rank': mean_rank,
         }
 

@@ -55,57 +55,21 @@ Metrics (same as E10)
 
 import sys
 import os
-import json
 import time
 
 import numpy as np
 from scipy import stats
 
-# ── semiprime generation ──────────────────────────────────────────────
+# ── Reproducibility ──────────────────────────────────────────────────
+set_random_seed(42)
+np.random.seed(42)
+
+# ── Shared utilities ─────────────────────────────────────────────────
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from semiprime_gen import generate_semiprimes
-
-# ── Sage type coercion ────────────────────────────────────────────────
-
-class SageEncoder(json.JSONEncoder):
-    """JSON encoder that handles Sage types."""
-    def default(self, obj):
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            pass
-        try:
-            return int(obj)
-        except (TypeError, ValueError):
-            return str(obj)
-
-
-def _py(v):
-    """Convert Sage types to native Python for JSON serialization."""
-    if isinstance(v, (bool, type(None), str)):
-        return v
-    if isinstance(v, (int, float)):
-        return v
-    if isinstance(v, np.integer):
-        return int(v)
-    if isinstance(v, (np.floating, np.float64)):
-        return float(v)
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        pass
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return str(v)
-
-
-def _py_dict(d):
-    """Recursively convert all values in a dict for JSON."""
-    return {k: _py(v) for k, v in d.items()}
+from sage_encoding import _py, _py_dict, safe_json_dump
+from spectral import dft, precompute_gcd_classes
 
 
 # ── Core: compute carry trace of iterated squaring ────────────────────
@@ -216,83 +180,48 @@ def compute_signals(N, depth=None):
     signals['carry_jacobi_chain'] = sig_jac_chain
     signals['control_modsq'] = sig_control
 
+    # Signal 9: carry_autocorr — autocorrelation of carry_xor at specific shifts
+    shifts = [1, max(2, int(isqrt(N_int))), max(2, N_int // 3)]
+    autocorr_sum = np.zeros(N_int, dtype=np.float64)
+    for s in shifts:
+        autocorr_sum += sig_xor * np.roll(sig_xor, -s)
+    signals['carry_autocorr'] = autocorr_sum / len(shifts)
+
     return signals, depth
 
 
 # ── DFT and spectral analysis ────────────────────────────────────────
+# Uses shared analyze_signal from utils/spectral.py via the import above.
+# The shared version includes Parseval verification, precomputed gcd classes,
+# and additional metrics (p/q energy fracs, top_5, nuclear_ratio, sv values).
+# We import it as spectral_analyze_signal and wrap it to add peak_at_factor
+# for backward compatibility.
 
-def analyze_signal(sig, N, p, q):
+from spectral import analyze_signal as _spectral_analyze_signal
+
+
+def analyze_signal(sig, N, p, q, gcd_class=None, n_factor_modes=None):
     """
     Compute DFT and extract spectral metrics for a signal on Z/NZ.
-    Returns dict of metrics.
+    Delegates to shared spectral.analyze_signal and adds peak_at_factor.
     """
     N_int = int(N)
-    X = np.fft.fft(sig) / N_int  # Normalized DFT
-    mags = np.abs(X)
-    mags2 = mags ** 2
+    metrics = _spectral_analyze_signal(
+        sig, N, p, q,
+        gcd_class=gcd_class,
+        n_factor_modes=n_factor_modes,
+    )
 
-    # Skip DC component for spectral analysis
-    mags_ac = mags[1:]
-    mags2_ac = mags2[1:]
-
-    # Peak-to-bulk ratio
-    peak = np.max(mags_ac)
-    median_val = np.median(mags_ac)
-    peak_to_bulk = float(peak / median_val) if median_val > 0 else float('inf')
-
-    # Factor-localized energy: energy at xi with gcd(xi, N) > 1
-    energy_total = float(np.sum(mags2_ac))
-    energy_factor = 0.0
-    for xi in range(1, N_int):
-        g = gcd(xi, N_int)
-        if g > 1:
-            energy_factor += mags2[xi]
-
-    n_factor_modes = 0
-    for xi in range(1, N_int):
-        if gcd(xi, N_int) > 1:
-            n_factor_modes += 1
-    expected_factor_frac = float(n_factor_modes) / (N_int - 1)
-
-    factor_frac = float(energy_factor / energy_total) if energy_total > 0 else 0.0
-
-    # Top-mode factor extraction: do the K largest modes have gcd > 1?
-    sorted_indices = np.argsort(mags_ac)[::-1] + 1  # +1 to skip DC
-    top_10_factor = sum(1 for idx in sorted_indices[:10] if gcd(int(idx), N_int) > 1)
-
-    # CRT rank estimate: reshape signal as p x q matrix and compute SVD
-    M = np.zeros((int(p), int(q)), dtype=np.float64)
-    for t in range(N_int):
-        a = t % int(p)
-        b = t % int(q)
-        M[a, b] = sig[t]
-    sv = np.linalg.svd(M, compute_uv=False)
-    sv_total = float(np.sum(sv))
-    if sv_total > 0:
-        sv_norm = sv / sv_total
-        cumsum = np.cumsum(sv_norm)
-        eff_rank_90 = int(np.searchsorted(cumsum, 0.90)) + 1
-    else:
-        eff_rank_90 = 0
-    nuclear_ratio = float(sv_total / sv[0]) if sv[0] > 0 else 0.0
-
-    # Peak location: is the top peak at a factor frequency?
+    # Add peak_at_factor (not in shared version)
+    X = dft(sig)
+    mags_ac = np.abs(X)[1:]
     peak_idx = int(np.argmax(mags_ac)) + 1
-    peak_at_factor = 1 if gcd(peak_idx, N_int) > 1 else 0
+    if gcd_class is not None:
+        metrics['peak_at_factor'] = 1 if gcd_class[peak_idx] > 0 else 0
+    else:
+        metrics['peak_at_factor'] = 1 if gcd(peak_idx, N_int) > 1 else 0
 
-    return {
-        'peak': float(peak),
-        'median': float(median_val),
-        'peak_to_bulk': peak_to_bulk,
-        'energy_total': energy_total,
-        'factor_energy_frac': factor_frac,
-        'expected_factor_frac': expected_factor_frac,
-        'factor_energy_excess': factor_frac / expected_factor_frac if expected_factor_frac > 0 else 0.0,
-        'top_10_factor_count': top_10_factor,
-        'peak_at_factor': peak_at_factor,
-        'crt_eff_rank_90': eff_rank_90,
-        'crt_nuclear_ratio': nuclear_ratio,
-    }
+    return metrics
 
 
 # ── Multi-point analysis: autocorrelation at specific shifts ─────────
@@ -364,6 +293,7 @@ def main():
         'carry_polynomial',
         'carry_product_parity',
         'carry_jacobi_chain',
+        'carry_autocorr',
         'control_modsq',
     ]
 
@@ -385,9 +315,14 @@ def main():
             sigs, depth = compute_signals(N)
             dt_signals = time.time() - t0
 
+            # Precompute gcd classes once per semiprime
+            gcd_class, n_factor_modes = precompute_gcd_classes(int(N), int(p), int(q))
+
             for sname in signal_names:
                 sig = sigs[sname]
-                metrics = analyze_signal(sig, N, p, q)
+                metrics = analyze_signal(sig, N, p, q,
+                                         gcd_class=gcd_class,
+                                         n_factor_modes=n_factor_modes)
 
                 # Multi-point analysis for the most promising signals
                 autocorr = {}
@@ -417,9 +352,7 @@ def main():
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     out_path = os.path.join(data_dir, 'E12_carry_depth_results.json')
-    with open(out_path, 'w') as f:
-        json.dump(all_results, f, indent=int(2), cls=SageEncoder)
-    print(f"\nResults saved to {out_path}", flush=True)
+    safe_json_dump(all_results, out_path)
 
     # ── Scaling analysis per signal ───────────────────────────────────
     print("\n" + "=" * 76, flush=True)
@@ -447,20 +380,22 @@ def main():
                   f"(R2={rv**2:.4f}, p={pv:.2e})", flush=True)
 
         # Factor energy excess scaling
+        excess_alpha, excess_se = 0, 0
         mask = fac_excess > 0
         if np.sum(mask) >= 3:
             sl, intc, rv, pv, se = stats.linregress(
                 np.log10(Ns[mask]), np.log10(fac_excess[mask]))
+            excess_alpha, excess_se = sl, se
             print(f"  Excess scaling:  excess ~ N^{sl:.3f} +/- {se:.3f}  "
                   f"(R2={rv**2:.4f}, p={pv:.2e})", flush=True)
 
         # CRT rank scaling
+        rank_alpha, rank_se = 0, 0
         mask = ranks > 0
-        rank_alpha = 0
         if np.sum(mask) >= 3:
             sl, intc, rv, pv, se = stats.linregress(
                 np.log10(Ns[mask]), np.log10(ranks[mask]))
-            rank_alpha = sl
+            rank_alpha, rank_se = sl, se
             print(f"  Rank scaling:    rank90 ~ N^{sl:.3f} +/- {se:.3f}  "
                   f"(R2={rv**2:.4f}, p={pv:.2e})", flush=True)
 
@@ -483,9 +418,12 @@ def main():
             'alpha': float(alpha),
             'alpha_se': float(alpha_se),
             'alpha_r2': float(alpha_r2),
+            'excess_alpha': float(excess_alpha),
+            'excess_se': float(excess_se),
+            'rank_alpha': float(rank_alpha),
+            'rank_se': float(rank_se),
             'mean_excess': float(mean_excess),
             'mean_rank': float(mean_rank),
-            'rank_alpha': float(rank_alpha),
         }
 
     # ── Comparative summary ───────────────────────────────────────────
@@ -564,10 +502,13 @@ def main():
         import matplotlib.pyplot as plt
 
         # Plot 1: Peak scaling
-        fig, axes = plt.subplots(2, 4, figsize=(22, 10))
+        n_sigs = len(signal_names)
+        n_cols = 3
+        n_rows = (n_sigs + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 5 * n_rows))
         fig.suptitle('E12: Deep carry traces — DFT peak scaling', fontsize=14)
         for idx, sname in enumerate(signal_names):
-            ax = axes[idx // 4, idx % 4]
+            ax = axes[idx // n_cols, idx % n_cols]
             rows = [r for r in all_results if r['signal'] == sname]
             Ns = np.array([r['N'] for r in rows])
             peaks = np.array([r['peak'] for r in rows])
@@ -586,16 +527,19 @@ def main():
                 ax.plot(x_fit, y_fit, 'r-', lw=1.5,
                         label=f'$N^{{{sl:.3f}}}$')
                 ax.legend(fontsize=7)
+        # Hide unused subplot cells
+        for idx in range(n_sigs, n_rows * n_cols):
+            axes[idx // n_cols, idx % n_cols].set_visible(False)
         plt.tight_layout()
         plot_path = os.path.join(data_dir, 'E12_carry_depth_peaks.png')
         plt.savefig(plot_path, dpi=150)
         print(f"\nPlot saved to {plot_path}", flush=True)
 
         # Plot 2: Factor energy excess
-        fig2, axes2 = plt.subplots(2, 4, figsize=(22, 10))
+        fig2, axes2 = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 5 * n_rows))
         fig2.suptitle('E12: Factor energy excess by signal', fontsize=14)
         for idx, sname in enumerate(signal_names):
-            ax = axes2[idx // 4, idx % 4]
+            ax = axes2[idx // n_cols, idx % n_cols]
             rows = [r for r in all_results if r['signal'] == sname]
             Ns = np.array([r['N'] for r in rows])
             excess = np.array([r['factor_energy_excess'] for r in rows])
@@ -606,16 +550,18 @@ def main():
             ax.set_ylabel('Factor energy excess')
             ax.set_title(sname, fontsize=9)
             ax.legend(fontsize=7)
+        for idx in range(n_sigs, n_rows * n_cols):
+            axes2[idx // n_cols, idx % n_cols].set_visible(False)
         plt.tight_layout()
         plot_path2 = os.path.join(data_dir, 'E12_carry_depth_excess.png')
         plt.savefig(plot_path2, dpi=150)
         print(f"Plot saved to {plot_path2}", flush=True)
 
         # Plot 3: CRT rank
-        fig3, axes3 = plt.subplots(2, 4, figsize=(22, 10))
+        fig3, axes3 = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 5 * n_rows))
         fig3.suptitle('E12: CRT effective rank (90% energy) by signal', fontsize=14)
         for idx, sname in enumerate(signal_names):
-            ax = axes3[idx // 4, idx % 4]
+            ax = axes3[idx // n_cols, idx % n_cols]
             rows = [r for r in all_results if r['signal'] == sname]
             Ns = np.array([r['N'] for r in rows])
             ranks = np.array([r['crt_eff_rank_90'] for r in rows])
@@ -634,6 +580,8 @@ def main():
                 ax.plot(x_fit, y_fit, 'r-', lw=1.5,
                         label=f'$N^{{{sl:.3f}}}$')
                 ax.legend(fontsize=7)
+        for idx in range(n_sigs, n_rows * n_cols):
+            axes3[idx // n_cols, idx % n_cols].set_visible(False)
         plt.tight_layout()
         plot_path3 = os.path.join(data_dir, 'E12_carry_depth_rank.png')
         plt.savefig(plot_path3, dpi=150)
