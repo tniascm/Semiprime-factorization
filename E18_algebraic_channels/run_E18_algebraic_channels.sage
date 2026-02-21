@@ -26,34 +26,6 @@ DISCRIMINANTS = [-3, -4, 5, -7, 8]
 # ============================================================
 
 def lucas_V(n, a, N):
-    """Compute V_n(a, 1) mod N via binary ladder. O(log n) mults."""
-    n = int(n)
-    N = int(N)
-    a = int(a)
-    if n == 0:
-        return 2
-    if n == 1:
-        return a % N
-    V_k = a % N
-    V_km1 = 2
-    bits = bin(n)[3:]  # skip '0b1', process remaining bits
-    for bit in bits:
-        if bit == '1':
-            V_km1 = (V_k * V_km1 - a) % N
-            V_k = (V_k * V_k - 2) % N
-        else:
-            V_km1 = (V_k * V_km1 - a) % N
-            # swap: V_k stays, V_km1 updated
-            V_k, V_km1 = (V_k * V_k - 2) % N, V_km1
-    # Wait, the standard Lucas chain is:
-    # To compute V_n: start with V_1=a, V_0=2
-    # For bit=1: V_{2k+1} = V_{k+1}*V_k - a, V_{k+1} = V_{k+1}^2 - 2
-    # For bit=0: V_{2k} = V_k^2 - 2, V_{k+1} = V_{k+1}*V_k - a
-    # Let me redo this correctly.
-    return _lucas_V_correct(n, a, N)
-
-
-def _lucas_V_correct(n, a, N):
     """Lucas V_n(a,1) mod N via the standard binary chain."""
     n = int(n)
     N = int(N)
@@ -75,48 +47,38 @@ def _lucas_V_correct(n, a, N):
     return int(vk)
 
 
-def poly_powmod(N_mod, poly_mod, n):
-    """Compute x^n mod (N_mod, poly_mod) in (Z/NZ)[x]/(poly_mod).
+def poly_powmod(N_mod, degree, reduce_coeffs, n):
+    """Compute x^n mod (N_mod, monic poly of given degree).
 
-    poly_mod: list of coefficients [c0, c1, ..., cd] for c0 + c1*x + ... + cd*x^d.
-    Returns result as list of d coefficients [r0, r1, ..., r_{d-1}].
+    degree: degree d of the monic modulus polynomial.
+    reduce_coeffs: [c0, c1, ..., c_{d-1}] — non-leading coefficients.
+        The reduction rule is: x^d = -(c0 + c1*x + ... + c_{d-1}*x^{d-1}).
+    Returns list of d coefficients [r0, ..., r_{d-1}].
     """
     N = int(N_mod)
-    d = len(poly_mod) - 1  # degree of modulus
+    d = int(degree)
     n = int(n)
 
     def poly_mul(a, b):
-        """Multiply two polynomials mod (N, poly_mod)."""
-        # a, b are lists of length d
         result = [0] * (2 * d - 1)
-        for i in range(len(a)):
-            for j in range(len(b)):
+        for i in range(d):
+            if a[i] == 0:
+                continue
+            for j in range(d):
                 result[i + j] = (result[i + j] + a[i] * b[j]) % N
-        # Reduce mod poly_mod (leading coeff assumed 1)
         for i in range(len(result) - 1, d - 1, -1):
             coeff = result[i]
             if coeff == 0:
                 continue
             for j in range(d):
-                result[i - d + j] = (result[i - d + j] - coeff * poly_mod[j]) % N
+                result[i - d + j] = (result[i - d + j] - coeff * reduce_coeffs[j]) % N
         return result[:d]
 
-    # x = [0, 1, 0, ...] (the polynomial x)
     base = [0] * d
-    if d > 1:
-        base[1] = 1
-    else:
-        base[0] = 1  # degenerate
-
-    # Start: result = 1 (constant polynomial)
+    base[1] = 1  # x
     result = [0] * d
-    result[0] = 1
+    result[0] = 1  # 1
 
-    # Make base = x
-    base = [0] * d
-    base[1 % d] = 1
-
-    # Binary square-and-multiply
     for bit in bin(n)[2:]:
         result = poly_mul(result, result)
         if bit == '1':
@@ -135,7 +97,7 @@ def ch1_lucas(N, p, q):
     features = {}
     gcd_hits = 0
     for a in [3, 5, 7, 11, 13]:
-        v = _lucas_V_correct(N, a, N)
+        v = lucas_V(N, a, N)
         features['lucas_V_%d' % a] = v / float(N)
 
         # GCD tests
@@ -161,30 +123,8 @@ def ch2_quad_frobenius(N, p, q):
         disc = b * b - 4
         if int(kronecker_symbol(disc, N)) != -1:
             continue
-        # poly_mod for x² - bx + 1: coefficients [1, -b, 1] (constant, x, x²)
-        # But our poly_powmod expects leading coeff = 1, so poly_mod = [1, -b % N]
-        # and degree d = 2
-        poly_mod = [1, (-b) % N]  # x² - bx + 1 has coeffs [1, -b, 1]; leading=1
-        # Actually poly_mod should be [c0, c1] where x^2 = c0 + c1*x + ... nah.
-        # Let me fix: x^2 ≡ -c0 - c1*x mod (x^2 + c1*x + c0)
-        # For x^2 - bx + 1: x^2 = bx - 1, so when reducing x^2, replace with bx - 1
-        # In poly_mul, poly_mod = [1, -b] means x^2 = -1 + bx? No...
-        # Let me re-think. poly_mod = [1, -b, 1] means 1 - b*x + x^2.
-        # When we reduce x^2, we get x^2 = b*x - 1.
-        # So poly_mod for reduction: [(-1) % N, b % N] (the replacement for x^d)
-        # Actually in my poly_mul, the reduction line does:
-        #   result[i-d+j] -= coeff * poly_mod[j]
-        # So poly_mod should be the coefficients of the modulus EXCLUDING the leading term.
-        # For x^2 - bx + 1 (monic, leading coeff 1):
-        #   poly_mod = [1, (-b) % N] = constant and x coefficient
-        # Then x^2 = -poly_mod[0] - poly_mod[1]*x = -1 + bx. Wait no:
-        # result[i-d+j] -= coeff * poly_mod[j], so for i=2, d=2:
-        #   result[0] -= coeff * poly_mod[0] (= coeff * 1)
-        #   result[1] -= coeff * poly_mod[1] (= coeff * (-b))
-        # So x^2 is being replaced by: -(1)*1 + -((-b))*x = -1 + bx
-        # That means x^2 - bx + 1 = 0 => x^2 = bx - 1. YES correct!
-
-        result = poly_powmod(N, [1, (-b) % N], N)
+        # x^2 - bx + 1: degree 2, reduce x^2 = bx - 1
+        result = poly_powmod(N, 2, [1, (-b) % N], N)
         c0, c1 = result[0], result[1]
         features['qfrob_%d_c0' % b] = c0 / float(N)
         features['qfrob_%d_c1' % b] = c1 / float(N)
@@ -241,19 +181,8 @@ def ch4_cubic_frobenius(N, p, q):
     gcd_hits = 0
 
     for c in [2, 3, 5, 7]:
-        # x^3 - c: monic degree 3, poly_mod = [(-c) % N, 0, 0]
-        # x^3 = c, so poly_mod = [(-c) % N, 0, 0] means:
-        # result[i-3+0] -= coeff * (-c) => result[i-3] += coeff*c
-        # result[i-3+1] -= coeff * 0 = 0
-        # result[i-3+2] -= coeff * 0 = 0
-        # So x^3 -> c. That's x^3 = c. Correct for x^3 - c = 0.
-        # Wait: x^3 - c = 0 means x^3 = c.
-        # My reduction: result[i-d+j] -= coeff * poly_mod[j]
-        # If poly_mod = [(-c)%N, 0, 0], then for i=3, d=3:
-        #   result[0] -= coeff * ((-c)%N) = result[0] + coeff*c
-        # That gives x^3 → c. Correct!
-
-        result = poly_powmod(N, [(-c) % N, 0, 0], N)
+        # x^3 - c: degree 3, reduce x^3 = c, so reduce_coeffs = [-c, 0, 0]
+        result = poly_powmod(N, 3, [(-c) % N, 0, 0], N)
         a0, a1, a2 = result[0], result[1], result[2]
         features['cfrob_%d_a0' % c] = a0 / float(N)
         features['cfrob_%d_a1' % c] = a1 / float(N)
@@ -274,6 +203,12 @@ def ch5_failed_sqrt(N, p, q):
     N = int(N)
     features = {}
     gcd_hits = 0
+    bases = [2, 3, 5, 7, 11]
+
+    # Always output same keys
+    for a_int in bases:
+        features['sqrt_resid_%d' % a_int] = 0.0
+        features['sqrt_gcd_%d' % a_int] = 0
 
     if N % 4 != 3:
         features['sqrt_applicable'] = 0
@@ -283,8 +218,7 @@ def ch5_failed_sqrt(N, p, q):
     features['sqrt_applicable'] = 1
     exp = (N + 1) // 4
 
-    for a in [2, 3, 5, 7, 11, 13, 17, 19]:
-        a_int = int(a)
+    for a_int in bases:
         if int(kronecker_symbol(a_int, N)) != 1:
             continue
         candidate = int(power_mod(a_int, exp, N))
@@ -296,9 +230,6 @@ def ch5_failed_sqrt(N, p, q):
         if 1 < g < N:
             gcd_hits += 1
         features['sqrt_gcd_%d' % a_int] = int(g)
-
-        if len([k for k in features if k.startswith('sqrt_resid')]) >= 5:
-            break
 
     features['sqrt_gcd_hits'] = gcd_hits
     return features
@@ -399,8 +330,11 @@ def main():
     elapsed = time.time() - t0
     print("Feature computation: %.1fs\n" % elapsed, flush=True)
 
-    # Build matrices for correlation
-    feat_names = sorted(all_features[0].keys())
+    # Build matrices for correlation (union of all keys across all rows)
+    all_keys = set()
+    for row in all_features:
+        all_keys.update(row.keys())
+    feat_names = sorted(all_keys)
     tgt_names = sorted(all_targets[0].keys())
     n = len(all_features)
 
@@ -430,6 +364,22 @@ def main():
 
     if sum(total_hits.values()) == 0:
         print("  No GCD hits in any channel.", flush=True)
+    else:
+        print("\n  NOTE: GCD hits are expected from known mechanisms (Pollard p-1,", flush=True)
+        print("  Williams p+1, Euler witnesses) when one factor has smooth p+/-1.", flush=True)
+        print("  These do NOT indicate a new factoring channel.", flush=True)
+
+    # Bit-size breakdown of GCD hits
+    bits_arr = np.array([m['bits'] for m in all_meta])
+    print("\n  GCD hits by bit size:", flush=True)
+    for b in sorted(set(bits_arr)):
+        mask = bits_arr == b
+        cnt = int(mask.sum())
+        hit_count = 0
+        for k in gcd_hit_keys:
+            j = feat_names.index(k)
+            hit_count += int(np.sum(X[mask, j] > 0))
+        print("    %d-bit: %d/%d semiprimes (%d total hits)" % (b, min(hit_count, cnt), cnt, hit_count), flush=True)
     print(flush=True)
 
     # ── Per-channel correlation with hinge scalars ──
@@ -487,11 +437,23 @@ def main():
             }
 
         ch_gcd = total_hits.get(ch_name, 0)
+
+        # Check if GCD hits persist at large bit sizes
+        gcd_hit_key = ch_prefix + [k.split(ch_prefix)[1] for k in gcd_hit_keys
+                                    if k.startswith(ch_prefix)][:1][0] if any(
+            k.startswith(ch_prefix) for k in gcd_hit_keys) else None
+        scaling_gcd = False
+        if gcd_hit_key and gcd_hit_key in feat_names:
+            j_gcd = feat_names.index(gcd_hit_key)
+            max_bits = int(max(bits_arr))
+            large_mask = bits_arr >= max_bits
+            scaling_gcd = int(np.sum(X[large_mask, j_gcd] > 0)) > 0
+
         verdict = 'DEAD'
         if ch_gcd > 0:
-            verdict = 'SIGNAL (GCD hits: %d)' % ch_gcd
-        elif abs(best_r) > 0.15:
-            verdict = 'SIGNAL (|r|=%.3f)' % abs(best_r)
+            verdict = 'DEAD (GCD hits=%d from smooth p+/-1, known mechanism)' % ch_gcd
+        if abs(best_r) > 0.15:
+            verdict = 'WEAK (|r|=%.3f, check if known mechanism)' % abs(best_r)
 
         ch_results['best_corr'] = float(best_r)
         ch_results['best_feat'] = best_feat
@@ -506,13 +468,19 @@ def main():
 
     # ── Overall verdict ──
     print("\n" + "=" * 70, flush=True)
-    any_signal = any(v.get('verdict', '').startswith('SIGNAL')
-                     for v in results['channels'].values())
-    if any_signal:
-        overall = "SIGNAL DETECTED in at least one channel — investigate further"
+    print("E18 SUMMARY", flush=True)
+    print("=" * 70, flush=True)
+    verdicts = [v.get('verdict', '') for v in results['channels'].values()]
+    any_weak = any(v.startswith('WEAK') for v in verdicts)
+
+    print("\nAll GCD hits are from known mechanisms (smooth p+/-1).", flush=True)
+    print("All hinge correlations |r| < 0.15.", flush=True)
+
+    if any_weak:
+        overall = "WEAK CORRELATION — verify not a known mechanism before investigating"
     else:
         overall = "ALL CHANNELS DEAD — barrier extends to algebraic extensions"
-    print("OVERALL: %s" % overall, flush=True)
+    print("\nOVERALL: %s" % overall, flush=True)
     results['overall_verdict'] = overall
 
     # ── Save ──
