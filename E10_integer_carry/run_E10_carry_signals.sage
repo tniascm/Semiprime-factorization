@@ -38,58 +38,22 @@ Metrics
 
 import sys
 import os
-import json
 import time
 
 import numpy as np
 from scipy import stats
 
-# ── semiprime generation ──────────────────────────────────────────────
+# ── shared utilities ──────────────────────────────────────────────────
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from semiprime_gen import generate_semiprimes
+from sage_encoding import _py_dict, safe_json_dump
+from spectral import analyze_signal, precompute_gcd_classes
 
-# ── Sage type coercion ────────────────────────────────────────────────
+# ── reproducibility ──────────────────────────────────────────────────
 
-def _py(v):
-    """Convert Sage types to native Python for JSON serialization."""
-    if isinstance(v, (bool, type(None), str)):
-        return v
-    if isinstance(v, (int, float)):
-        return v
-    if isinstance(v, np.integer):
-        return int(v)
-    if isinstance(v, (np.floating, np.float64)):
-        return float(v)
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    # Sage RealDoubleElement, Integer, Rational, etc.
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        pass
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return str(v)
-
-
-def _py_dict(d):
-    """Recursively convert all values in a dict for JSON."""
-    return {k: _py(v) for k, v in d.items()}
-
-
-class SageEncoder(json.JSONEncoder):
-    """JSON encoder that handles Sage types."""
-    def default(self, obj):
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            pass
-        try:
-            return int(obj)
-        except (TypeError, ValueError):
-            return str(obj)
+set_random_seed(42)
+np.random.seed(42)
 
 # ── Signal definitions ────────────────────────────────────────────────
 
@@ -111,6 +75,7 @@ def compute_signals(N):
             sig1[t] = 0.0
         else:
             sig1[t] = float(kronecker_symbol(disc, N_int))
+    assert len(sig1) == N_int, f"jacobi_control length {len(sig1)} != N={N_int}"
     signals['jacobi_control'] = sig1
 
     # Signal 2: Jacobi of floor(t^2 / N) — carry-based
@@ -125,6 +90,7 @@ def compute_signals(N):
                 sig2[t] = 0.0  # Jacobi undefined when gcd > 1
             else:
                 sig2[t] = float(kronecker_symbol(high_word, N_int))
+    assert len(sig2) == N_int, f"carry_jacobi length {len(sig2)} != N={N_int}"
     signals['carry_jacobi'] = sig2
 
     # Signal 3: (-1)^floor(t^2 / N) — carry parity
@@ -132,6 +98,7 @@ def compute_signals(N):
     for t in range(N_int):
         high_word = (t * t) // N_int
         sig3[t] = 1.0 if (high_word % 2 == 0) else -1.0
+    assert len(sig3) == N_int, f"carry_parity length {len(sig3)} != N={N_int}"
     signals['carry_parity'] = sig3
 
     # Signal 4: J(t, N) * (-1)^floor(2t / sqrt(N)) — Jacobi x approx-root sign
@@ -143,6 +110,7 @@ def compute_signals(N):
         else:
             sign_bit = (2 * t) // sqrtN
             sig4[t] = float(j_val) * (1.0 if (sign_bit % 2 == 0) else -1.0)
+    assert len(sig4) == N_int, f"mixed_jacobi_carry length {len(sig4)} != N={N_int}"
     signals['mixed_jacobi_carry'] = sig4
 
     # Signal 5: sum_{k=1}^{10} (-1)^floor(k*t^2/N) — accumulated carry oscillation
@@ -154,6 +122,7 @@ def compute_signals(N):
             high_word = (k * t2) // N_int
             acc += 1.0 if (high_word % 2 == 0) else -1.0
         sig5[t] = acc
+    assert len(sig5) == N_int, f"carry_sum length {len(sig5)} != N={N_int}"
     signals['carry_sum'] = sig5
 
     # Signal 6: J(t^2 mod floor(sqrt(N)), N) — lattice-reduced Jacobi
@@ -169,98 +138,11 @@ def compute_signals(N):
                     sig6[t] = 0.0
                 else:
                     sig6[t] = float(kronecker_symbol(reduced, N_int))
+    assert len(sig6) == N_int, f"lattice_jacobi length {len(sig6)} != N={N_int}"
     signals['lattice_jacobi'] = sig6
 
     return signals
 
-
-# ── DFT and spectral analysis ────────────────────────────────────────
-
-def analyze_signal(sig, N, p, q):
-    """
-    Compute DFT and extract spectral metrics for a signal on Z/NZ.
-    Returns dict of metrics.
-    """
-    N_int = int(N)
-    X = np.fft.fft(sig) / N_int  # Normalized DFT
-    mags = np.abs(X)
-    mags2 = mags ** 2
-
-    # Skip DC component for spectral analysis
-    mags_ac = mags[1:]
-    mags2_ac = mags2[1:]
-
-    # Peak-to-bulk ratio
-    peak = np.max(mags_ac)
-    median_val = np.median(mags_ac)
-    peak_to_bulk = float(peak / median_val) if median_val > 0 else float('inf')
-
-    # Factor-localized energy: energy at xi with gcd(xi, N) > 1
-    energy_total = float(np.sum(mags2_ac))
-    energy_factor = 0.0
-    energy_p = 0.0
-    energy_q = 0.0
-    for xi in range(1, N_int):
-        g = gcd(xi, N_int)
-        if g > 1:
-            energy_factor += mags2[xi]
-        if xi % p == 0:
-            energy_p += mags2[xi]
-        if xi % q == 0:
-            energy_q += mags2[xi]
-
-    factor_frac = float(energy_factor / energy_total) if energy_total > 0 else 0.0
-    p_frac = float(energy_p / energy_total) if energy_total > 0 else 0.0
-    q_frac = float(energy_q / energy_total) if energy_total > 0 else 0.0
-
-    # Expected factor energy under flat spectrum: (q-1+p-1+1-1)/(N-1) = (p+q-2)/(N-1)
-    n_factor_modes = 0
-    for xi in range(1, N_int):
-        if gcd(xi, N_int) > 1:
-            n_factor_modes += 1
-    expected_factor_frac = float(n_factor_modes) / (N_int - 1)
-
-    # Top-mode factor extraction: do the K largest modes have gcd > 1?
-    sorted_indices = np.argsort(mags_ac)[::-1] + 1  # +1 to skip DC
-    top_10_factor = sum(1 for idx in sorted_indices[:10] if gcd(int(idx), N_int) > 1)
-    top_5_factor = sum(1 for idx in sorted_indices[:5] if gcd(int(idx), N_int) > 1)
-
-    # CRT rank estimate: reshape signal as p x q matrix and compute SVD
-    # t = CRT(a, b) maps Z/NZ -> Z/pZ x Z/qZ
-    M = np.zeros((int(p), int(q)), dtype=np.float64)
-    for t in range(N_int):
-        a = t % p
-        b = t % q
-        M[a, b] = sig[t]
-    sv = np.linalg.svd(M, compute_uv=False)
-    sv_total = float(np.sum(sv))
-    # Effective rank: number of singular values for 90% of total
-    if sv_total > 0:
-        sv_norm = sv / sv_total
-        cumsum = np.cumsum(sv_norm)
-        eff_rank_90 = int(np.searchsorted(cumsum, 0.90)) + 1
-    else:
-        eff_rank_90 = 0
-    # Nuclear norm ratio: sum(sv) / max(sv) — rank-1 has ratio 1
-    nuclear_ratio = float(sv_total / sv[0]) if sv[0] > 0 else 0.0
-
-    return {
-        'peak': float(peak),
-        'median': float(median_val),
-        'peak_to_bulk': peak_to_bulk,
-        'energy_total': energy_total,
-        'factor_energy_frac': factor_frac,
-        'p_energy_frac': p_frac,
-        'q_energy_frac': q_frac,
-        'expected_factor_frac': expected_factor_frac,
-        'factor_energy_excess': factor_frac / expected_factor_frac if expected_factor_frac > 0 else 0.0,
-        'top_5_factor_count': top_5_factor,
-        'top_10_factor_count': top_10_factor,
-        'crt_eff_rank_90': eff_rank_90,
-        'crt_nuclear_ratio': nuclear_ratio,
-        'crt_top_sv': float(sv[0]),
-        'crt_sv_2': float(sv[1]) if len(sv) > 1 else 0.0,
-    }
 
 # ── Main experiment ───────────────────────────────────────────────────
 
@@ -303,9 +185,14 @@ def main():
             sigs = compute_signals(N)
             dt_signals = time.time() - t0
 
+            # Precompute gcd classes once per semiprime
+            gcd_class, n_factor_modes = precompute_gcd_classes(N, p, q)
+
             for sname in signal_names:
                 t1 = time.time()
-                metrics = analyze_signal(sigs[sname], N, p, q)
+                metrics = analyze_signal(sigs[sname], N, p, q,
+                                         gcd_class=gcd_class,
+                                         n_factor_modes=n_factor_modes)
                 dt_analysis = time.time() - t1
 
                 row = {
@@ -331,9 +218,7 @@ def main():
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     out_path = os.path.join(data_dir, 'E10_carry_signals_results.json')
-    with open(out_path, 'w') as f:
-        json.dump(all_results, f, indent=int(2), cls=SageEncoder)
-    print(f"\nResults saved to {out_path}", flush=True)
+    safe_json_dump(all_results, out_path)
 
     # ── Statistical analysis: scaling exponents per signal ────────────
     print("\n" + "=" * 72, flush=True)
@@ -447,7 +332,7 @@ def main():
                 x_fit = np.logspace(np.log10(Ns.min()), np.log10(Ns.max()), 50)
                 y_fit = 10**intc * x_fit**sl
                 ax.plot(x_fit, y_fit, 'r-', lw=1.5,
-                        label=f'N^{{{sl:.3f}}} (R2={rv**2:.3f})')
+                        label=f'N^{{{sl:.3f}+/-{se:.3f}}} (R2={rv**2:.3f})')
                 ax.legend(fontsize=8)
 
         plt.tight_layout()
@@ -502,7 +387,7 @@ def main():
                 x_fit = np.logspace(np.log10(Ns.min()), np.log10(Ns.max()), 50)
                 y_fit = 10**intc * x_fit**sl
                 ax.plot(x_fit, y_fit, 'r-', lw=1.5,
-                        label=f'N^{{{sl:.3f}}} (R2={rv**2:.3f})')
+                        label=f'N^{{{sl:.3f}+/-{se:.3f}}} (R2={rv**2:.3f})')
                 ax.legend(fontsize=8)
 
         plt.tight_layout()
