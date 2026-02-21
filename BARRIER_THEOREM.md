@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document formalizes the empirical finding from experiments E5–E10:
+This document formalizes the empirical finding from experiments E5–E13:
 no poly(log N)-computable function on Z/NZ produces DFT peaks at factor
 frequencies ξ ≡ 0 (mod p) or ξ ≡ 0 (mod q) with amplitude exceeding
 O(N^{-1/2+ε}).
@@ -10,6 +10,25 @@ O(N^{-1/2+ε}).
 We define a precise oracle model, prove structural lemmas about CRT
 separability and its spectral consequences, and connect the barrier to
 the standard Quadratic Residuosity Problem (QRP).
+
+**Status note.** The CRT product obstruction (Section 3) is a working
+hypothesis supported by extensive empirical evidence, not a proven
+theorem. The spectral peak bound (Theorem 1) IS proven for bounded-rank
+functions, but the hypothesis that all poly(log N)-computable functions
+have low effective CRT rank is empirical. See Section 4.1 for the
+important caveat that deep circuits can have exponential formal rank.
+
+**DFT convention.** This document uses the standard negative-exponential
+convention: f̂(ξ) = (1/N) Σ f(t) e^{-2πiξt/N}. Some experiment scripts
+(E7 family) use the positive-exponential convention f̂(ξ) = conj(fft)/N.
+For real-valued signals, |f̂(ξ)| is identical under either convention,
+so all magnitude-based spectral conclusions are convention-independent.
+
+**Reproducibility.** Experiments E5-E8 originally lacked random seeds.
+Seeds have been added for reproducibility. Semiprime samples differ
+across experiments (E10 uses generate_semiprimes, E12 uses
+balanced_semiprimes), so cross-experiment comparisons of scaling
+exponents (e.g., E10 α vs E12 α) are not perfectly controlled.
 
 ---
 
@@ -177,9 +196,14 @@ produces a function of CRT rank ≤ 3^d.
 For poly(n)-depth circuits: rank ≤ 3^{poly(n)} = 2^{O(n^c)}.
 For CONSTANT-depth circuits: rank ≤ 3^d = O(1).                        □
 
-**Note:** This gives useful bounds (rank ≪ √N) only for bounded-depth
-circuits. For general poly-depth circuits, 3^{poly(n)} can exceed √N,
-and the peak bound becomes trivial.
+**Important caveat:** This gives useful bounds (rank ≪ √N) only for
+bounded-depth circuits. For general poly(n)-depth circuits,
+3^{poly(n)} can exceed √N, and the peak bound becomes trivial.
+In particular, iterated squaring (E12) produces formal CRT rank 2^d
+at depth d ≈ log₂N, which exceeds √N. The spectral flatness of such
+deep-circuit functions (E12 result: α ≈ -0.51) is an empirical
+observation, not a consequence of Theorem 1. The barrier for deep
+circuits remains a hypothesis, not a theorem.
 
 ---
 
@@ -782,8 +806,11 @@ The Eichler-Selberg trace formula decomposes τ(N) into:
   E(N) = -1 - min(p,q)^{k-1}. **Requires the divisors of N.**
 
 Experimental measurement: |E(N)/τ(N)| ranges from 0.40 to 2.64 for small
-semiprimes — the Eisenstein correction is comparable in magnitude to τ(N)
-itself. It cannot be approximated or ignored.
+semiprimes (N ≤ 2^16) — the Eisenstein correction is comparable in
+magnitude to τ(N) itself. It cannot be approximated or ignored.
+**Note:** This ratio has not been measured at cryptographic scales
+(N > 2^100). Whether the correction remains comparable, grows, or
+shrinks relative to τ(N) at large N is an open question.
 
 ### 13.4 Congruence circularity (detailed)
 
