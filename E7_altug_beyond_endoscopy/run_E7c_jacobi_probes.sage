@@ -31,7 +31,7 @@ import json
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
-from sage_encoding import _py
+from sage_encoding import _py, safe_json_dump
 from spectral import verify_parseval
 
 import numpy as np
@@ -380,8 +380,7 @@ for name in signal_names:
         k: [_py(v) for v in vals] for k, vals in agg[name].items()
     }
 
-with open(out_path, 'w') as f:
-    json.dump(output, f, indent=2)
+safe_json_dump(output, out_path)
 print(f"Saved → {out_path}\n", flush=True)
 
 # ─── plots ───────────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@ import json
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
-from sage_encoding import _py, _py_dict
+from sage_encoding import _py, _py_dict, safe_json_dump
 from spectral import verify_parseval
 
 import numpy as np
@@ -277,8 +277,7 @@ output = {
     'part_B': [_py_dict(r) for r in results_B],
 }
 out_path = os.path.join(data_dir, 'E7d_global_separators_results.json')
-with open(out_path, 'w') as f:
-    json.dump(output, f, indent=2)
+safe_json_dump(output, out_path)
 print(f"\nSaved → {out_path}\n", flush=True)
 
 # ─── Verdict ─────────────────────────────────────────────────────────────

@@ -10,6 +10,9 @@ import os
 import numpy as np
 from scipy import stats
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from sage_encoding import safe_json_dump
+
 set_random_seed(42)
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -129,8 +132,7 @@ print(flush=True)
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
 out_path = os.path.join(data_dir, 'E5_benchmark_results.json')
-with open(out_path, 'w') as f:
-    json.dump(results, f, indent=2)
+safe_json_dump(results, out_path)
 print(f"Saved {len(results)} rows → {out_path}\n", flush=True)
 
 # ─── power-law fit ──────────────────────────────────────────────────────────

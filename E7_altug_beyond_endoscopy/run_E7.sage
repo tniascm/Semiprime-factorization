@@ -8,7 +8,7 @@ import json
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
-from sage_encoding import _py, _py_dict
+from sage_encoding import _py, _py_dict, safe_json_dump
 from spectral import verify_parseval
 
 import numpy as np
@@ -175,8 +175,7 @@ data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
 out_path = os.path.join(data_dir, 'E7_cancellation_results.json')
 serial = [_py_dict(r) for r in results]
-with open(out_path, 'w') as f:
-    json.dump(serial, f, indent=2)
+safe_json_dump(serial, out_path)
 print(f"Saved {len(serial)} rows → {out_path}\n", flush=True)
 
 # ─── fit & verdict ──────────────────────────────────────────────────────────

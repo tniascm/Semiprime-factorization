@@ -37,7 +37,14 @@ import numpy as np
 import json
 import time
 import os
+import sys
 from collections import OrderedDict
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
+from sage_encoding import safe_json_dump
+
+set_random_seed(42)
+np.random.seed(42)
 
 # ============================================================
 # Configuration
@@ -501,9 +508,7 @@ def main():
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     output_path = os.path.join(data_dir, 'E9_hecke_moments_results.json')
-    with open(output_path, 'w') as f:
-        json.dump(output, f, indent=2)
-    print("\nResults saved to %s" % output_path)
+    safe_json_dump(output, output_path)
 
 
 if __name__ == '__main__':

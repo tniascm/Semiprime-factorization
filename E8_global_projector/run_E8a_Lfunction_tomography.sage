@@ -49,7 +49,7 @@ np.random.seed(42)
 
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
-from sage_encoding import _py, _py_dict
+from sage_encoding import _py, _py_dict, safe_json_dump
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -511,8 +511,7 @@ output = {
     'test_D': clean_results(results_D),
 }
 out_path = os.path.join(data_dir, 'E8a_Lfunction_tomography_results.json')
-with open(out_path, 'w') as f:
-    json.dump(output, f, indent=2)
+safe_json_dump(output, out_path)
 print(f"Saved -> {out_path}\n", flush=True)
 
 # ─── Verdict ──────────────────────────────────────────────────────────────

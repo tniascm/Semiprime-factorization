@@ -26,7 +26,7 @@ np.random.seed(42)
 
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
-from sage_encoding import _py
+from sage_encoding import _py, safe_json_dump
 
 # ─── Part A: BK local transform = orbital integral ──────────────────────
 
@@ -420,8 +420,7 @@ output = {
     'part_C': [{k: _py(v) for k, v in r.items()} for r in results_C],
 }
 out_path = os.path.join(data_dir, 'E6_bk_transform_results.json')
-with open(out_path, 'w') as f:
-    json.dump(output, f, indent=2)
+safe_json_dump(output, out_path)
 print(f"Saved → {out_path}\n", flush=True)
 
 # ─── Plots ───────────────────────────────────────────────────────────────

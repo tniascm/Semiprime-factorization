@@ -40,7 +40,7 @@ np.random.seed(42)
 
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
-from sage_encoding import _py, _py_dict
+from sage_encoding import _py, _py_dict, safe_json_dump
 
 # ─── Configuration ─────────────────────────────────────────────────────
 
@@ -469,8 +469,7 @@ def main():
             for _, r, pval, label, s_desc in correlations[:20]
         ],
     }
-    with open(outpath, 'w') as f:
-        json.dump(results, f, indent=2)
+    safe_json_dump(results, outpath)
     print("\nSaved -> %s" % os.path.abspath(outpath), flush=True)
 
     # 9. Plot
