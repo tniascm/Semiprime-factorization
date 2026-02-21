@@ -36,6 +36,7 @@ Tests:
 import numpy as np
 import json
 import time
+import os
 from collections import OrderedDict
 
 # ============================================================
@@ -138,7 +139,9 @@ def build_features(results, primes_list, max_mom):
             for j in range(1, max_mom + 1):
                 val = entry.get(j, None)
                 if val is None:
-                    row.append(0.0)
+                    # NaN for bad-prime or missing data; avoids silently
+                    # treating absent eigenvalues as zero signal
+                    row.append(float('nan'))
                 else:
                     # j-th moment of eigenvalue distribution
                     row.append(float(val) / float(d))
@@ -495,9 +498,12 @@ def main():
         r2_j, _ = ridge_loocv_r2(X_j, y_resid)
         output['r2_by_moment']['m_%d' % j] = float(r2_j)
 
-    with open('data/E9_hecke_moments_results.json', 'w') as f:
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    output_path = os.path.join(data_dir, 'E9_hecke_moments_results.json')
+    with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)
-    print("\nResults saved to data/E9_hecke_moments_results.json")
+    print("\nResults saved to %s" % output_path)
 
 
 if __name__ == '__main__':
