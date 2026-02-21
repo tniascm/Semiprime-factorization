@@ -34,7 +34,6 @@ Analysis:
 """
 import sys
 import os
-import json
 import time
 import numpy as np
 from numpy.linalg import svd
@@ -44,6 +43,9 @@ from sage.all import (
     kronecker_symbol, next_prime, isqrt, ZZ, gcd,
     power_mod, is_prime, set_random_seed
 )
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from sage_encoding import SageEncoder, safe_json_dump
 
 # Reproducibility
 set_random_seed(42)
@@ -57,19 +59,6 @@ SMALL_PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29,
                 31, 37, 41, 43, 47, 53, 59, 61, 67, 71]
 DISCRIMINANTS = [-3, -4, 5, -7, 8]
 MODEXP_BASES = [2, 3, 5, 7, 11]
-
-
-class SageEncoder(json.JSONEncoder):
-    """JSON encoder that handles Sage numeric types."""
-    def default(self, obj):
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            pass
-        try:
-            return int(obj)
-        except (TypeError, ValueError):
-            return str(obj)
 
 
 # ============================================================
@@ -256,7 +245,12 @@ def compute_features(N):
             for k in range(2, 21):
                 val = int(power_mod(val, k, N))
             d = int(gcd(val - 1, N))
-            features['pollard_%d_found' % g_int] = 1 if (1 < d < N) else 0
+            if 1 < d < N:
+                features['pollard_%d_found' % g_int] = 1
+            elif d == N:
+                features['pollard_%d_found' % g_int] = -1  # trivial factor (both p-1, q-1 smooth)
+            else:
+                features['pollard_%d_found' % g_int] = 0
             features['pollard_%d_val' % g_int] = val / float(N) if d == 1 else -1.0
 
     # --- Group 7: Mixed/interaction features (10 features) ---
@@ -410,6 +404,30 @@ def permutation_test(X, y, n_perm=200, lam=None):
 
     p_value = float(np.mean(null_r2s >= real_r2))
     return p_value, null_r2s
+
+
+def benjamini_hochberg(p_values):
+    """Apply Benjamini-Hochberg FDR correction, return adjusted p-values.
+
+    Given m hypothesis tests with raw p-values, adjusts them so that
+    rejecting all hypotheses with adjusted p < alpha controls the
+    false discovery rate at level alpha.
+    """
+    n = len(p_values)
+    if n == 0:
+        return np.array([])
+    sorted_indices = np.argsort(p_values)
+    sorted_pvals = np.array(p_values)[sorted_indices]
+    adjusted = np.zeros(n)
+    for i in range(n - 1, -1, -1):
+        raw_adjusted = sorted_pvals[i] * n / (i + 1)
+        if i == n - 1:
+            adjusted[i] = min(raw_adjusted, 1.0)
+        else:
+            adjusted[i] = min(adjusted[i + 1], raw_adjusted)
+    result = np.zeros(n)
+    result[sorted_indices] = adjusted
+    return result
 
 
 def feature_correlations(X, y, feature_names):
@@ -631,6 +649,17 @@ def run_experiment(bit_sizes, count_per_size, output_dir='../data'):
 
         results['targets'][tname] = target_result
 
+    # --- Benjamini-Hochberg FDR correction across all targets ---
+    all_target_names = list(results['targets'].keys())
+    raw_pvals = [results['targets'][t]['perm_p_value'] for t in all_target_names]
+    adjusted_pvals = benjamini_hochberg(raw_pvals)
+    print()
+    print("--- Benjamini-Hochberg FDR Correction (%d targets) ---" % len(all_target_names))
+    for i, tname in enumerate(all_target_names):
+        results['targets'][tname]['bh_adjusted_pvalue'] = float(adjusted_pvals[i])
+        print("  %-20s: raw p = %.4f, BH-adjusted p = %.4f" % (
+            tname, raw_pvals[i], adjusted_pvals[i]))
+
     # --- Per-bit-size analysis ---
     print()
     print("=" * 70)
@@ -742,10 +771,8 @@ def run_experiment(bit_sizes, count_per_size, output_dir='../data'):
     # --- Save JSON ---
     os.makedirs(output_dir, exist_ok=True)
     json_path = os.path.join(output_dir, 'E11_feature_extraction_results.json')
-    with open(json_path, 'w') as f:
-        json.dump(results, f, indent=int(2), cls=SageEncoder)
+    safe_json_dump(results, json_path)
     print()
-    print("Results saved to %s" % json_path)
 
     # --- Plots ---
     try:
