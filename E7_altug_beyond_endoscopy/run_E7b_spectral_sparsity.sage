@@ -8,8 +8,15 @@ import sys
 import json
 import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from sage_encoding import _py, _py_dict
+from spectral import verify_parseval
+
 import numpy as np
 from scipy import stats
+
+set_random_seed(42)
+np.random.seed(42)
 
 # ─── orbital integrals (same as E7) ─────────────────────────────────────────
 
@@ -29,8 +36,14 @@ def orbital_product(t, primes):
 
 def poisson_fourier_all(N, primes):
     orb = np.array([orbital_product(t, primes) for t in range(N)], dtype=np.float64)
+    # NOTE: This uses the positive-exponential convention: hat{f}(xi) = (1/N) sum f(t) e^{+2pi i t xi/N}.
+    # For real-valued signals, |hat{f}(xi)| is identical to the standard negative convention.
+    # See BARRIER_THEOREM.md for discussion.
     X = np.fft.fft(orb)
-    return np.conj(X) / N
+    result = np.conj(X) / N
+    # Parseval check: for our convention, sum|X|^2 = (1/N) sum|f|^2
+    verify_parseval(orb, result)
+    return result
 
 # ─── spectral sparsity measures ─────────────────────────────────────────────
 
@@ -164,6 +177,7 @@ print(hdr, flush=True)
 print("-" * len(hdr), flush=True)
 
 results = []
+failed_N = []
 for N, p, q in all_semiprimes:
     try:
         t0 = time.perf_counter()
@@ -203,25 +217,21 @@ for N, p, q in all_semiprimes:
               f"{gc['bulk_energy_frac']:>6.3f} {gc['div_energy_frac']:>6.3f} {dt:>7.3f}s",
               flush=True)
     except Exception as e:
-        print(f"  N={N}: ERROR — {e}", flush=True)
+        print(f"  ERROR for N={N}: {e}", flush=True)
+        failed_N.append(N)
 
-print(f"\nCompleted {len(results)} / {len(all_semiprimes)}\n", flush=True)
+print(f"\nCompleted {len(results)} / {len(all_semiprimes)}", flush=True)
+if failed_N:
+    print(f"Failed N values: {failed_N}", flush=True)
+print(flush=True)
 
 # ─── save ────────────────────────────────────────────────────────────────────
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
 out_path = os.path.join(data_dir, 'E7b_spectral_sparsity_results.json')
 
-def _py(v):
-    if isinstance(v, (int, float, str, bool, type(None))):
-        return v
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return float(v)
-
 with open(out_path, 'w') as f:
-    json.dump([{k: _py(v) for k, v in r.items()} for r in results], f, indent=2)
+    json.dump([_py_dict(r) for r in results], f, indent=2)
 print(f"Saved → {out_path}\n", flush=True)
 
 # ─── analysis ────────────────────────────────────────────────────────────────

@@ -21,14 +21,28 @@ import sys
 import json
 import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from sage_encoding import _py, _py_dict
+from spectral import verify_parseval
+
 import numpy as np
 from scipy import stats
+
+set_random_seed(42)
+np.random.seed(42)
 
 # ─── helpers ─────────────────────────────────────────────────────────────
 
 def dft_plus(sig):
+    """DFT: hat{f}(xi) = (1/N) sum_t f(t) e^{+2pi i t xi / N}."""
+    # NOTE: This uses the positive-exponential convention: hat{f}(xi) = (1/N) sum f(t) e^{+2pi i t xi/N}.
+    # For real-valued signals, |hat{f}(xi)| is identical to the standard negative convention.
+    # See BARRIER_THEOREM.md for discussion.
     X = np.fft.fft(sig)
-    return np.conj(X) / len(sig)
+    result = np.conj(X) / len(sig)
+    # Parseval check: for our convention, sum|X|^2 = (1/N) sum|f|^2
+    verify_parseval(sig, result)
+    return result
 
 def gcd_class_analysis(coeffs, N, p, q):
     mags = np.abs(coeffs)
@@ -258,22 +272,9 @@ if kl_total > 0:
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
 
-def _py(v):
-    if isinstance(v, (int, float, str, bool, type(None))):
-        return v
-    if isinstance(v, np.bool_):
-        return bool(v)
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return str(v)
-
 output = {
-    'part_A': [{k: _py(v) for k, v in r.items()} for r in results_A],
-    'part_B': [{k: _py(v) for k, v in r.items()} for r in results_B],
+    'part_A': [_py_dict(r) for r in results_A],
+    'part_B': [_py_dict(r) for r in results_B],
 }
 out_path = os.path.join(data_dir, 'E7d_global_separators_results.json')
 with open(out_path, 'w') as f:

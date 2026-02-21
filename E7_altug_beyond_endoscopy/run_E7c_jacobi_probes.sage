@@ -30,15 +30,28 @@ import sys
 import json
 import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from sage_encoding import _py
+from spectral import verify_parseval
+
 import numpy as np
 from scipy import stats
+
+set_random_seed(42)
+np.random.seed(42)
 
 # ─── DFT convention ──────────────────────────────────────────────────────
 
 def dft_plus(sig):
     """DFT: hat(f)(xi) = (1/N) sum_t f(t) e^{+2pi i t xi / N}."""
+    # NOTE: This uses the positive-exponential convention: hat{f}(xi) = (1/N) sum f(t) e^{+2pi i t xi/N}.
+    # For real-valued signals, |hat{f}(xi)| is identical to the standard negative convention.
+    # See BARRIER_THEOREM.md for discussion.
     X = np.fft.fft(sig)
-    return np.conj(X) / len(sig)
+    result = np.conj(X) / len(sig)
+    # Parseval check: for our convention, sum|X|^2 = (1/N) sum|f|^2
+    verify_parseval(sig, result)
+    return result
 
 # ─── signal builders ─────────────────────────────────────────────────────
 
@@ -357,23 +370,6 @@ print(flush=True)
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
 out_path = os.path.join(data_dir, 'E7c_jacobi_probes_results.json')
-
-def _py(v):
-    if isinstance(v, (int, float, str, bool, type(None))):
-        return v
-    if isinstance(v, np.bool_):
-        return bool(v)
-    if isinstance(v, (np.integer,)):
-        return int(v)
-    if isinstance(v, (np.floating,)):
-        return float(v)
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return str(v)
 
 output = {
     'semiprimes': [{'N': int(N), 'p': int(p), 'q': int(q)} for N, p, q in semiprimes],

@@ -25,15 +25,28 @@ import sys
 import json
 import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from sage_encoding import _py
+from spectral import verify_parseval
+
 import numpy as np
 from scipy import stats
 from scipy.optimize import minimize
+
+set_random_seed(42)
+np.random.seed(42)
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
 def dft_plus(sig):
     """DFT: hat{f}(xi) = (1/N) sum_t f(t) e^{+2pi i t xi / N}."""
-    return np.conj(np.fft.fft(sig)) / len(sig)
+    # NOTE: This uses the positive-exponential convention: hat{f}(xi) = (1/N) sum f(t) e^{+2pi i t xi/N}.
+    # For real-valued signals, |hat{f}(xi)| is identical to the standard negative convention.
+    # See BARRIER_THEOREM.md for discussion.
+    result = np.conj(np.fft.fft(sig)) / len(sig)
+    # Parseval check: for our convention, sum|X|^2 = (1/N) sum|f|^2
+    verify_parseval(sig, result)
+    return result
 
 def precompute_gcd_classes(N, p, q):
     """Classify xi = 1..N-1 by gcd(xi, N)."""
@@ -247,8 +260,8 @@ for idx, (N, p, q) in enumerate(semiprimes):
             if res.fun < best_k:
                 best_k = res.fun
                 best_w = res.x / (np.linalg.norm(res.x) + 1e-30)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  WARNING: Nelder-Mead trial failed: {e}", flush=True)
     S_kurt = M.T @ best_w
     m = spectral_metrics(S_kurt, N, gcd_p, gcd_q, gcd_1)
     store('max-kurt', m)
@@ -344,19 +357,6 @@ print(flush=True)
 
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
-
-def _py(v):
-    if isinstance(v, (int, float, str, bool, type(None))):
-        return v
-    if isinstance(v, np.bool_):
-        return bool(v)
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return str(v)
 
 output = {
     'semiprimes': [{'N': N, 'p': p, 'q': q} for N, p, q in semiprimes],
