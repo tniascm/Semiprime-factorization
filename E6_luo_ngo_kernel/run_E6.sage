@@ -21,6 +21,13 @@ import os
 import numpy as np
 from scipy import stats
 
+set_random_seed(42)
+np.random.seed(42)
+
+# Import shared utilities
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
+from sage_encoding import _py
+
 # ─── Part A: BK local transform = orbital integral ──────────────────────
 
 def local_orbital_integral(t, p):
@@ -210,6 +217,11 @@ bk_vec = np.array([bk_local_transform(t, p_test) * bk_local_transform(t, q_test)
 orb_coeffs = dft_plus(orb_vec)
 bk_coeffs = dft_plus(bk_vec)
 
+# Parseval verification for Part A DFTs
+from spectral import verify_parseval
+verify_parseval(orb_vec, orb_coeffs)
+verify_parseval(bk_vec, bk_coeffs)
+
 # Compare non-zero mode magnitudes
 orb_mags = np.abs(orb_coeffs[1:])
 bk_mags = np.abs(bk_coeffs[1:])
@@ -243,11 +255,13 @@ for N, p, q in semiprimes:
     orb = np.array([local_orbital_integral(t, p) * local_orbital_integral(t, q)
                      for t in range(N)], dtype=np.float64)
     orb_c = dft_plus(orb)
+    verify_parseval(orb, orb_c)
     orb_res = gcd_class_analysis(orb_c, N, p, q)
 
     # GL_2 trace count (a different 1D observable)
     gl2 = count_1d_trace(N, p, q)
     gl2_c = dft_plus(gl2)
+    verify_parseval(gl2, gl2_c)
     gl2_res = gcd_class_analysis(gl2_c, N, p, q)
 
     dt = time.perf_counter() - t0
@@ -293,15 +307,12 @@ for N, p, q in small_semiprimes:
 
     # Check: do the 2D peaks reveal factors?
     # Peak at (xi_t, xi_d) with gcd(xi_t, N) > 1 or gcd(xi_d, N) > 1
-    best_xi_t, best_xi_d = 0, 0
-    best_mag = 0
-    for xi_t in range(1, N):
-        for xi_d in range(N):
-            if xi_t == 0 and xi_d == 0:
-                continue
-            if mags2d[xi_t, xi_d] > best_mag:
-                best_mag = mags2d[xi_t, xi_d]
-                best_xi_t, best_xi_d = xi_t, xi_d
+    # Skip DC (xi_t=0, xi_d=0) by zeroing it, then use vectorized argmax
+    mags2d_search = mags2d.copy()
+    mags2d_search[0, 0] = 0.0
+    peak_idx = np.unravel_index(np.argmax(mags2d_search), mags2d_search.shape)
+    best_xi_t, best_xi_d = int(peak_idx[0]), int(peak_idx[1])
+    best_mag = float(mags2d_search[best_xi_t, best_xi_d])
 
     best_gcd_t = int(gcd(best_xi_t, N))
     best_gcd_d = int(gcd(best_xi_d, N))
@@ -403,19 +414,6 @@ print(f"  Spectral structure comes entirely from the oracle's local splitting.\n
 # ─── Save ────────────────────────────────────────────────────────────────
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
-
-def _py(v):
-    if isinstance(v, (int, float, str, bool, type(None))):
-        return v
-    if isinstance(v, np.bool_):
-        return bool(v)
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return str(v)
 
 output = {
     'part_B': [{k: _py(v) for k, v in r.items()} for r in results_B],
