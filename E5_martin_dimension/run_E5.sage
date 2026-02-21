@@ -10,6 +10,8 @@ import os
 import numpy as np
 from scipy import stats
 
+set_random_seed(42)
+
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 def generate_semiprimes(max_N, num_samples=60, min_N=100):
@@ -96,6 +98,7 @@ print(hdr, flush=True)
 print("-" * len(hdr), flush=True)
 
 results = []
+failed_N = []
 for N, p, q in semiprimes:
     try:
         dim_ms, t_ms = bench_modsym(N)
@@ -114,9 +117,13 @@ for N, p, q in semiprimes:
         print(f"{N:>8} {p:>6} {q:>6} {dim_ms:>5} {t_ms:>10.4f} {t_f:>10.6f} {t_td:>10.6f} {t_ecm:>10.6f}",
               flush=True)
     except Exception as e:
-        print(f"  ERROR N={N}: {e}", flush=True)
+        print(f"  ERROR for N={N}: {e}", flush=True)
+        failed_N.append(N)
 
-print(f"\nCompleted {len(results)} / {len(semiprimes)}\n", flush=True)
+print(f"\nCompleted {len(results)} / {len(semiprimes)}", flush=True)
+if failed_N:
+    print(f"Failed: {len(failed_N)} semiprimes: {failed_N}", flush=True)
+print(flush=True)
 
 # ─── save raw data ──────────────────────────────────────────────────────────
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
