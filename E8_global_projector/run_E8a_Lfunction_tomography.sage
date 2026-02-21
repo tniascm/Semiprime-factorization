@@ -44,6 +44,13 @@ import os
 import numpy as np
 from scipy import stats, special
 
+set_random_seed(42)
+np.random.seed(42)
+
+# Import shared utilities
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
+from sage_encoding import _py, _py_dict
+
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
 def gen_balanced(count=12, min_p=50, max_p=350):
@@ -166,9 +173,17 @@ def compute_root_number(N_val, p, q):
     # chi_N(-1) = kronecker(-1, N)
     chi_neg1 = float(kronecker_symbol(-1, int(N_val)))
 
-    # Gauss sum: tau(chi_N) = sum_{a=1}^{N-1} kronecker(a, N) * e^{2*pi*i*a/N}
-    # Computed directly from N (no factoring needed in principle)
-    # Using CRT for speed: tau(chi_N) = tau(chi_p) * tau(chi_q)
+    # NOTE: Mathematically, tau(chi_N) = sum_{a=1}^{N-1} chi_N(a) e^{2pi*i*a/N}
+    # can be computed without factoring. Here we use the CRT factored form
+    # tau(chi_N) = tau(chi_p) * tau(chi_q) for computational efficiency,
+    # which requires knowing p and q.
+    # WARNING: Floating-point Gauss sum is numerically unstable for large p.
+    # |tau_p| = sqrt(p) but individual terms have magnitude 1, so relative
+    # error grows as O(1) for large p. Consider using mpmath for p > 10^6.
+    if int(p) > 10**6:
+        print(f"  WARNING: Gauss sum for p={p} may have poor precision", flush=True)
+    if int(q) > 10**6:
+        print(f"  WARNING: Gauss sum for q={q} may have poor precision", flush=True)
     tau_p = sum(kronecker_symbol(a, int(p)) * np.exp(2j * np.pi * a / int(p))
                 for a in range(1, int(p)))
     tau_q = sum(kronecker_symbol(a, int(q)) * np.exp(2j * np.pi * a / int(q))
@@ -476,27 +491,18 @@ print(flush=True)
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 os.makedirs(data_dir, exist_ok=True)
 
-def _py(v):
-    if isinstance(v, (int, float, str, bool, type(None))):
-        return v
-    if isinstance(v, np.bool_):
-        return bool(v)
+def _py_complex(v):
+    """Extend shared _py() with complex number support for L-function values."""
     if isinstance(v, complex):
         return {'re': float(v.real), 'im': float(v.imag)}
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return str(v)
+    return _py(v)
 
 def clean_results(obj):
     if isinstance(obj, dict):
         return {k: clean_results(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [clean_results(v) for v in obj]
-    return _py(obj)
+    return _py_complex(obj)
 
 output = {
     'semiprimes': [{'N': N, 'p': p, 'q': q} for N, p, q in semiprimes],
