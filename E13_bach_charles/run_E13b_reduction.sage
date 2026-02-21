@@ -39,25 +39,15 @@ This script:
 
 import sys
 import os
-import json
 import time
 
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from semiprime_gen import balanced_semiprimes
+from sage_encoding import safe_json_dump
 
-
-class SageEncoder(json.JSONEncoder):
-    def default(self, obj):
-        try:
-            return int(obj)
-        except (TypeError, ValueError):
-            pass
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            return str(obj)
+set_random_seed(42)
 
 
 # ── Eigenform q-expansion (from E13) ─────────────────────────────────
@@ -95,9 +85,7 @@ def hurwitz_class_number(D):
     # H(D) = Σ_{f²|D, -D/f² ≡ 0,1 mod 4} h(-D/f²) / w(-D/f²)
     # where h is class number and w = |O*|/2
     result = QQ(0)
-    for f_sq in range(1, D + 1):
-        if f_sq * f_sq > D:
-            break
+    for f_sq in range(1, isqrt(D) + 1):
         if D % (f_sq * f_sq) != 0:
             continue
         disc = D // (f_sq * f_sq)
@@ -594,9 +582,7 @@ def main():
         'total_bits': round(total_bits_available, 1),
         'channels': [{'weight': k, 'ell': ell} for k, ell in CHANNELS],
     }
-    with open(out_path, 'w') as f:
-        json.dump(results, f, indent=int(2), cls=SageEncoder)
-    print(f"Results saved to {out_path}", flush=True)
+    safe_json_dump(results, out_path)
     print("\nDone.", flush=True)
 
 

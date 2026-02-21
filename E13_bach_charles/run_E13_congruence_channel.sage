@@ -50,25 +50,16 @@ Key questions:
 
 import sys
 import os
-import json
 import time
 
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from semiprime_gen import balanced_semiprimes
+from sage_encoding import safe_json_dump
 
-
-class SageEncoder(json.JSONEncoder):
-    def default(self, obj):
-        try:
-            return int(obj)
-        except (TypeError, ValueError):
-            pass
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            return str(obj)
+set_random_seed(42)
+np.random.seed(42)
 
 
 # ── Eigenform q-expansion computation ─────────────────────────────────
@@ -415,9 +406,7 @@ def main():
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     out_path = os.path.join(data_dir, 'E13_congruence_channel_results.json')
-    with open(out_path, 'w') as f:
-        json.dump(all_results, f, indent=int(2), cls=SageEncoder)
-    print(f"\nResults saved to {out_path}", flush=True)
+    safe_json_dump(all_results, out_path)
 
     # ── Statistical summary ───────────────────────────────────────────
     print("\n" + "=" * 76, flush=True)
