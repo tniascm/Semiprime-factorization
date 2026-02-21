@@ -35,6 +35,13 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+set_random_seed(42)
+np.random.seed(42)
+
+# Import shared utilities
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils'))
+from sage_encoding import _py, _py_dict
+
 # ─── Configuration ─────────────────────────────────────────────────────
 
 WEIGHTS = [12, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36]
@@ -393,7 +400,7 @@ def main():
 
         rng = np.random.RandomState(42)
         null_r2s = [ridge_loocv_r2(X_pca, rng.permutation(y_centered))
-                    for _ in range(50)]
+                    for _ in range(500)]
         null_med = float(np.median(null_r2s))
         null_95 = float(np.percentile(null_r2s, 95))
         r2_null_vs_K.append((null_med, null_95))
@@ -434,8 +441,13 @@ def main():
                 s_desc = "k/2+1+%.1fi" % T_RIGHT[ji - len(T_CRIT)]
             correlations.append((abs(r), r, pval, form['label'], s_desc))
     correlations.sort(reverse=True)
+
+    # Apply Bonferroni correction for multiple testing across all form x s-point pairs
+    n_tests = len(correlations)
+    print("  %-10s %-16s %8s %10s %12s" % ("Form", "s-point", "r", "p-value", "bonf_p"))
     for _, r, pval, label, s_desc in correlations[:10]:
-        print("  %-10s %-16s %+8.4f %10.2e" % (label, s_desc, r, pval))
+        bonf_p = min(1.0, pval * n_tests)
+        print("  %-10s %-16s %+8.4f %10.2e %12.2e" % (label, s_desc, r, pval, bonf_p))
 
     # 8. Save results
     outpath = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -444,6 +456,7 @@ def main():
         'n_semiprimes': n_semi,
         'n_forms': K,
         'n_s_points': J,
+        'n_tests_bonferroni': n_tests,
         'weights': [int(f['weight']) for f in forms],
         'form_labels': [f['label'] for f in forms],
         'r2_vs_K': r2_vs_K,
@@ -451,7 +464,8 @@ def main():
         'r2_critical_line': r2_crit,
         'r2_slightly_right': r2_right,
         'top_correlations': [
-            {'form': label, 's': s_desc, 'r': float(r), 'p': float(pval)}
+            {'form': label, 's': s_desc, 'r': float(r), 'p': float(pval),
+             'bonferroni_p': float(min(1.0, pval * n_tests))}
             for _, r, pval, label, s_desc in correlations[:20]
         ],
     }
