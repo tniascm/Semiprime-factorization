@@ -3,91 +3,91 @@
     {
       "weight": 12,
       "ell": 691,
-      "total_candidates": 2023107,
-      "survived_first": 2952,
+      "total_candidates": 2023447,
+      "survived_first": 2953,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
-      "collision_tests": 2,
+      "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 25
+      "collision_sq_tests": 1
     },
     {
       "weight": 16,
       "ell": 3617,
-      "total_candidates": 2026023,
+      "total_candidates": 2026363,
       "survived_first": 561,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 604
+      "collision_sq_tests": 1
     },
     {
       "weight": 18,
       "ell": 43867,
-      "total_candidates": 2066278,
-      "survived_first": 71,
-      "survived_all": 0,
-      "survivors": [],
-      "collision_consistent": false,
-      "collision_tests": 2,
-      "collision_sq_consistent": true,
-      "collision_sq_tests": 4620
-    },
-    {
-      "weight": 20,
-      "ell": 283,
-      "total_candidates": 2022694,
-      "survived_first": 7137,
+      "total_candidates": 2066618,
+      "survived_first": 55,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 13
+      "collision_sq_tests": 1
+    },
+    {
+      "weight": 20,
+      "ell": 283,
+      "total_candidates": 2023034,
+      "survived_first": 7141,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1,
+      "collision_sq_consistent": false,
+      "collision_sq_tests": 1
     },
     {
       "weight": 20,
       "ell": 617,
-      "total_candidates": 2023028,
-      "survived_first": 2,
+      "total_candidates": 2023368,
+      "survived_first": 3,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
-      "collision_tests": 2,
+      "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 63
+      "collision_sq_tests": 1
     },
     {
       "weight": 22,
       "ell": 131,
-      "total_candidates": 863972,
+      "total_candidates": 864312,
       "survived_first": 6629,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 6
+      "collision_sq_tests": 1
     },
     {
       "weight": 22,
       "ell": 593,
-      "total_candidates": 2022999,
+      "total_candidates": 2023339,
       "survived_first": 3383,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
-      "collision_tests": 2,
+      "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 51
+      "collision_sq_tests": 1
     }
   ],
-  "total_candidates_tested": 13048101,
-  "total_wall_seconds": 1.441966666,
-  "candidates_per_second": 9048822.908087946,
-  "num_semiprimes": 20000,
+  "total_candidates_tested": 13050481,
+  "total_wall_seconds": 1.966170917,
+  "candidates_per_second": 6637510.954496536,
+  "num_semiprimes": 200000,
   "breakthrough": false
 }
