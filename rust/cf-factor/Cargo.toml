@@ -1,0 +1,11 @@
+[package]
+name = "cf-factor"
+version = "0.1.0"
+edition = "2021"
+description = "Integer factoring via continued fractions and quadratic forms"
+
+[dependencies]
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }

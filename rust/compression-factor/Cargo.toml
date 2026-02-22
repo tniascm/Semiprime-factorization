@@ -1,0 +1,17 @@
+[package]
+name = "compression-factor"
+version = "0.1.0"
+edition = "2021"
+description = "Compression-based structure detection in semiprimes (LZ77, BWT, entropy analysis)"
+
+[dependencies]
+factoring-core = { path = "../factoring-core" }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rayon = { workspace = true }
+rand = { workspace = true }
+
+[[bin]]
+name = "compression-factor"
+path = "src/main.rs"

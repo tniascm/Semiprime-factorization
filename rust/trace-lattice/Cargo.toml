@@ -1,0 +1,11 @@
+[package]
+name = "trace-lattice"
+version = "0.1.0"
+edition = "2021"
+description = "Factoring via Hecke trace formula constraints and lattice reduction"
+
+[dependencies]
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }

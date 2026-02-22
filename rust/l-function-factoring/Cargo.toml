@@ -1,0 +1,11 @@
+[package]
+name = "l-function-factoring"
+version = "0.1.0"
+edition = "2021"
+description = "Factoring via Dirichlet L-function conductor detection and class number formula"
+
+[dependencies]
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }

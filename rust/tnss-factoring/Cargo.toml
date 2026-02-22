@@ -1,0 +1,12 @@
+[package]
+name = "tnss-factoring"
+version = "0.1.0"
+edition = "2021"
+description = "Tensor Network Schnorr Sieving for integer factorization"
+
+[dependencies]
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rayon = { workspace = true }
+rand = { workspace = true }

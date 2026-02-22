@@ -1,0 +1,15 @@
+[package]
+name = "spectral-factoring"
+version = "0.1.0"
+edition = "2021"
+description = "Spectral factoring via Hecke eigenvalue decomposition of modular forms"
+
+[dependencies]
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }
+
+[[bin]]
+name = "spectral-factoring"
+path = "src/main.rs"

@@ -1,0 +1,39 @@
+[package]
+name = "benchmarks"
+version = "0.1.0"
+edition = "2021"
+description = "Comparative benchmarking suite across all factorization methods"
+
+[dependencies]
+factoring-core = { path = "../factoring-core" }
+ecm = { path = "../ecm" }
+classical-nfs = { path = "../classical-nfs" }
+lattice-reduction = { path = "../lattice-reduction" }
+ising-factoring = { path = "../ising-factoring" }
+compression-factor = { path = "../compression-factor" }
+multi-base = { path = "../multi-base" }
+quantum-inspired = { path = "../quantum-inspired" }
+group-structure = { path = "../group-structure" }
+mla-number-theory = { path = "../mla-number-theory" }
+alpha-evolve = { path = "../alpha-evolve" }
+ssd-factoring = { path = "../ssd-factoring" }
+tnss-factoring = { path = "../tnss-factoring" }
+l-function-factoring = { path = "../l-function-factoring" }
+class-number-oracle = { path = "../class-number-oracle" }
+trace-lattice = { path = "../trace-lattice" }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rayon = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "factoring"
+harness = false
+
+[[bin]]
+name = "scaling-benchmark"
+path = "src/scaling.rs"

@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "factoring-core",
+    "classical-nfs",
+    "ecm",
+    "lattice-reduction",
+    "quantum-inspired",
+    "ising-factoring",
+    "ai-guided",
+    "compression-factor",
+    "group-structure",
+    "mla-number-theory",
+    "multi-base",
+    "benchmarks",
+    "alpha-evolve",
+    "ssd-factoring",
+    "tnss-factoring",
+    "spectral-factoring",
+    "l-function-factoring",
+    "class-number-oracle",
+    "trace-lattice",
+    "cf-factor",
+]
+
+[workspace.dependencies]
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
+num-prime = "0.4"
+rayon = "1.10"
+rand = "0.8"
+criterion = { version = "0.5", features = ["html_reports"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
