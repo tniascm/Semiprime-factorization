@@ -1,0 +1,15 @@
+[package]
+name = "eisenstein-hunt"
+version = "0.1.0"
+edition = "2021"
+description = "Exhaustive poly(log N) candidate search against Eisenstein congruence targets"
+
+[dependencies]
+rayon = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "eisenstein-hunt"
+path = "src/main.rs"

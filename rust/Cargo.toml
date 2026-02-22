@@ -21,6 +21,7 @@ members = [
     "class-number-oracle",
     "trace-lattice",
     "cf-factor",
+    "eisenstein-hunt",
 ]
 
 [workspace.dependencies]
