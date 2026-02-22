@@ -34,13 +34,14 @@ Quadratic Residuosity Assumption (QRA).
 E14-E17 were brainstorm gap experiments (nonlinear ML, class numbers, partial
 sums, carry scaleup). All failed the poly(log N) gate and were removed.
 
-### Rust Experiments (E1-E3)
+### Rust Experiments (E1-E3, E19)
 
 | Experiment | What it tests | Key finding |
 |-----------|--------------|-------------|
 | **E1** | Group-theoretic structure of (Z/NZ)* | Smooth-order factoring requires O(sqrt(N)) samples; no poly(log N) shortcut |
 | **E2** | ML feature extraction + latent space | KNN/autoencoder features are CRT observables; prediction requires labeled data (circular) |
 | **E3** | Multi-base representations + SSD linearization | Cross-base anomaly z-scores insignificant; all linearizations >= O(sqrt(N)) |
+| **E19** | Eisenstein congruence indirect evaluation | 231K poly(log N) candidates tested; 0 match σ_{k-1}(N) mod ℓ; gate closed |
 
 ### Bonus: Non-Poly(log N) Implementations
 
@@ -82,7 +83,8 @@ E11_feature_extraction/     # 111-feature ML sweep
 E12_carry_depth/            # Deep carry compositions
 E13_bach_charles/           # Eisenstein congruence channel
 E18_algebraic_channels/     # Algebraic extensions
-rust/                       # Rust workspace (19 crates, ~38K LOC)
+E19_eisenstein_hunt/        # Eisenstein indirect evaluation hunt (Rust)
+rust/                       # Rust workspace (20 crates, ~40K LOC)
   factoring-core/           # Shared library (BigUint utils, RSA gen, Pollard Rho)
   BONUS.md                  # Non-poly(log N) experiment documentation
 utils/                      # Shared SageMath utilities (semiprime gen, encoding, spectral)
