@@ -1,1 +1,8 @@
 *.sage.py
+
+# Rust build artifacts
+rust/target/
+**/target/
+
+# OS
+.DS_Store
