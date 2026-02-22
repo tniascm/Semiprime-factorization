@@ -1,0 +1,79 @@
+{
+  "channels": [
+    {
+      "weight": 12,
+      "ell": 691,
+      "total_candidates": 33075,
+      "survived_first": 54,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1
+    },
+    {
+      "weight": 16,
+      "ell": 3617,
+      "total_candidates": 33379,
+      "survived_first": 10,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1
+    },
+    {
+      "weight": 18,
+      "ell": 43867,
+      "total_candidates": 33382,
+      "survived_first": 1,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 26
+    },
+    {
+      "weight": 20,
+      "ell": 283,
+      "total_candidates": 32664,
+      "survived_first": 112,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1
+    },
+    {
+      "weight": 20,
+      "ell": 617,
+      "total_candidates": 32998,
+      "survived_first": 55,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1
+    },
+    {
+      "weight": 22,
+      "ell": 131,
+      "total_candidates": 32512,
+      "survived_first": 10,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1
+    },
+    {
+      "weight": 22,
+      "ell": 593,
+      "total_candidates": 32971,
+      "survived_first": 56,
+      "survived_all": 0,
+      "survivors": [],
+      "collision_consistent": false,
+      "collision_tests": 1
+    }
+  ],
+  "total_candidates_tested": 230981,
+  "total_wall_seconds": 0.047836167,
+  "candidates_per_second": 4828585.032743113,
+  "num_semiprimes": 5000,
+  "breakthrough": false
+}
