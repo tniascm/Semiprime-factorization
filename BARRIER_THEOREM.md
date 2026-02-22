@@ -350,7 +350,13 @@ at factor frequencies — contradicting spectral flatness.
 - Ring + Jacobi circuits of depth d produce rank ≤ 3^d functions (Theorem 3)
 - For constant-depth circuits: spectral flatness is proven
 
-**Empirically confirmed (section 4, E10+E11+E12+E18):**
+**Empirically confirmed (section 4, E1-E3+E10+E11+E12+E18):**
+- Group-theoretic analysis: smooth-order factoring via Pohlig-Hellman and Carmichael
+  function approximation requires O(sqrt(N)) element samples (E1)
+- ML feature extraction: KNN and autoencoder features are CRT observables; prediction
+  requires labeled data (factored semiprimes), making the approach circular (E2)
+- Multi-base representations: cross-base anomaly z-scores insignificant; SSD
+  linearizations (binary lift, NTT domain, CRT parallel) all >= O(sqrt(N)) (E3)
 - Integer-carry operations produce high CRT rank but still spectrally flat DFT (E10)
 - 111-feature ridge regression over ALL poly(log N) features: R²_CV ≤ 0.025 for
   all hinge scalars, random controls match real features (E11)
