@@ -433,6 +433,53 @@ pub fn gauss_sum_algebraic(a: u64, ell: u64) -> u64 {
     sum as u64
 }
 
+/// Population count (number of 1-bits) of n.
+pub fn popcount(n: u64) -> u64 {
+    n.count_ones() as u64
+}
+
+/// Digital root (iterated digit sum) in given base.
+pub fn digit_sum(mut n: u64, base: u64) -> u64 {
+    let mut sum = 0u64;
+    while n > 0 {
+        sum += n % base;
+        n /= base;
+    }
+    sum
+}
+
+/// XOR-fold: XOR all `width`-bit chunks of n together.
+pub fn xor_fold(mut n: u64, width: u32) -> u64 {
+    let mask = (1u64 << width) - 1;
+    let mut result = 0u64;
+    while n > 0 {
+        result ^= n & mask;
+        n >>= width;
+    }
+    result
+}
+
+/// Byte-level checksum: sum of all bytes of n.
+pub fn byte_sum(n: u64) -> u64 {
+    let bytes = n.to_le_bytes();
+    bytes.iter().map(|&b| b as u64).sum()
+}
+
+/// Alternating bit sum: Σ (-1)^i * bit_i(n), returned mod m.
+pub fn alternating_bit_sum(n: u64, m: u64) -> u64 {
+    let mut sum = 0i64;
+    for i in 0..64 {
+        if (n >> i) & 1 == 1 {
+            if i % 2 == 0 {
+                sum += 1;
+            } else {
+                sum -= 1;
+            }
+        }
+    }
+    ((sum % m as i64) + m as i64) as u64 % m
+}
+
 /// Continued fraction convergents of a/b. Returns up to `max_terms` pairs (h_i, k_i).
 pub fn cf_convergents(a: u64, b: u64, max_terms: usize) -> Vec<(u64, u64)> {
     let mut convergents = Vec::new();
@@ -638,5 +685,49 @@ mod tests {
         assert_eq!(convs[0], (3, 1));
         assert_eq!(convs[1], (22, 7));
         assert_eq!(convs[2], (355, 113));
+    }
+
+    #[test]
+    fn test_popcount() {
+        assert_eq!(popcount(0), 0);
+        assert_eq!(popcount(1), 1);
+        assert_eq!(popcount(0b1010_1010), 4);
+        assert_eq!(popcount(u64::MAX), 64);
+        assert_eq!(popcount(255), 8);
+    }
+
+    #[test]
+    fn test_digit_sum() {
+        assert_eq!(digit_sum(123, 10), 6); // 1+2+3
+        assert_eq!(digit_sum(0b1111, 2), 4); // 4 ones
+        assert_eq!(digit_sum(256, 16), 1 + 0 + 0); // 0x100
+        assert_eq!(digit_sum(0, 10), 0);
+    }
+
+    #[test]
+    fn test_xor_fold() {
+        // 0xFF00 XOR-folded at 8 bits: 0xFF ^ 0x00 = 0xFF
+        assert_eq!(xor_fold(0xFF00, 8), 0xFF);
+        // 0xAA XOR-folded at 4 bits: 0xA ^ 0xA = 0
+        assert_eq!(xor_fold(0xAA, 4), 0);
+        // 0xAB at 4 bits: 0xA ^ 0xB = 0x1
+        assert_eq!(xor_fold(0xAB, 4), 1);
+    }
+
+    #[test]
+    fn test_byte_sum() {
+        assert_eq!(byte_sum(0), 0);
+        assert_eq!(byte_sum(0x01020304), 1 + 2 + 3 + 4);
+        assert_eq!(byte_sum(0xFF), 255);
+    }
+
+    #[test]
+    fn test_alternating_bit_sum() {
+        // 0b101 = bit0=1(+), bit1=0, bit2=1(+) -> +1+1 = 2
+        assert_eq!(alternating_bit_sum(0b101, 691), 2);
+        // 0b110 = bit0=0, bit1=1(-), bit2=1(+) -> -1+1 = 0
+        assert_eq!(alternating_bit_sum(0b110, 691), 0);
+        // 0b11 = bit0=1(+), bit1=1(-) -> 1-1 = 0
+        assert_eq!(alternating_bit_sum(0b11, 691), 0);
     }
 }

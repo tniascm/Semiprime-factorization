@@ -13,6 +13,16 @@ pub struct Candidate {
     pub kind: CandidateKind,
 }
 
+/// Which bit-pattern primitive to use in compositions.
+#[derive(Clone, Copy)]
+pub enum BitPatternKind {
+    Popcount,
+    DigitSum2,
+    DigitSum10,
+    XorFold8,
+    ByteSum,
+}
+
 /// Enum-based dispatch avoids heap allocation per candidate.
 #[derive(Clone)]
 pub enum CandidateKind {
@@ -52,6 +62,18 @@ pub enum CandidateKind {
     OrderTimesPower { exponent: u64 },
     /// N^a mod ℓ² (full lift, not just quotient)
     PowerResidueLift { exponent: u64 },
+    /// popcount(N) mod ℓ, optionally raised to a power
+    Popcount { exponent: u64 },
+    /// Digit sum of N in given base, mod ℓ
+    DigitSum { base: u64, exponent: u64 },
+    /// XOR-fold of N at given bit width, mod ℓ
+    XorFold { width: u32, exponent: u64 },
+    /// Byte sum of N, mod ℓ
+    ByteSum { exponent: u64 },
+    /// Alternating bit sum of N, mod ℓ
+    AlternatingBitSum { exponent: u64 },
+    /// Composition: bit-pattern function * power residue mod ℓ
+    BitTimesPower { bit_kind: BitPatternKind, power_exp: u64 },
 }
 
 /// Evaluate a candidate on (n, ell).
@@ -165,6 +187,37 @@ pub fn eval(kind: &CandidateKind, n: u64, ell: u64) -> u64 {
             let val = arith::mod_pow(n % ell_sq, *exponent, ell_sq);
             (val / ell) % ell
         }
+        CandidateKind::Popcount { exponent } => {
+            let pc = arith::popcount(n);
+            arith::mod_pow(pc % ell, *exponent, ell)
+        }
+        CandidateKind::DigitSum { base, exponent } => {
+            let ds = arith::digit_sum(n, *base);
+            arith::mod_pow(ds % ell, *exponent, ell)
+        }
+        CandidateKind::XorFold { width, exponent } => {
+            let xf = arith::xor_fold(n, *width);
+            arith::mod_pow(xf % ell, *exponent, ell)
+        }
+        CandidateKind::ByteSum { exponent } => {
+            let bs = arith::byte_sum(n);
+            arith::mod_pow(bs % ell, *exponent, ell)
+        }
+        CandidateKind::AlternatingBitSum { exponent } => {
+            let abs = arith::alternating_bit_sum(n, ell);
+            arith::mod_pow(abs, *exponent, ell)
+        }
+        CandidateKind::BitTimesPower { bit_kind, power_exp } => {
+            let bit_val = match bit_kind {
+                BitPatternKind::Popcount => arith::popcount(n) % ell,
+                BitPatternKind::DigitSum2 => arith::digit_sum(n, 2) % ell,
+                BitPatternKind::DigitSum10 => arith::digit_sum(n, 10) % ell,
+                BitPatternKind::XorFold8 => arith::xor_fold(n, 8) % ell,
+                BitPatternKind::ByteSum => arith::byte_sum(n) % ell,
+            };
+            let pw = arith::mod_pow(n % ell, *power_exp, ell);
+            (bit_val as u128 * pw as u128 % ell as u128) as u64
+        }
     }
 }
 
@@ -186,6 +239,7 @@ pub fn generate_all(ell: u64) -> Vec<Candidate> {
     generate_linear_combo_lifts(ell, &mut cands);
     generate_order_compositions(ell, &mut cands);
     generate_power_residue_lifts(ell, &mut cands);
+    generate_bit_patterns(ell, &mut cands);
 
     cands
 }
@@ -472,6 +526,80 @@ fn generate_power_residue_lifts(ell: u64, out: &mut Vec<Candidate>) {
             name: format!("(N^{} mod {}^2)/{} mod {}", a, ell, ell, ell),
             kind: CandidateKind::PowerResidueLift { exponent: a },
         });
+    }
+}
+
+fn generate_bit_patterns(ell: u64, out: &mut Vec<Candidate>) {
+    let max_exp = 20u64.min(ell - 1);
+
+    // Popcount and powers
+    for a in 1..=max_exp {
+        out.push(Candidate {
+            family: "popcount",
+            name: format!("popcount(N)^{} mod {}", a, ell),
+            kind: CandidateKind::Popcount { exponent: a },
+        });
+    }
+
+    // Digit sums in bases 2, 3, 5, 7, 10, 16
+    let bases: &[u64] = &[2, 3, 5, 7, 10, 16];
+    for &base in bases {
+        for a in 1..=max_exp {
+            out.push(Candidate {
+                family: "digit_sum",
+                name: format!("digitsum_{}(N)^{} mod {}", base, a, ell),
+                kind: CandidateKind::DigitSum { base, exponent: a },
+            });
+        }
+    }
+
+    // XOR-fold at widths 4, 8, 16
+    let widths: &[u32] = &[4, 8, 16];
+    for &w in widths {
+        for a in 1..=max_exp {
+            out.push(Candidate {
+                family: "xor_fold",
+                name: format!("xorfold_{}_N^{} mod {}", w, a, ell),
+                kind: CandidateKind::XorFold { width: w, exponent: a },
+            });
+        }
+    }
+
+    // Byte sum and powers
+    for a in 1..=max_exp {
+        out.push(Candidate {
+            family: "byte_sum",
+            name: format!("bytesum(N)^{} mod {}", a, ell),
+            kind: CandidateKind::ByteSum { exponent: a },
+        });
+    }
+
+    // Alternating bit sum and powers
+    for a in 1..=max_exp {
+        out.push(Candidate {
+            family: "alt_bit_sum",
+            name: format!("altbitsum(N)^{} mod {}", a, ell),
+            kind: CandidateKind::AlternatingBitSum { exponent: a },
+        });
+    }
+
+    // Compositions: bit-pattern × power residue
+    let bit_kinds = [
+        (BitPatternKind::Popcount, "popcount"),
+        (BitPatternKind::DigitSum2, "ds2"),
+        (BitPatternKind::DigitSum10, "ds10"),
+        (BitPatternKind::XorFold8, "xor8"),
+        (BitPatternKind::ByteSum, "bsum"),
+    ];
+    let max_power = 20u64.min(ell - 1);
+    for &(kind, label) in &bit_kinds {
+        for a in 1..=max_power {
+            out.push(Candidate {
+                family: "bit_x_power",
+                name: format!("{}*N^{} mod {}", label, a, ell),
+                kind: CandidateKind::BitTimesPower { bit_kind: kind, power_exp: a },
+            });
+        }
     }
 }
 
