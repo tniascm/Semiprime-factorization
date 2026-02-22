@@ -49,10 +49,11 @@ pub fn ground_truth(sp: &Semiprime, ch: &Channel) -> u64 {
 }
 
 /// Generate balanced semiprimes with bit sizes in [min_bits, max_bits].
-/// Uses a fixed seed for reproducibility.
+/// Uses a fixed seed for reproducibility. Deduplicates by N value.
 pub fn generate_semiprimes(count: usize, min_bits: u32, max_bits: u32, seed: u64) -> Vec<Semiprime> {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut result = Vec::with_capacity(count);
+    let mut seen = std::collections::HashSet::with_capacity(count);
 
     while result.len() < count {
         let total_bits = rng.gen_range(min_bits..=max_bits);
@@ -80,8 +81,13 @@ pub fn generate_semiprimes(count: usize, min_bits: u32, max_bits: u32, seed: u64
             continue;
         }
 
+        let n64 = n as u64;
+        if !seen.insert(n64) {
+            continue; // skip duplicate N
+        }
+
         result.push(Semiprime {
-            n: n as u64,
+            n: n64,
             p: small,
             q: big,
         });

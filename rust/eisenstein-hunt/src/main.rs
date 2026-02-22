@@ -15,14 +15,20 @@ fn main() {
     let start = Instant::now();
 
     // Generate semiprimes: scale with ℓ² for birthday collision coverage
+    // Need sqrt(ℓ²) = ℓ semiprimes for mod-ℓ² birthday collisions
     let semiprimes_1k = generate_semiprimes(1000, 16, 32, 42);
     let semiprimes_5k = generate_semiprimes(5000, 16, 32, 137);
     let semiprimes_20k = generate_semiprimes(20000, 16, 32, 271);
+    // For ℓ=43867: ℓ²≈1.924B. Birthday bound for ~10 genuine mod-ℓ² collisions
+    // needs sqrt(20 * 1.924B) ≈ 196K samples. Use 200K with wider bit range
+    // (24-48 bit) to avoid small-prime pool exhaustion.
+    let semiprimes_200k = generate_semiprimes(200_000, 24, 48, 389);
     println!(
-        "Generated {} + {} + {} balanced semiprimes (16-32 bit)\n",
+        "Generated {} + {} + {} + {} balanced semiprimes\n",
         semiprimes_1k.len(),
         semiprimes_5k.len(),
-        semiprimes_20k.len()
+        semiprimes_20k.len(),
+        semiprimes_200k.len()
     );
 
     // Header
@@ -37,8 +43,10 @@ fn main() {
 
     for ch in CHANNELS {
         // Scale semiprimes with ℓ: need ℓ² collisions for mod-ℓ² check
-        // Birthday bound: need ~sqrt(ℓ²) = ℓ semiprimes for mod-ℓ² collisions
-        let semiprimes = if ch.ell > 3000 {
+        // Birthday bound: need ~sqrt(2·ℓ²·k) semiprimes for k mod-ℓ² collisions
+        let semiprimes = if ch.ell > 10000 {
+            &semiprimes_200k // ℓ=43867: ℓ²≈1.924B, 200K gives ~10 genuine collisions
+        } else if ch.ell > 3000 {
             &semiprimes_20k
         } else if ch.ell > 500 {
             &semiprimes_5k
@@ -90,7 +98,7 @@ fn main() {
 
     let elapsed = start.elapsed().as_secs_f64();
     let breakthrough = results.iter().any(|r| r.survived_all > 0);
-    let num_sp = semiprimes_20k.len();
+    let num_sp = semiprimes_200k.len();
 
     println!("\n{}", "=".repeat(72));
     println!("Total candidates tested: {}", total_tested);
