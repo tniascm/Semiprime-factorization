@@ -124,7 +124,7 @@ fn main() {
         total_candidates_tested: total_tested,
         total_wall_seconds: elapsed,
         candidates_per_second: total_tested as f64 / elapsed,
-        num_semiprimes: num_sp,
+        max_semiprimes: num_sp,
         breakthrough,
     };
 

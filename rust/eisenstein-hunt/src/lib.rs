@@ -210,6 +210,7 @@ pub struct AuxCollisionResult {
 pub struct ChannelResult {
     pub weight: u32,
     pub ell: u64,
+    pub num_semiprimes: usize,
     pub total_candidates: usize,
     pub survived_first: usize,
     pub survived_all: usize,
@@ -228,7 +229,7 @@ pub struct SearchResult {
     pub total_candidates_tested: usize,
     pub total_wall_seconds: f64,
     pub candidates_per_second: f64,
-    pub num_semiprimes: usize,
+    pub max_semiprimes: usize,
     pub breakthrough: bool,
 }
 
@@ -279,7 +280,7 @@ pub fn search_channel(
     // N mod (ℓ-1): tests all functions depending on multiplicative order structure
     let (c, t) = check_collision_aux(semiprimes, targets, ch.ell - 1);
     aux_collisions.push(AuxCollisionResult {
-        label: format!("N mod (ℓ-1={}))", ch.ell - 1),
+        label: format!("N mod (ℓ-1={})", ch.ell - 1),
         modulus: ch.ell - 1,
         consistent: c,
         collisions_tested: t,
@@ -290,6 +291,24 @@ pub fn search_channel(
     aux_collisions.push(AuxCollisionResult {
         label: format!("N mod (ℓ+1={})", ch.ell + 1),
         modulus: ch.ell + 1,
+        consistent: c,
+        collisions_tested: t,
+    });
+
+    // N mod 2(ℓ-1): Lucas sequences with QR discriminant have period | 2(ℓ-1)
+    let (c, t) = check_collision_aux(semiprimes, targets, 2 * (ch.ell - 1));
+    aux_collisions.push(AuxCollisionResult {
+        label: format!("N mod 2(ℓ-1)={}", 2 * (ch.ell - 1)),
+        modulus: 2 * (ch.ell - 1),
+        consistent: c,
+        collisions_tested: t,
+    });
+
+    // N mod 2(ℓ+1): Lucas sequences with QNR discriminant have period | 2(ℓ+1)
+    let (c, t) = check_collision_aux(semiprimes, targets, 2 * (ch.ell + 1));
+    aux_collisions.push(AuxCollisionResult {
+        label: format!("N mod 2(ℓ+1)={}", 2 * (ch.ell + 1)),
+        modulus: 2 * (ch.ell + 1),
         consistent: c,
         collisions_tested: t,
     });
@@ -316,6 +335,7 @@ pub fn search_channel(
     ChannelResult {
         weight: ch.weight,
         ell: ch.ell,
+        num_semiprimes: semiprimes.len(),
         total_candidates: total,
         survived_first,
         survived_all,
