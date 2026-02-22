@@ -350,11 +350,15 @@ at factor frequencies — contradicting spectral flatness.
 - Ring + Jacobi circuits of depth d produce rank ≤ 3^d functions (Theorem 3)
 - For constant-depth circuits: spectral flatness is proven
 
-**Empirically confirmed (section 4, E10+E11):**
+**Empirically confirmed (section 4, E10+E11+E12+E18):**
 - Integer-carry operations produce high CRT rank but still spectrally flat DFT (E10)
 - 111-feature ridge regression over ALL poly(log N) features: R²_CV ≤ 0.025 for
   all hinge scalars, random controls match real features (E11)
-- The barrier extends to the full RJI(N) model
+- Deep carry compositions (depth d ≈ log₂ N) make spectra FLATTER, not sharper (E12)
+- 6 algebraic extensions (Lucas sequences, quadratic/cubic Frobenius, Solovay-Strassen
+  witnesses, failed modular sqrt, higher power residues k=3..8) all dead: |r| < 0.15,
+  GCD hits sporadic and decay with N (E18)
+- The barrier extends to the full RJI(N) model AND its algebraic extensions
 
 **Connected to cryptography (section 5):**
 - Spectral flatness → S_D(N) hard → QRP hard → factoring hard (for Blum integers)
@@ -367,6 +371,11 @@ at factor frequencies — contradicting spectral flatness.
 - All sub-exponential approaches (H_D, Heegner, class fields) require O(sqrt(N)), not poly(log N)
 - The one poly(log N) tool (Edixhoven-Couveignes) requires fixed level + prime index
 - No Langlands construction provides a global shortcut avoiding local decomposition
+
+**Information vs computation (E13):**
+- Eisenstein congruence channels provide 63+ bits of factor information
+- But evaluation cost is O(N); Bach-Charles proves poly(log N) evaluation ≡ factoring
+- The barrier is computational, not information-theoretic
 
 **What would break the barrier:**
 - A poly(log N)-computable function with DFT peak ≫ N^{-1/2} at factor frequencies
@@ -832,3 +841,63 @@ The factoring barrier has a clean decomposition:
 
 The barrier resides entirely in step 3. Any breakthrough must provide
 a new evaluation primitive — not more information or better inversion.
+
+---
+
+## 14. E18: Algebraic Extensions of Z/NZ
+
+### 14.1 Motivation
+
+Experiments E5-E13 tested observables computed within Z/NZ (ring arithmetic,
+Jacobi symbols, integer carries, modular exponentiation). E18 tests whether
+working in algebraic EXTENSIONS of Z/NZ — polynomial quotient rings
+(Z/NZ)[x]/(f(x)) — reveals factor information invisible in the base ring.
+
+### 14.2 Six Channels Tested
+
+| Channel | Observable | Algebraic structure |
+|---------|-----------|-------------------|
+| Lucas V_N(a,1) | Binary ladder in Z/NZ | Degree-2 recurrence (Chebyshev-like) |
+| Quadratic Frobenius | x^N mod (N, x²-bx+1) | (Z/NZ)[x]/(x²-bx+1) |
+| Solovay-Strassen | g^((N-1)/2) - J(g,N) mod N | Euler witness DIFFERENCE |
+| Cubic Frobenius | x^N mod (N, x³-c) | (Z/NZ)[x]/(x³-c) |
+| Failed modular sqrt | a^((N+1)/4) for N≡3 mod 4 | Tonelli-Shanks mismatch |
+| Higher power residues | g^((N-1)/k) for k=3..8 | k-th power residue symbols |
+
+All are O(poly(log N)) per semiprime.
+
+### 14.3 Results (400 balanced semiprimes, 20-28 bit)
+
+| Channel | Best |r| vs hinge | GCD hits | Verdict |
+|---------|:---:|:---:|---------|
+| Lucas V_N | 0.104 | 11/400 | DEAD (smooth p±1) |
+| Quad Frobenius | 0.133 | 7/400 | DEAD (Jacobi/CRT mechanism) |
+| Solovay-Strassen | 0.144 | 6/400 | DEAD (Euler witnesses) |
+| Cubic Frobenius | 0.123 | 0 | DEAD |
+| Failed sqrt | 0.104 | 0 | DEAD |
+| Higher power | 0.123 | 5/400 | DEAD (smooth p±1) |
+
+All correlations below 0.15 threshold. GCD hits concentrated at small N
+(14 at 20-bit, 1 at 28-bit) and trace to known mechanisms:
+
+- **Lucas/Higher power:** Williams p+1 / Pollard p-1 mechanism (smooth p±1)
+- **Quadratic Frobenius:** J(b²-4, N) = -1 filter guarantees J(disc,p) ≠ J(disc,q),
+  so Frobenius deviation sometimes splits N — this IS the Jacobi/CRT mechanism
+- **Solovay-Strassen:** Euler witness GCD splitting — known primality test artifact
+
+### 14.4 Why Algebraic Extensions Don't Help
+
+Working in (Z/NZ)[x]/(f(x)) does not escape the CRT obstruction because:
+
+    (Z/NZ)[x]/(f(x)) ≅ (Z/pZ)[x]/(f(x)) × (Z/qZ)[x]/(f(x))
+
+The CRT decomposition lifts to polynomial quotient rings. The Frobenius
+endomorphism x ↦ x^N acts independently mod p and mod q, so its deviation
+from prime behavior is a CRT-separable quantity — exactly the same
+structure that produces flat spectra in the base ring.
+
+### 14.5 Implication
+
+The spectral flatness barrier extends to algebraic extensions of Z/NZ.
+Combined with the base-ring results (E5-E13), this closes the last
+tested algebraic channel for poly(log N) factoring.
