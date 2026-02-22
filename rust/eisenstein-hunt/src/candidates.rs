@@ -74,6 +74,12 @@ pub enum CandidateKind {
     AlternatingBitSum { exponent: u64 },
     /// Composition: bit-pattern function * power residue mod ℓ
     BitTimesPower { bit_kind: BitPatternKind, power_exp: u64 },
+    /// Auxiliary power residue: (N mod aux_mod)^exponent mod ℓ
+    /// Tests functions depending on N through a different modulus (e.g., ℓ-1)
+    AuxPowerResidue { aux_mod: u64, exponent: u64 },
+    /// Mixed modulus combo: (N mod ℓ)^exp1 * (N mod aux_mod)^exp2 mod ℓ
+    /// Mixes primary and auxiliary modular residues
+    MixedModCombo { exp1: u64, exp2: u64, aux_mod: u64 },
 }
 
 /// Evaluate a candidate on (n, ell).
@@ -218,6 +224,15 @@ pub fn eval(kind: &CandidateKind, n: u64, ell: u64) -> u64 {
             let pw = arith::mod_pow(n % ell, *power_exp, ell);
             (bit_val as u128 * pw as u128 % ell as u128) as u64
         }
+        CandidateKind::AuxPowerResidue { aux_mod, exponent } => {
+            let n_aux = n % *aux_mod;
+            arith::mod_pow(n_aux % ell, *exponent, ell)
+        }
+        CandidateKind::MixedModCombo { exp1, exp2, aux_mod } => {
+            let v1 = arith::mod_pow(n % ell, *exp1, ell);
+            let v2 = arith::mod_pow((n % *aux_mod) % ell, *exp2, ell);
+            (v1 as u128 * v2 as u128 % ell as u128) as u64
+        }
     }
 }
 
@@ -240,6 +255,7 @@ pub fn generate_all(ell: u64) -> Vec<Candidate> {
     generate_order_compositions(ell, &mut cands);
     generate_power_residue_lifts(ell, &mut cands);
     generate_bit_patterns(ell, &mut cands);
+    generate_aux_candidates(ell, &mut cands);
 
     cands
 }
@@ -599,6 +615,38 @@ fn generate_bit_patterns(ell: u64, out: &mut Vec<Candidate>) {
                 name: format!("{}*N^{} mod {}", label, a, ell),
                 kind: CandidateKind::BitTimesPower { bit_kind: kind, power_exp: a },
             });
+        }
+    }
+}
+
+fn generate_aux_candidates(ell: u64, out: &mut Vec<Candidate>) {
+    // Auxiliary moduli: ℓ-1, ℓ+1 — these are NOT covered by the N mod ℓ collision check
+    let aux_moduli: Vec<(u64, &str)> = vec![
+        (ell - 1, "ℓ-1"),
+        (ell + 1, "ℓ+1"),
+    ];
+    let max_exp = 50u64.min(ell - 1);
+
+    for &(aux_mod, label) in &aux_moduli {
+        // Auxiliary power residues: (N mod aux_mod)^a mod ℓ
+        for a in 1..=max_exp {
+            out.push(Candidate {
+                family: "aux_power",
+                name: format!("(N mod {})^{} mod {}", label, a, ell),
+                kind: CandidateKind::AuxPowerResidue { aux_mod, exponent: a },
+            });
+        }
+
+        // Mixed modulus combos: (N mod ℓ)^a * (N mod aux_mod)^b mod ℓ
+        let max_mixed = 20u64.min(ell - 1);
+        for a in 1..=max_mixed {
+            for b in 1..=max_mixed {
+                out.push(Candidate {
+                    family: "mixed_mod",
+                    name: format!("N^{}*(N mod {})^{} mod {}", a, label, b, ell),
+                    kind: CandidateKind::MixedModCombo { exp1: a, exp2: b, aux_mod },
+                });
+            }
         }
     }
 }
