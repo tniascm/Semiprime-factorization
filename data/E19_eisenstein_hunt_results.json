@@ -3,6 +3,7 @@
     {
       "weight": 12,
       "ell": 691,
+      "num_semiprimes": 5000,
       "total_candidates": 2024347,
       "survived_first": 2954,
       "survived_all": 0,
@@ -13,7 +14,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=690))",
+          "label": "N mod (ℓ-1=690)",
           "modulus": 690,
           "consistent": false,
           "collisions_tested": 1
@@ -21,6 +22,18 @@
         {
           "label": "N mod (ℓ+1=692)",
           "modulus": 692,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=1380",
+          "modulus": 1380,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=1384",
+          "modulus": 1384,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -41,6 +54,7 @@
     {
       "weight": 16,
       "ell": 3617,
+      "num_semiprimes": 20000,
       "total_candidates": 2027263,
       "survived_first": 562,
       "survived_all": 0,
@@ -51,7 +65,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=3616))",
+          "label": "N mod (ℓ-1=3616)",
           "modulus": 3616,
           "consistent": false,
           "collisions_tested": 1
@@ -59,6 +73,18 @@
         {
           "label": "N mod (ℓ+1=3618)",
           "modulus": 3618,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=7232",
+          "modulus": 7232,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=7236",
+          "modulus": 7236,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -79,6 +105,7 @@
     {
       "weight": 18,
       "ell": 43867,
+      "num_semiprimes": 200000,
       "total_candidates": 2067518,
       "survived_first": 55,
       "survived_all": 0,
@@ -89,7 +116,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=43866))",
+          "label": "N mod (ℓ-1=43866)",
           "modulus": 43866,
           "consistent": false,
           "collisions_tested": 1
@@ -97,6 +124,18 @@
         {
           "label": "N mod (ℓ+1=43868)",
           "modulus": 43868,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=87732",
+          "modulus": 87732,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=87736",
+          "modulus": 87736,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -117,6 +156,7 @@
     {
       "weight": 20,
       "ell": 283,
+      "num_semiprimes": 1000,
       "total_candidates": 2023934,
       "survived_first": 7147,
       "survived_all": 0,
@@ -127,7 +167,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=282))",
+          "label": "N mod (ℓ-1=282)",
           "modulus": 282,
           "consistent": false,
           "collisions_tested": 1
@@ -135,6 +175,18 @@
         {
           "label": "N mod (ℓ+1=284)",
           "modulus": 284,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=564",
+          "modulus": 564,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=568",
+          "modulus": 568,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -155,6 +207,7 @@
     {
       "weight": 20,
       "ell": 617,
+      "num_semiprimes": 5000,
       "total_candidates": 2024268,
       "survived_first": 3,
       "survived_all": 0,
@@ -165,7 +218,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=616))",
+          "label": "N mod (ℓ-1=616)",
           "modulus": 616,
           "consistent": false,
           "collisions_tested": 1
@@ -173,6 +226,18 @@
         {
           "label": "N mod (ℓ+1=618)",
           "modulus": 618,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=1232",
+          "modulus": 1232,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=1236",
+          "modulus": 1236,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -193,6 +258,7 @@
     {
       "weight": 22,
       "ell": 131,
+      "num_semiprimes": 1000,
       "total_candidates": 865212,
       "survived_first": 6629,
       "survived_all": 0,
@@ -203,7 +269,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=130))",
+          "label": "N mod (ℓ-1=130)",
           "modulus": 130,
           "consistent": false,
           "collisions_tested": 1
@@ -211,6 +277,18 @@
         {
           "label": "N mod (ℓ+1=132)",
           "modulus": 132,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=260",
+          "modulus": 260,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=264",
+          "modulus": 264,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -231,6 +309,7 @@
     {
       "weight": 22,
       "ell": 593,
+      "num_semiprimes": 5000,
       "total_candidates": 2024239,
       "survived_first": 3384,
       "survived_all": 0,
@@ -241,7 +320,7 @@
       "collision_sq_tests": 1,
       "aux_collisions": [
         {
-          "label": "N mod (ℓ-1=592))",
+          "label": "N mod (ℓ-1=592)",
           "modulus": 592,
           "consistent": false,
           "collisions_tested": 1
@@ -249,6 +328,18 @@
         {
           "label": "N mod (ℓ+1=594)",
           "modulus": 594,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ-1)=1184",
+          "modulus": 1184,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2(ℓ+1)=1188",
+          "modulus": 1188,
           "consistent": false,
           "collisions_tested": 1
         },
@@ -268,8 +359,8 @@
     }
   ],
   "total_candidates_tested": 13056781,
-  "total_wall_seconds": 2.006639541,
-  "candidates_per_second": 6506789.452326455,
-  "num_semiprimes": 200000,
+  "total_wall_seconds": 2.00661575,
+  "candidates_per_second": 6506866.598649991,
+  "max_semiprimes": 200000,
   "breakthrough": false
 }

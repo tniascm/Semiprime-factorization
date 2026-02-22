@@ -61,7 +61,7 @@ checks. All semiprimes are deduplicated by N value.
 
 ### Collision Checks
 
-Six data-driven consistency tests subsume entire function families:
+Eight data-driven consistency tests subsume entire function families:
 
 **Primary (from N mod ℓ^k):**
 - **N mod ℓ**: Is σ_{k-1}(N) mod ℓ a function of (N mod ℓ) alone?
@@ -70,11 +70,13 @@ Six data-driven consistency tests subsume entire function families:
 **Auxiliary modulus (genuinely different residue classes):**
 - **N mod (ℓ-1)**: Tests all functions depending on multiplicative order structure
 - **N mod (ℓ+1)**: Tests Frobenius trace analog
+- **N mod 2(ℓ-1)**: Closes Lucas sequences with QR discriminant (period | 2(ℓ-1))
+- **N mod 2(ℓ+1)**: Closes Lucas sequences with QNR discriminant (period | 2(ℓ+1))
 - **N mod 2ℓ**: Tests parity combined with mod-ℓ residue
 - **(N mod ℓ, N mod (ℓ-1)) joint**: Strongest single-channel test — by CRT
   (gcd(ℓ, ℓ-1) = 1), covers ALL functions of N mod ℓ(ℓ-1)
 
-All six fail at n(1) for all 7 channels. The very first genuine collision
+All eight fail at n(1) for all 7 channels. The very first genuine collision
 is inconsistent in every case — decisive failure.
 
 ### Fail-Fast Strategy
@@ -87,17 +89,17 @@ candidates. Average evaluations per candidate: ~1.0.
 ## Key Finding
 
 **All 13,056,781 candidates eliminated across all 7 channels. Zero survivors.**
-**All 42 auxiliary collision checks inconsistent at first collision.**
+**All 56 auxiliary collision checks inconsistent at first collision.**
 
-| k | ℓ | col_ℓ | col_ℓ² | col_{ℓ-1} | col_{ℓ+1} | col_{2ℓ} | col_joint | Candidates | Surv All |
-|---|---|-------|--------|-----------|-----------|----------|-----------|------------|----------|
-| 12 | 691 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,347 | 0 |
-| 16 | 3,617 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,027,263 | 0 |
-| 18 | 43,867 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,067,518 | 0 |
-| 20 | 283 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,023,934 | 0 |
-| 20 | 617 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,268 | 0 |
-| 22 | 131 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 865,212 | 0 |
-| 22 | 593 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,239 | 0 |
+| k | ℓ | Semiprimes | col_ℓ | col_ℓ² | col_{ℓ-1} | col_{ℓ+1} | col_{2(ℓ-1)} | col_{2(ℓ+1)} | col_{2ℓ} | col_joint | Candidates | Surv |
+|---|---|-----------|-------|--------|-----------|-----------|-------------|-------------|----------|-----------|------------|------|
+| 12 | 691 | 5K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,347 | 0 |
+| 16 | 3,617 | 20K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,027,263 | 0 |
+| 18 | 43,867 | 200K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,067,518 | 0 |
+| 20 | 283 | 1K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,023,934 | 0 |
+| 20 | 617 | 5K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,268 | 0 |
+| 22 | 131 | 1K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 865,212 | 0 |
+| 22 | 593 | 5K | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,239 | 0 |
 
 All `n(1)` means the very first genuine collision was inconsistent.
 
@@ -115,6 +117,14 @@ of N mod ℓ(ℓ-1). This subsumes:
 
 The N mod (ℓ+1) check independently closes the Frobenius trace channel.
 
+The N mod 2(ℓ-1) and N mod 2(ℓ+1) checks close the **Lucas period gap**:
+Lucas sequences U_N(P,Q) and V_N(P,Q) mod ℓ have periods dividing 2(ℓ-1)
+(when discriminant P²-4Q is a QR mod ℓ) or 2(ℓ+1) (when QNR). The
+factor of 2 means the N mod (ℓ±1) checks alone don't fully cover them.
+With both 2(ℓ-1) and 2(ℓ+1) checked, ALL Lucas sequences are subsumed
+regardless of parameter choice — making the explicit 220-pair search
+redundant.
+
 ## Complexity
 
 - Candidate evaluation: O(log N · log ℓ) per candidate (modular exponentiation)
@@ -131,11 +141,12 @@ tested modular channels. No poly(log N)-computable function from 23 candidate
 families (algebraic + bit-pattern + auxiliary modulus) matches σ_{k-1}(N) mod ℓ
 for any channel.
 
-Six independent collision checks confirm the target depends on the
+Eight independent collision checks confirm the target depends on the
 factorization of N, not on N mod m for any tested modulus m ∈ {ℓ, ℓ²,
-ℓ-1, ℓ+1, 2ℓ, ℓ(ℓ-1)}. The joint check N mod ℓ(ℓ-1) is particularly
-decisive: it rules out ALL functions depending on both the primary residue
-and the multiplicative group structure simultaneously.
+ℓ-1, ℓ+1, 2(ℓ-1), 2(ℓ+1), 2ℓ, ℓ(ℓ-1)}. The joint check N mod ℓ(ℓ-1) is
+particularly decisive: it rules out ALL functions depending on both the
+primary residue and the multiplicative group structure simultaneously.
+The 2(ℓ±1) checks formally close the Lucas sequence period gap.
 
 ## Implementation
 
