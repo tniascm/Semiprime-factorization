@@ -38,6 +38,20 @@ pub enum CandidateKind {
     EisensteinQuotient,
     /// (N^{(ℓ-1)/d} - 1) / ℓ mod ℓ for d | (ℓ-1)
     FermatQuotientDiv { divisor: u64 },
+    /// Multiplicative order ord_ℓ(N) mod divisor
+    MultOrder { divisor: u64 },
+    /// Second ℓ-adic digit: (N mod ℓ²) / ℓ
+    SecondLadicDigit,
+    /// Polynomial over F_ℓ evaluated at (N mod ℓ²) / ℓ (second digit)
+    SecondDigitPower { exponent: u64 },
+    /// Gauss sum residue: Σ (t/ℓ) * t^{N mod (ℓ-1)} mod ℓ
+    GaussSum,
+    /// c1 * N^a1 + c2 * N^a2 mod ℓ² reduced: ((c1*N^a1+c2*N^a2) mod ℓ² ) / ℓ
+    LinearComboLift { a1: u64, a2: u64, c1: u64, c2: u64 },
+    /// Composition: ord_ℓ(N) * N^a mod ℓ
+    OrderTimesPower { exponent: u64 },
+    /// N^a mod ℓ² (full lift, not just quotient)
+    PowerResidueLift { exponent: u64 },
 }
 
 /// Evaluate a candidate on (n, ell).
@@ -112,6 +126,45 @@ pub fn eval(kind: &CandidateKind, n: u64, ell: u64) -> u64 {
             let diff = (pow + ell_sq - 1) % ell_sq;
             (diff / ell) % ell
         }
+        CandidateKind::MultOrder { divisor } => {
+            match arith::mult_order(n % ell, ell) {
+                Some(ord) => ord % *divisor,
+                None => 0,
+            }
+        }
+        CandidateKind::SecondLadicDigit => {
+            let ell_sq = ell * ell;
+            (n % ell_sq) / ell
+        }
+        CandidateKind::SecondDigitPower { exponent } => {
+            let ell_sq = ell * ell;
+            let digit2 = (n % ell_sq) / ell;
+            arith::mod_pow(digit2, *exponent, ell)
+        }
+        CandidateKind::GaussSum => {
+            let a = n % (ell - 1);
+            arith::gauss_sum_algebraic(a, ell)
+        }
+        CandidateKind::LinearComboLift { a1, a2, c1, c2 } => {
+            let ell_sq = ell * ell;
+            let v1 = arith::mod_pow(n % ell_sq, *a1, ell_sq);
+            let v2 = arith::mod_pow(n % ell_sq, *a2, ell_sq);
+            let combo = (*c1 as u128 * v1 as u128 + *c2 as u128 * v2 as u128) % ell_sq as u128;
+            ((combo as u64) / ell) % ell
+        }
+        CandidateKind::OrderTimesPower { exponent } => {
+            let ord = match arith::mult_order(n % ell, ell) {
+                Some(o) => o,
+                None => return 0,
+            };
+            let pw = arith::mod_pow(n % ell, *exponent, ell);
+            (ord as u128 * pw as u128 % ell as u128) as u64
+        }
+        CandidateKind::PowerResidueLift { exponent } => {
+            let ell_sq = ell * ell;
+            let val = arith::mod_pow(n % ell_sq, *exponent, ell_sq);
+            (val / ell) % ell
+        }
     }
 }
 
@@ -127,14 +180,20 @@ pub fn generate_all(ell: u64) -> Vec<Candidate> {
     generate_dlog(ell, &mut cands);
     generate_binomial(ell, &mut cands);
     generate_fermat_quotients(ell, &mut cands);
+    generate_mult_order(ell, &mut cands);
+    generate_ladic_digits(ell, &mut cands);
+    generate_gauss_sum(ell, &mut cands);
+    generate_linear_combo_lifts(ell, &mut cands);
+    generate_order_compositions(ell, &mut cands);
+    generate_power_residue_lifts(ell, &mut cands);
 
     cands
 }
 
 fn generate_power_residues(ell: u64, out: &mut Vec<Candidate>) {
-    // For small ℓ, enumerate all. For large ℓ, cap at a reasonable limit.
-    let max_exp = if ell <= 1000 { ell - 1 } else { 1000 };
-    for a in 1..=max_exp {
+    // Enumerate all exponents mod (ℓ-1) since N^a ≡ N^{a mod ord} by Fermat.
+    // Full coverage: test every exponent in 1..ℓ-1.
+    for a in 1..ell {
         out.push(Candidate {
             family: "power_residue",
             name: format!("N^{} mod {}", a, ell),
@@ -158,8 +217,10 @@ fn generate_kronecker(ell: u64, out: &mut Vec<Candidate>) {
 }
 
 fn generate_linear_combos(ell: u64, out: &mut Vec<Candidate>) {
-    let max_a = 50u64.min(ell - 1);
-    let max_c = 5u64;
+    // Expand exponent range: up to 200 or ℓ-1, whichever is smaller.
+    // Coefficients 1..10 for broader coverage.
+    let max_a = 200u64.min(ell - 1);
+    let max_c = 10u64;
 
     for a1 in 0..max_a {
         for a2 in (a1 + 1)..=max_a {
@@ -315,6 +376,124 @@ fn generate_fermat_quotients(ell: u64, out: &mut Vec<Candidate>) {
     }
 }
 
+fn generate_mult_order(ell: u64, out: &mut Vec<Candidate>) {
+    // Raw multiplicative order
+    out.push(Candidate {
+        family: "mult_order",
+        name: format!("ord_{}(N)", ell),
+        kind: CandidateKind::MultOrder { divisor: ell - 1 },
+    });
+
+    // Order mod small divisors of ℓ-1
+    let divisors = small_prime_factors(ell - 1);
+    for &div in &divisors {
+        out.push(Candidate {
+            family: "mult_order",
+            name: format!("ord_{}(N) mod {}", ell, div),
+            kind: CandidateKind::MultOrder { divisor: div },
+        });
+        let big_div = (ell - 1) / div;
+        out.push(Candidate {
+            family: "mult_order",
+            name: format!("ord_{}(N) mod {}", ell, big_div),
+            kind: CandidateKind::MultOrder { divisor: big_div },
+        });
+    }
+}
+
+fn generate_ladic_digits(ell: u64, out: &mut Vec<Candidate>) {
+    // Second ℓ-adic digit: (N mod ℓ²) / ℓ
+    out.push(Candidate {
+        family: "ladic_digit",
+        name: format!("(N mod {}^2) / {}", ell, ell),
+        kind: CandidateKind::SecondLadicDigit,
+    });
+
+    // Powers of the second digit
+    let max_exp = 20u64.min(ell - 1);
+    for a in 1..=max_exp {
+        out.push(Candidate {
+            family: "ladic_digit_power",
+            name: format!("((N mod {}^2)/{}))^{} mod {}", ell, ell, a, ell),
+            kind: CandidateKind::SecondDigitPower { exponent: a },
+        });
+    }
+}
+
+fn generate_gauss_sum(ell: u64, out: &mut Vec<Candidate>) {
+    // Gauss sum is O(ℓ) to evaluate but ℓ ≤ 43867 — acceptable cost.
+    out.push(Candidate {
+        family: "gauss_sum",
+        name: format!("gauss_sum(N mod {}, {})", ell - 1, ell),
+        kind: CandidateKind::GaussSum,
+    });
+}
+
+fn generate_linear_combo_lifts(ell: u64, out: &mut Vec<Candidate>) {
+    // Linear combos evaluated mod ℓ², then extract the ℓ-adic "carry" digit.
+    // Smaller search space than base linear combos since this is more exotic.
+    let max_a = 30u64.min(ell - 1);
+    let max_c = 5u64;
+
+    for a1 in 0..max_a {
+        for a2 in (a1 + 1)..=max_a {
+            for c1 in 1..=max_c {
+                for c2 in 1..=max_c {
+                    out.push(Candidate {
+                        family: "linear_combo_lift",
+                        name: format!("lift({}*N^{}+{}*N^{}) mod {}", c1, a1, c2, a2, ell),
+                        kind: CandidateKind::LinearComboLift { a1, a2, c1, c2 },
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn generate_order_compositions(ell: u64, out: &mut Vec<Candidate>) {
+    // ord_ℓ(N) * N^a mod ℓ: mixes multiplicative order with power residue
+    let max_exp = 50u64.min(ell - 1);
+    for a in 0..=max_exp {
+        out.push(Candidate {
+            family: "order_x_power",
+            name: format!("ord*N^{} mod {}", a, ell),
+            kind: CandidateKind::OrderTimesPower { exponent: a },
+        });
+    }
+}
+
+fn generate_power_residue_lifts(ell: u64, out: &mut Vec<Candidate>) {
+    // N^a mod ℓ² → extract the "carry" (second ℓ-adic digit of the power)
+    // Tests whether ℓ²-level structure helps.
+    let max_exp = 200u64.min(ell - 1);
+    for a in 1..=max_exp {
+        out.push(Candidate {
+            family: "power_lift",
+            name: format!("(N^{} mod {}^2)/{} mod {}", a, ell, ell, ell),
+            kind: CandidateKind::PowerResidueLift { exponent: a },
+        });
+    }
+}
+
+/// Helper: extract small prime factors of n.
+fn small_prime_factors(mut n: u64) -> Vec<u64> {
+    let mut factors = Vec::new();
+    let mut d = 2u64;
+    while d * d <= n {
+        if n % d == 0 {
+            factors.push(d);
+            while n % d == 0 {
+                n /= d;
+            }
+        }
+        d += 1;
+    }
+    if n > 1 {
+        factors.push(n);
+    }
+    factors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,9 +538,14 @@ mod tests {
     #[test]
     fn test_generate_all_large_ell() {
         let cands = generate_all(43867);
-        // Power residues capped at 1000, plus other families
-        assert!(cands.len() > 1000);
+        // Power residues now uncapped: ℓ-1 = 43866 candidates
         let power_count = cands.iter().filter(|c| c.family == "power_residue").count();
-        assert_eq!(power_count, 1000);
+        assert_eq!(power_count, 43866);
+        // Should have new families
+        let families: std::collections::HashSet<&str> = cands.iter().map(|c| c.family).collect();
+        assert!(families.contains("mult_order"));
+        assert!(families.contains("ladic_digit"));
+        assert!(families.contains("gauss_sum"));
+        assert!(families.contains("power_lift"));
     }
 }

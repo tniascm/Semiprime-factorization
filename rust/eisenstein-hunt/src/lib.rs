@@ -6,7 +6,8 @@
 pub mod arith;
 pub mod candidates;
 
-use rand::Rng;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
@@ -48,8 +49,9 @@ pub fn ground_truth(sp: &Semiprime, ch: &Channel) -> u64 {
 }
 
 /// Generate balanced semiprimes with bit sizes in [min_bits, max_bits].
-pub fn generate_semiprimes(count: usize, min_bits: u32, max_bits: u32) -> Vec<Semiprime> {
-    let mut rng = rand::thread_rng();
+/// Uses a fixed seed for reproducibility.
+pub fn generate_semiprimes(count: usize, min_bits: u32, max_bits: u32, seed: u64) -> Vec<Semiprime> {
+    let mut rng = StdRng::seed_from_u64(seed);
     let mut result = Vec::with_capacity(count);
 
     while result.len() < count {
@@ -113,6 +115,32 @@ pub fn check_collision(ch: &Channel, semiprimes: &[Semiprime], targets: &[u64]) 
     (true, collisions)
 }
 
+/// Check if σ_{k-1}(N) mod ℓ is a function of (N mod ℓ²) alone.
+/// Stronger than mod-ℓ check: covers functions depending on the first two ℓ-adic digits.
+/// Returns (is_consistent, num_collisions_tested).
+pub fn check_collision_sq(ch: &Channel, semiprimes: &[Semiprime], targets: &[u64]) -> (bool, usize) {
+    let ell_sq = ch.ell * ch.ell;
+    let mut map: HashMap<u64, u64> = HashMap::new();
+    let mut collisions = 0usize;
+
+    for (sp, &target) in semiprimes.iter().zip(targets.iter()) {
+        let n_mod = sp.n % ell_sq;
+        match map.entry(n_mod) {
+            std::collections::hash_map::Entry::Occupied(e) => {
+                collisions += 1;
+                if *e.get() != target {
+                    return (false, collisions);
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(target);
+            }
+        }
+    }
+
+    (true, collisions)
+}
+
 /// Per-channel search result.
 #[derive(Debug, serde::Serialize)]
 pub struct ChannelResult {
@@ -124,6 +152,8 @@ pub struct ChannelResult {
     pub survivors: Vec<String>,
     pub collision_consistent: bool,
     pub collision_tests: usize,
+    pub collision_sq_consistent: bool,
+    pub collision_sq_tests: usize,
 }
 
 /// Overall search result.
@@ -176,6 +206,7 @@ pub fn search_channel(
         .collect();
 
     let (collision_consistent, collision_tests) = check_collision(ch, semiprimes, targets);
+    let (collision_sq_consistent, collision_sq_tests) = check_collision_sq(ch, semiprimes, targets);
 
     ChannelResult {
         weight: ch.weight,
@@ -186,6 +217,8 @@ pub fn search_channel(
         survivors: full_survivors,
         collision_consistent,
         collision_tests,
+        collision_sq_consistent,
+        collision_sq_tests,
     }
 }
 
@@ -221,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_generate_semiprimes() {
-        let sps = generate_semiprimes(100, 16, 24);
+        let sps = generate_semiprimes(100, 16, 24, 42);
         assert_eq!(sps.len(), 100);
         for sp in &sps {
             assert_eq!(sp.n, sp.p * sp.q);
@@ -235,7 +268,7 @@ mod tests {
     #[test]
     fn test_collision_check_false() {
         // σ_{k-1}(N) mod ℓ should NOT be a function of N mod ℓ alone
-        let sps = generate_semiprimes(500, 16, 24);
+        let sps = generate_semiprimes(500, 16, 24, 42);
         let ch = Channel { weight: 22, ell: 131 }; // small ℓ = many collisions
         let targets: Vec<u64> = sps.iter().map(|sp| ground_truth(sp, &ch)).collect();
         let (consistent, collisions) = check_collision(&ch, &sps, &targets);
@@ -248,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_no_power_residue_survives() {
-        let sps = generate_semiprimes(10, 16, 20);
+        let sps = generate_semiprimes(10, 16, 20, 42);
         let ch = Channel { weight: 12, ell: 691 };
         let targets: Vec<u64> = sps.iter().map(|sp| ground_truth(sp, &ch)).collect();
 
@@ -270,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_search_channel_no_survivors() {
-        let sps = generate_semiprimes(50, 16, 20);
+        let sps = generate_semiprimes(50, 16, 20, 42);
         let ch = Channel { weight: 12, ell: 691 };
         let targets: Vec<u64> = sps.iter().map(|sp| ground_truth(sp, &ch)).collect();
         let result = search_channel(&ch, &sps, &targets);

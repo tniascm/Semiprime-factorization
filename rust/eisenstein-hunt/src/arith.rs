@@ -387,6 +387,52 @@ pub fn random_prime(bits: u32, rng: &mut impl Rng) -> u64 {
     }
 }
 
+/// Multiplicative order of a mod m: smallest k > 0 with a^k ≡ 1 (mod m).
+/// Returns None if gcd(a, m) != 1.
+pub fn mult_order(a: u64, m: u64) -> Option<u64> {
+    if m <= 1 {
+        return Some(1);
+    }
+    let a_mod = a % m;
+    if a_mod == 0 {
+        return None;
+    }
+    // Check gcd
+    let (g, _, _) = extended_gcd(a_mod as i128, m as i128);
+    if g != 1 {
+        return None;
+    }
+    let mut power = a_mod;
+    for k in 1..m {
+        if power == 1 {
+            return Some(k);
+        }
+        power = (power as u128 * a_mod as u128 % m as u128) as u64;
+    }
+    None
+}
+
+/// Quadratic Gauss sum g(a, ℓ) = Σ_{t=0}^{ℓ-1} (t/ℓ) * ω^{at} evaluated mod ℓ.
+/// We compute the "algebraic" version: Σ_{t=1}^{ℓ-1} (t/ℓ) * t^a mod ℓ.
+/// This is a poly(log N) function when a = N mod (ℓ-1).
+pub fn gauss_sum_algebraic(a: u64, ell: u64) -> u64 {
+    let mut sum = 0u128;
+    let m = ell as u128;
+    for t in 1..ell {
+        let leg = jacobi_symbol(t as i64, ell);
+        if leg == 0 {
+            continue;
+        }
+        let ta = mod_pow(t, a, ell) as u128;
+        if leg == 1 {
+            sum = (sum + ta) % m;
+        } else {
+            sum = (sum + m - ta) % m;
+        }
+    }
+    sum as u64
+}
+
 /// Continued fraction convergents of a/b. Returns up to `max_terms` pairs (h_i, k_i).
 pub fn cf_convergents(a: u64, b: u64, max_terms: usize) -> Vec<(u64, u64)> {
     let mut convergents = Vec::new();
@@ -558,6 +604,30 @@ mod tests {
             assert!(p >= 1u64 << (bits - 1));
             assert!(p < 1u64 << bits);
         }
+    }
+
+    #[test]
+    fn test_mult_order() {
+        // ord_7(2) = 3: 2^1=2, 2^2=4, 2^3=1
+        assert_eq!(mult_order(2, 7), Some(3));
+        // ord_7(3) = 6: 3 is a primitive root mod 7
+        assert_eq!(mult_order(3, 7), Some(6));
+        // ord_691(2): must divide 690
+        let o = mult_order(2, 691).unwrap();
+        assert_eq!(mod_pow(2, o, 691), 1);
+        assert!(690 % o == 0);
+        // gcd(a,m) != 1
+        assert_eq!(mult_order(0, 7), None);
+        assert_eq!(mult_order(3, 9), None);
+    }
+
+    #[test]
+    fn test_gauss_sum_algebraic() {
+        // Just check it's deterministic and in range
+        let gs = gauss_sum_algebraic(1, 691);
+        assert!(gs < 691);
+        let gs2 = gauss_sum_algebraic(2, 691);
+        assert!(gs2 < 691);
     }
 
     #[test]

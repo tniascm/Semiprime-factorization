@@ -14,27 +14,37 @@ fn main() {
 
     let start = Instant::now();
 
-    // Generate semiprimes: 1000 for small ℓ, 5000 for large ℓ (birthday collision coverage)
-    let semiprimes_1k = generate_semiprimes(1000, 16, 32);
-    let semiprimes_5k = generate_semiprimes(5000, 16, 32);
+    // Generate semiprimes: scale with ℓ² for birthday collision coverage
+    let semiprimes_1k = generate_semiprimes(1000, 16, 32, 42);
+    let semiprimes_5k = generate_semiprimes(5000, 16, 32, 137);
+    let semiprimes_20k = generate_semiprimes(20000, 16, 32, 271);
     println!(
-        "Generated {} + {} balanced semiprimes (16-32 bit)\n",
+        "Generated {} + {} + {} balanced semiprimes (16-32 bit)\n",
         semiprimes_1k.len(),
-        semiprimes_5k.len()
+        semiprimes_5k.len(),
+        semiprimes_20k.len()
     );
 
     // Header
     println!(
-        "{:>4} {:>6} {:>8} {:>12} {:>12} {:>6}  {}",
-        "k", "ell", "collsn", "candidates", "surv_1st", "surv_all", "status"
+        "{:>4} {:>6} {:>8} {:>8} {:>12} {:>12} {:>6}  {}",
+        "k", "ell", "col_l", "col_l2", "candidates", "surv_1st", "surv_all", "status"
     );
-    println!("{}", "-".repeat(72));
+    println!("{}", "-".repeat(82));
 
     let mut results = Vec::new();
     let mut total_tested = 0usize;
 
     for ch in CHANNELS {
-        let semiprimes = if ch.ell > 10000 { &semiprimes_5k } else { &semiprimes_1k };
+        // Scale semiprimes with ℓ: need ℓ² collisions for mod-ℓ² check
+        // Birthday bound: need ~sqrt(ℓ²) = ℓ semiprimes for mod-ℓ² collisions
+        let semiprimes = if ch.ell > 3000 {
+            &semiprimes_20k
+        } else if ch.ell > 500 {
+            &semiprimes_5k
+        } else {
+            &semiprimes_1k
+        };
         let targets: Vec<u64> = semiprimes.iter().map(|sp| ground_truth(sp, ch)).collect();
 
         let channel_result = search_channel(ch, semiprimes, &targets);
@@ -46,17 +56,23 @@ fn main() {
             "CLOSED"
         };
 
-        let collision_str = if channel_result.collision_consistent {
-            format!("yes({})", channel_result.collision_tests)
+        let col_str = if channel_result.collision_consistent {
+            format!("y({})", channel_result.collision_tests)
         } else {
-            format!("no({})", channel_result.collision_tests)
+            format!("n({})", channel_result.collision_tests)
+        };
+        let col_sq_str = if channel_result.collision_sq_consistent {
+            format!("y({})", channel_result.collision_sq_tests)
+        } else {
+            format!("n({})", channel_result.collision_sq_tests)
         };
 
         println!(
-            "{:>4} {:>6} {:>8} {:>12} {:>12} {:>6}  {}",
+            "{:>4} {:>6} {:>8} {:>8} {:>12} {:>12} {:>6}  {}",
             channel_result.weight,
             channel_result.ell,
-            collision_str,
+            col_str,
+            col_sq_str,
             channel_result.total_candidates,
             channel_result.survived_first,
             channel_result.survived_all,
@@ -74,7 +90,7 @@ fn main() {
 
     let elapsed = start.elapsed().as_secs_f64();
     let breakthrough = results.iter().any(|r| r.survived_all > 0);
-    let num_sp = semiprimes_1k.len().max(semiprimes_5k.len());
+    let num_sp = semiprimes_20k.len();
 
     println!("\n{}", "=".repeat(72));
     println!("Total candidates tested: {}", total_tested);
