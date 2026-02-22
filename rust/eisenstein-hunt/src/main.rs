@@ -93,6 +93,16 @@ fn main() {
             }
         }
 
+        // Print auxiliary collision check results
+        for aux in &channel_result.aux_collisions {
+            let yn = if aux.consistent {
+                format!("y({})", aux.collisions_tested)
+            } else {
+                format!("n({})", aux.collisions_tested)
+            };
+            println!("      aux {:>35}: {}", aux.label, yn);
+        }
+
         results.push(channel_result);
     }
 

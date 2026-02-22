@@ -3,91 +3,273 @@
     {
       "weight": 12,
       "ell": 691,
-      "total_candidates": 2023447,
-      "survived_first": 2953,
+      "total_candidates": 2024347,
+      "survived_first": 2954,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=690))",
+          "modulus": 690,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=692)",
+          "modulus": 692,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=1382",
+          "modulus": 1382,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 476790,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     },
     {
       "weight": 16,
       "ell": 3617,
-      "total_candidates": 2026363,
-      "survived_first": 561,
+      "total_candidates": 2027263,
+      "survived_first": 562,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=3616))",
+          "modulus": 3616,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=3618)",
+          "modulus": 3618,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=7234",
+          "modulus": 7234,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 13079072,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     },
     {
       "weight": 18,
       "ell": 43867,
-      "total_candidates": 2066618,
+      "total_candidates": 2067518,
       "survived_first": 55,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=43866))",
+          "modulus": 43866,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=43868)",
+          "modulus": 43868,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=87734",
+          "modulus": 87734,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 1924269822,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     },
     {
       "weight": 20,
       "ell": 283,
-      "total_candidates": 2023034,
-      "survived_first": 7141,
+      "total_candidates": 2023934,
+      "survived_first": 7147,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=282))",
+          "modulus": 282,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=284)",
+          "modulus": 284,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=566",
+          "modulus": 566,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 79806,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     },
     {
       "weight": 20,
       "ell": 617,
-      "total_candidates": 2023368,
+      "total_candidates": 2024268,
       "survived_first": 3,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=616))",
+          "modulus": 616,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=618)",
+          "modulus": 618,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=1234",
+          "modulus": 1234,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 380072,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     },
     {
       "weight": 22,
       "ell": 131,
-      "total_candidates": 864312,
+      "total_candidates": 865212,
       "survived_first": 6629,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=130))",
+          "modulus": 130,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=132)",
+          "modulus": 132,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=262",
+          "modulus": 262,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 17030,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     },
     {
       "weight": 22,
       "ell": 593,
-      "total_candidates": 2023339,
-      "survived_first": 3383,
+      "total_candidates": 2024239,
+      "survived_first": 3384,
       "survived_all": 0,
       "survivors": [],
       "collision_consistent": false,
       "collision_tests": 1,
       "collision_sq_consistent": false,
-      "collision_sq_tests": 1
+      "collision_sq_tests": 1,
+      "aux_collisions": [
+        {
+          "label": "N mod (ℓ-1=592))",
+          "modulus": 592,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod (ℓ+1=594)",
+          "modulus": 594,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "N mod 2ℓ=1186",
+          "modulus": 1186,
+          "consistent": false,
+          "collisions_tested": 1
+        },
+        {
+          "label": "(N mod ℓ, N mod ℓ-1) joint",
+          "modulus": 351056,
+          "consistent": false,
+          "collisions_tested": 1
+        }
+      ]
     }
   ],
-  "total_candidates_tested": 13050481,
-  "total_wall_seconds": 1.966170917,
-  "candidates_per_second": 6637510.954496536,
+  "total_candidates_tested": 13056781,
+  "total_wall_seconds": 2.006639541,
+  "candidates_per_second": 6506789.452326455,
   "num_semiprimes": 200000,
   "breakthrough": false
 }

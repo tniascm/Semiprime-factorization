@@ -9,7 +9,7 @@ for all semiprimes? If so, factoring breaks.
 
 ## What It Tests
 
-Exhaustive fail-fast search over 21 families of poly(log N)-computable
+Exhaustive fail-fast search over 23 families of poly(log N)-computable
 candidate functions, tested against ground truth σ_{k-1}(N) mod ℓ for
 1,000–200,000 balanced semiprimes (16-48 bit). Semiprime counts scale with ℓ
 to ensure sufficient birthday collisions for mod-ℓ and mod-ℓ² consistency
@@ -25,7 +25,7 @@ checks. All semiprimes are deduplicated by N value.
 | 20 | 283, 617 |
 | 22 | 131, 593 |
 
-### Candidate Families (21 total)
+### Candidate Families (23 total)
 
 **Algebraic (15 families):**
 
@@ -54,17 +54,28 @@ checks. All semiprimes are deduplicated by N value.
 20. **Alternating bit sum**: alt_bit_sum(N)^a mod ℓ
 21. **Bit × power compositions**: bit_func(N) · N^a mod ℓ for 5 bit primitives
 
+**Auxiliary modulus (2 families, testing cross-modular dependence):**
+
+22. **Auxiliary power residues**: (N mod m)^a mod ℓ for m ∈ {ℓ-1, ℓ+1}
+23. **Mixed modulus compositions**: (N mod ℓ)^a · (N mod m)^b mod ℓ
+
 ### Collision Checks
 
-Two data-driven consistency tests subsume all polynomial candidates:
+Six data-driven consistency tests subsume entire function families:
 
+**Primary (from N mod ℓ^k):**
 - **N mod ℓ**: Is σ_{k-1}(N) mod ℓ a function of (N mod ℓ) alone?
 - **N mod ℓ²**: Is σ_{k-1}(N) mod ℓ a function of (N mod ℓ²) alone?
 
-Both fail for all 7 channels. The ℓ=43867 mod-ℓ² gap (previously vacuously
-consistent due to duplicate semiprimes) is now closed with 200K deduplicated
-semiprimes in 24-48 bit range, providing genuine birthday collisions at
-ℓ²≈1.924B.
+**Auxiliary modulus (genuinely different residue classes):**
+- **N mod (ℓ-1)**: Tests all functions depending on multiplicative order structure
+- **N mod (ℓ+1)**: Tests Frobenius trace analog
+- **N mod 2ℓ**: Tests parity combined with mod-ℓ residue
+- **(N mod ℓ, N mod (ℓ-1)) joint**: Strongest single-channel test — by CRT
+  (gcd(ℓ, ℓ-1) = 1), covers ALL functions of N mod ℓ(ℓ-1)
+
+All six fail at n(1) for all 7 channels. The very first genuine collision
+is inconsistent in every case — decisive failure.
 
 ### Fail-Fast Strategy
 
@@ -75,40 +86,56 @@ candidates. Average evaluations per candidate: ~1.0.
 
 ## Key Finding
 
-**All 13,050,481 candidates eliminated across all 7 channels. Zero survivors.**
+**All 13,056,781 candidates eliminated across all 7 channels. Zero survivors.**
+**All 42 auxiliary collision checks inconsistent at first collision.**
 
-| k | ℓ | col_ℓ | col_ℓ² | Candidates | Survived 1st | Survived All |
-|---|---|-------|--------|-----------|-------------|-------------|
-| 12 | 691 | n(1) | n(1) | 2,023,447 | 2,953 | 0 |
-| 16 | 3,617 | n(1) | n(1) | 2,026,363 | 561 | 0 |
-| 18 | 43,867 | n(1) | n(1) | 2,066,618 | 55 | 0 |
-| 20 | 283 | n(1) | n(1) | 2,023,034 | 7,141 | 0 |
-| 20 | 617 | n(1) | n(1) | 2,023,368 | 3 | 0 |
-| 22 | 131 | n(1) | n(1) | 864,312 | 6,629 | 0 |
-| 22 | 593 | n(1) | n(1) | 2,023,339 | 3,383 | 0 |
+| k | ℓ | col_ℓ | col_ℓ² | col_{ℓ-1} | col_{ℓ+1} | col_{2ℓ} | col_joint | Candidates | Surv All |
+|---|---|-------|--------|-----------|-----------|----------|-----------|------------|----------|
+| 12 | 691 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,347 | 0 |
+| 16 | 3,617 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,027,263 | 0 |
+| 18 | 43,867 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,067,518 | 0 |
+| 20 | 283 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,023,934 | 0 |
+| 20 | 617 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,268 | 0 |
+| 22 | 131 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 865,212 | 0 |
+| 22 | 593 | n(1) | n(1) | n(1) | n(1) | n(1) | n(1) | 2,024,239 | 0 |
 
-Column key: `col_ℓ` = N mod ℓ collision consistency (n = inconsistent, count
-tested), `col_ℓ²` = N mod ℓ² collision consistency. All `n(1)` means the
-very first genuine collision was inconsistent — decisive failure.
+All `n(1)` means the very first genuine collision was inconsistent.
+
+### What the Auxiliary Collision Checks Prove
+
+The joint (N mod ℓ, N mod (ℓ-1)) check is the strongest: since
+gcd(ℓ, ℓ-1) = 1, by CRT it tests whether σ_{k-1}(N) mod ℓ is a function
+of N mod ℓ(ℓ-1). This subsumes:
+
+- All polynomials over F_ℓ (already killed by N mod ℓ check)
+- All functions of the multiplicative order structure (N mod (ℓ-1))
+- All higher-order Gauss sums (depend on N mod (ℓ-1))
+- All mixed functions combining primary and auxiliary modular residues
+- All characters of order d | (ℓ-1)
+
+The N mod (ℓ+1) check independently closes the Frobenius trace channel.
 
 ## Complexity
 
 - Candidate evaluation: O(log N · log ℓ) per candidate (modular exponentiation)
-- Total search: ~13M candidates × ~1.0 evaluations (fail-fast) = 1.97 seconds
-- Throughput: ~6.6M candidates/second
+- Total search: ~13.1M candidates × ~1.0 evaluations (fail-fast) = 2.01 seconds
+- Throughput: ~6.5M candidates/second
 - All candidate functions are poly(log N)
 - Deterministic: seeded RNG (seeds 42, 137, 271, 389) for full reproducibility
 - Semiprimes deduplicated by N value to ensure genuine collision tests
 
 ## Conclusion
 
-The Eisenstein indirect evaluation gate is empirically closed. No poly(log N)-
-computable function from 21 candidate families (algebraic + bit-pattern)
-matches σ_{k-1}(N) mod ℓ for any channel. The collision checks independently
-confirm the target depends on the factorization of N, not on N mod ℓ^k for
-k = 1 or 2. The bit-pattern families bridge the E10-E12 carry barrier,
-confirming that integer-representation features (popcount, digit sums, XOR
-folds) also cannot reconstruct divisor sum congruences.
+The Eisenstein indirect evaluation gate is empirically closed across all
+tested modular channels. No poly(log N)-computable function from 23 candidate
+families (algebraic + bit-pattern + auxiliary modulus) matches σ_{k-1}(N) mod ℓ
+for any channel.
+
+Six independent collision checks confirm the target depends on the
+factorization of N, not on N mod m for any tested modulus m ∈ {ℓ, ℓ²,
+ℓ-1, ℓ+1, 2ℓ, ℓ(ℓ-1)}. The joint check N mod ℓ(ℓ-1) is particularly
+decisive: it rules out ALL functions depending on both the primary residue
+and the multiplicative group structure simultaneously.
 
 ## Implementation
 
