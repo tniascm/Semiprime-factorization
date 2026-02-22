@@ -147,6 +147,64 @@ pub fn check_collision_sq(ch: &Channel, semiprimes: &[Semiprime], targets: &[u64
     (true, collisions)
 }
 
+/// Check if σ_{k-1}(N) mod ℓ is a function of (N mod m) alone, for arbitrary modulus m.
+/// Generalizes check_collision to any modulus, not just ℓ or ℓ².
+pub fn check_collision_aux(semiprimes: &[Semiprime], targets: &[u64], modulus: u64) -> (bool, usize) {
+    let mut map: HashMap<u64, u64> = HashMap::new();
+    let mut collisions = 0usize;
+
+    for (sp, &target) in semiprimes.iter().zip(targets.iter()) {
+        let n_mod = sp.n % modulus;
+        match map.entry(n_mod) {
+            std::collections::hash_map::Entry::Occupied(e) => {
+                collisions += 1;
+                if *e.get() != target {
+                    return (false, collisions);
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(target);
+            }
+        }
+    }
+
+    (true, collisions)
+}
+
+/// Check if σ_{k-1}(N) mod ℓ is a function of (N mod m1, N mod m2) jointly.
+/// By CRT, equivalent to N mod lcm(m1, m2) when gcd(m1, m2) = 1.
+/// Stronger than individual mod-m checks: covers all functions of both residues.
+pub fn check_collision_joint(semiprimes: &[Semiprime], targets: &[u64], m1: u64, m2: u64) -> (bool, usize) {
+    let mut map: HashMap<(u64, u64), u64> = HashMap::new();
+    let mut collisions = 0usize;
+
+    for (sp, &target) in semiprimes.iter().zip(targets.iter()) {
+        let key = (sp.n % m1, sp.n % m2);
+        match map.entry(key) {
+            std::collections::hash_map::Entry::Occupied(e) => {
+                collisions += 1;
+                if *e.get() != target {
+                    return (false, collisions);
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(target);
+            }
+        }
+    }
+
+    (true, collisions)
+}
+
+/// Result of a collision check against an auxiliary modulus.
+#[derive(Debug, serde::Serialize)]
+pub struct AuxCollisionResult {
+    pub label: String,
+    pub modulus: u64,
+    pub consistent: bool,
+    pub collisions_tested: usize,
+}
+
 /// Per-channel search result.
 #[derive(Debug, serde::Serialize)]
 pub struct ChannelResult {
@@ -160,6 +218,7 @@ pub struct ChannelResult {
     pub collision_tests: usize,
     pub collision_sq_consistent: bool,
     pub collision_sq_tests: usize,
+    pub aux_collisions: Vec<AuxCollisionResult>,
 }
 
 /// Overall search result.
@@ -214,6 +273,46 @@ pub fn search_channel(
     let (collision_consistent, collision_tests) = check_collision(ch, semiprimes, targets);
     let (collision_sq_consistent, collision_sq_tests) = check_collision_sq(ch, semiprimes, targets);
 
+    // Auxiliary modulus collision checks
+    let mut aux_collisions = Vec::new();
+
+    // N mod (ℓ-1): tests all functions depending on multiplicative order structure
+    let (c, t) = check_collision_aux(semiprimes, targets, ch.ell - 1);
+    aux_collisions.push(AuxCollisionResult {
+        label: format!("N mod (ℓ-1={}))", ch.ell - 1),
+        modulus: ch.ell - 1,
+        consistent: c,
+        collisions_tested: t,
+    });
+
+    // N mod (ℓ+1): tests Frobenius trace analog
+    let (c, t) = check_collision_aux(semiprimes, targets, ch.ell + 1);
+    aux_collisions.push(AuxCollisionResult {
+        label: format!("N mod (ℓ+1={})", ch.ell + 1),
+        modulus: ch.ell + 1,
+        consistent: c,
+        collisions_tested: t,
+    });
+
+    // N mod 2ℓ: tests parity + mod ℓ
+    let (c, t) = check_collision_aux(semiprimes, targets, 2 * ch.ell);
+    aux_collisions.push(AuxCollisionResult {
+        label: format!("N mod 2ℓ={}", 2 * ch.ell),
+        modulus: 2 * ch.ell,
+        consistent: c,
+        collisions_tested: t,
+    });
+
+    // Joint: (N mod ℓ, N mod (ℓ-1)) — strongest single-channel test
+    // By CRT (gcd(ℓ, ℓ-1) = 1), equivalent to N mod ℓ(ℓ-1)
+    let (c, t) = check_collision_joint(semiprimes, targets, ch.ell, ch.ell - 1);
+    aux_collisions.push(AuxCollisionResult {
+        label: format!("(N mod ℓ, N mod ℓ-1) joint"),
+        modulus: ch.ell * (ch.ell - 1),
+        consistent: c,
+        collisions_tested: t,
+    });
+
     ChannelResult {
         weight: ch.weight,
         ell: ch.ell,
@@ -225,6 +324,7 @@ pub fn search_channel(
         collision_tests,
         collision_sq_consistent,
         collision_sq_tests,
+        aux_collisions,
     }
 }
 
@@ -281,6 +381,34 @@ mod tests {
         assert!(
             !consistent,
             "expected collision inconsistency for ℓ=131 with 500 semiprimes (tested {} collisions)",
+            collisions
+        );
+    }
+
+    #[test]
+    fn test_aux_collision_fails() {
+        // σ_{k-1}(N) mod ℓ should NOT be a function of N mod (ℓ-1)
+        let sps = generate_semiprimes(500, 16, 24, 42);
+        let ch = Channel { weight: 22, ell: 131 };
+        let targets: Vec<u64> = sps.iter().map(|sp| ground_truth(sp, &ch)).collect();
+        let (consistent, collisions) = check_collision_aux(&sps, &targets, ch.ell - 1);
+        assert!(
+            !consistent,
+            "expected N mod (ℓ-1) inconsistency for ℓ=131 with 500 semiprimes (tested {} collisions)",
+            collisions
+        );
+    }
+
+    #[test]
+    fn test_joint_collision_fails() {
+        // σ_{k-1}(N) mod ℓ should NOT be a function of (N mod ℓ, N mod (ℓ-1))
+        let sps = generate_semiprimes(1000, 16, 24, 42);
+        let ch = Channel { weight: 22, ell: 131 };
+        let targets: Vec<u64> = sps.iter().map(|sp| ground_truth(sp, &ch)).collect();
+        let (consistent, collisions) = check_collision_joint(&sps, &targets, ch.ell, ch.ell - 1);
+        assert!(
+            !consistent,
+            "expected joint (ℓ, ℓ-1) inconsistency for ℓ=131 with 1000 semiprimes (tested {} collisions)",
             collisions
         );
     }
