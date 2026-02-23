@@ -302,18 +302,48 @@ smoothness behave differently?
 4. Full scan: find best character on restricted set (with scan-null correction).
 5. Product test: corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ))).
 
-56 blocks tested: 4 bit sizes × 7 channels × 2 smoothness bounds (B=10, 30).
+126 blocks tested: 9 bit sizes × 7 channels × 2 smoothness bounds (B=10, 30).
+For n ≤ 24: exhaustive enumeration of balanced semiprimes.
+For n > 24: deterministic sampling of 500 primes in half-bit range, forming up to
+20,000 balanced pairs (ratio p/q > 0.3).
 
-#### Table 7: Prime-restricted — fixed-r* test (summary)
+#### Table 7: Prime-restricted — fix_excess by n_bits (mean over 7 channels)
 
-| B   | mean fix_excess | n_bits=14 | n_bits=20 | interpretation |
-|-----|-----------------|-----------|-----------|----------------|
-| 10  | 2.28            | 0.0–2.73  | 1.31–5.75 | **CHARACTER SURVIVES** |
-| 30  | 1.72            | 0.14–2.00 | 1.12–3.07 | **character survives** |
+| n_bits | B=10 fix | B=30 fix | B=10 scan | B=30 scan | n_pairs (avg) |
+|--------|----------|----------|-----------|-----------|---------------|
+| 14     | 1.40     | 1.15     | 0.87      | 0.95      | 165           |
+| 16     | 1.64     | 1.45     | 0.88      | 0.98      | 529           |
+| 18     | 2.59     | 1.94     | 1.18      | 1.10      | 1,712         |
+| 20     | 3.51     | 2.32     | 1.57      | 1.22      | 5,587         |
+| 24     | 6.26     | 4.50     | 2.68      | 2.02      | 64,247        |
+| 28     | 5.32     | 4.10     | 2.36      | 1.90      | 19,903        |
+| 32     | 5.42     | 3.94     | 2.42      | 1.92      | 19,848        |
+| 40     | 5.75     | 4.20     | 2.51      | 1.82      | 19,929        |
+| 48     | 5.34     | 4.19     | 2.39      | 1.87      | 19,890        |
 
-Unlike parity (which drops to noise), the smoothness character r* retains
-signal when restricted to the prime image set.  The effect strengthens with
-n_bits (more primes → better statistics).
+The fix_excess grows steeply from ~1.4× at n=14 to ~6.3× at n=24 (where
+exhaustive enumeration gives the most pairs), then plateaus at ~5.3–5.8×
+for n=28–48 (where the 500-prime sampling cap limits statistical power).
+**The signal is persistent and does NOT decay with bit size.**
+
+#### Table 7b: Representative channel (k=22, ℓ=131, B=10) detail
+
+| n_bits | n_primes | n_pairs | fix_exc | scan_exc | \|corr_Nk\| |
+|--------|----------|---------|---------|----------|-------------|
+| 14     | 32       | 155     | 2.73    | 1.34     | 0.088       |
+| 16     | 59       | 506     | 2.89    | 1.41     | 0.027       |
+| 18     | 104      | 1,698   | 4.10    | 2.01     | 0.011       |
+| 20     | 187      | 5,536   | 5.75    | 2.81     | 0.014       |
+| 24     | 636      | 63,774  | 9.94    | 4.86     | 0.016       |
+| 28     | 500      | 19,691  | 8.80    | 4.31     | 0.008       |
+| 32     | 500      | 19,669  | 8.78    | 4.30     | 0.012       |
+| 40     | 500      | 19,745  | 8.74    | 4.28     | 0.004       |
+| 48     | 500      | 19,820  | 9.48    | 4.64     | 0.008       |
+
+The strongest single-channel fix_excess reaches 9.94× at n=24 and sustains
+~8.7–9.5× through 48 bits.  The scan_excess (after multiple-testing penalty)
+reaches 4.86× — far above 1.0.  Meanwhile |corr_Nk| stays below 0.09
+everywhere: the signal is NOT an artifact of the N^{k−1} distribution.
 
 #### Table 8: Prime-restricted — full scan (selected blocks, n=20)
 
@@ -325,24 +355,31 @@ n_bits (more primes → better statistics).
 | 22 | 593  | 10 | 11      | 83      | 0.429    | 0.248  | 1.73   | ⚠ SIGNAL   |
 | 22 | 131  | 30 | 7       | 11      | 0.337    | 0.214  | 1.58   | ⚠ SIGNAL   |
 
-In 6/56 blocks, the scanned excess exceeds 1.5 even after the multiple-testing
+At n=20, 6/28 blocks have scan_excess > 1.5 even after the multiple-testing
 penalty.  The scanned r* often matches the full-group r* (marked with `=`),
-confirming the same character is active.
+confirming the same character is active.  At larger n, 62/126 blocks exceed
+scan_excess > 1.5.
 
-#### Table 9: Product tests (all 56 blocks)
+#### Table 9: Product tests (all 126 blocks)
 
-| B   | mean |corr_Nk| | max |corr_Nk| | n(< 0.15) / 56 | verdict       |
-|-----|-----------------|----------------|-----------------|---------------|
-| 10  | 0.024           | 0.088          | 28/28           | ✓ **BARRIER** |
-| 30  | 0.029           | 0.179          | 27/28           | ✓ **BARRIER** |
+| B   | mean \|corr_Nk\| | max \|corr_Nk\| | n(< 0.15) / 63 | verdict       |
+|-----|-------------------|------------------|-----------------|---------------|
+| 10  | 0.019             | 0.088            | 63/63           | ✓ **BARRIER** |
+| 30  | 0.024             | 0.179            | 62/63           | ✓ **BARRIER** |
 
-corr_Nk ≈ 0 uniformly (55/56 blocks with |corr_Nk| < 0.15).
+corr_Nk ≈ 0 uniformly (125/126 blocks with |corr_Nk| < 0.15).
 The one weak exception (n=14, k=20, ℓ=283, B=30: corr_Nk = −0.18) is
 small-sample noise (only 167 pairs).
 
+**Aggregate (126 blocks):** 93/126 blocks (73.8%) have fix_excess > 2.0.
+62/126 blocks (49.2%) have scan_excess > 1.5.  125/126 blocks (99.2%)
+have |corr_Nk| < 0.15.
+
 **Key finding:** The smoothness character SURVIVES prime restriction (unlike
-parity), but the product test still confirms the barrier.  The smoothness
-bias is real and detectable on the restricted set, but **NOT N-extractable**.
+parity), and this survival is **persistent from 14 to 48 bits** — it does
+NOT decay with bit size.  But the product test still confirms the barrier:
+the smoothness bias is real and detectable on the restricted set, but
+**NOT N-extractable**.
 
 ### E21b Step 2b: σ-approximation corridor test
 
@@ -423,16 +460,19 @@ extractability (Table 9), and σ-approximation (Table 10).
    Head energy is 2.78× (B=10) and 1.79× (B=30) of parity.  This is
    genuine multiplicative structure, not a max-statistics artifact.
 
-9. **Smoothness character survives prime restriction** (E21b Step 2): unlike
-   parity (which drops to noise), the smoothness-tuned character r* retains
-   signal when restricted to the prime image set {g(p)}.  Fixed-r* excess
-   is 2.28× for B=10 (mean over 28 blocks), growing with n_bits.
-   Full scan finds 6/56 blocks with scan_excess > 1.5.
+9. **Smoothness character survives prime restriction to 48 bits** (E21b Step 2):
+   unlike parity (which drops to noise), the smoothness-tuned character r*
+   retains signal when restricted to the prime image set {g(p)}, tested across
+   126 blocks (9 bit sizes × 7 channels × 2 bounds).  Mean fix_excess grows
+   from 1.4× at n=14 to 5.3–6.3× at n=24–48 (B=10), with 93/126 blocks
+   exceeding 2.0× and 62/126 exceeding scan_excess > 1.5.  The signal is
+   **persistent and does NOT decay with bit size**.
 
-10. **Smoothness barrier also holds** (E21b Step 2, product test):
+10. **Smoothness barrier also holds at scale** (E21b Step 2, product test):
     corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ))) ≈ 0 uniformly
-    (55/56 blocks with |corr_Nk| < 0.15).  Despite the smoothness character
-    surviving restriction, the product is NOT predictable from N alone.
+    (125/126 blocks with |corr_Nk| < 0.15, max = 0.18 at n=14 small-sample
+    noise).  Despite the smoothness character surviving restriction at all
+    bit sizes, the product is NOT predictable from N alone.
     The **smoothness Fourier corridor is CLOSED**.
 
 11. **σ-approximation corridor closed** (E21b Step 2b): the balanced-semiprime
@@ -447,5 +487,5 @@ extractability (Table 9), and σ-approximation (Table 10).
 - `rust/data/E21_control_results.json` — full-group control experiment results
 - `rust/data/E21_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
 - `rust/data/E21b_smoothness_spectrum.json` — smoothness Fourier spectrum (B = 10, 30, 100, 300)
-- `rust/data/E21b_prime_restricted.json` — prime-restricted smoothness diagnostic (56 blocks)
+- `rust/data/E21b_prime_restricted.json` — prime-restricted smoothness diagnostic (126 blocks, n=14–48)
 - `rust/eigenvector-character/` — Rust crate implementing E21 and E21b
