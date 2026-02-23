@@ -230,38 +230,65 @@ slope to the parity baseline.
 | 11197 | 15.0%   | 0.04848  | 5.13 | 3.11        | 1.65  |
 | 50021 | 7.3%    | 0.02957  | 6.61 | 3.30        | **2.00** |
 
+### Density-normalized analysis
+
+The raw slopes above can be partially confounded by density: smooth_fraction p
+drops with ℓ, and the expected A_max for a random subset of density p is
+null_A_max = √(p(1−p) · 2·ln(n/2) / n) where n = ℓ−1.  The **excess ratio**
+A_max / null_A_max removes this confound.
+
+#### Table 5: Density-normalized excess ratio
+
+| B   | excess mean | excess std | first ℓ | last ℓ | verdict                  |
+|-----|-------------|------------|---------|--------|--------------------------|
+| 10  | 2.90        | 1.15       | 1.31    | 4.88   | STRONG multiplicative bias |
+| 30  | 2.32        | 1.37       | 0.84    | 5.64   | STRONG multiplicative bias |
+| 100 | 1.61        | 0.82       | 0.71    | 3.45   | moderate bias            |
+| 300 | 1.23        | 0.28       | 0.84    | 1.82   | marginal                 |
+
+excess > 1.0 means the Fourier amplitude exceeds what a random subset of the
+same density would produce.  The bias is **growing with ℓ** for B = 10, 30.
+
+#### Table 6: Head energy fraction (spectral concentration)
+
+Head energy = Σ_{top-10} |ĥ(r)|² / p(1−p).  High values indicate spectral
+concentration in few modes, not spread across all ~ℓ/2 characters.
+
+| B   | smooth headE | parity headE | ratio |
+|-----|-------------|--------------|-------|
+| 10  | 0.0131      | 0.0047       | 2.78× |
+| 30  | 0.0058      | 0.0032       | 1.79× |
+| 100 | 0.0029      | 0.0024       | 1.19× |
+| 300 | 0.0024      | 0.0022       | 1.10× |
+
 ### Interpretation
 
-1. **B = 10 (very small bound):** Decay matches parity (Δslope ≈ 0).  At such
-   small B, the smoothness indicator is essentially like a generic multiplicative
-   function — no special structure beyond what parity already captures.
+1. **B = 10 (very small bound):** Raw slope matches parity (Δslope ≈ 0), BUT
+   density-normalized excess is the STRONGEST at 2.90×.  This is because at
+   very sparse densities (10-smooth numbers are rare at large ℓ), the random-
+   subset null drops faster than A_max does.  The smoothness function has
+   genuine multiplicative structure that persists even after density correction.
 
-2. **B ≥ 30:** **Significantly slower Fourier decay than parity.**  For B = 30,
-   the slope is −0.24 vs parity's −0.44 — a positive Δslope of +0.20.  The
-   smoothness-to-parity ratio grows from 0.42 at ℓ = 101 to **2.0 at ℓ = 50021**
-   and shows no sign of levelling off.  This means A_max^{(B)} ∝ ℓ^{−α} with
-   α ≈ 0.24, far shallower than parity's α ≈ 0.44.
+2. **B ≥ 30:** **Strong density-corrected bias.**  For B = 30, excess grows
+   from 0.84× at ℓ = 101 to 5.64× at ℓ = 50021 — not converging.  The head
+   energy is 1.79× parity, meaning the spectral weight is more concentrated.
 
-3. **B = 100, 300:** Even shallower slopes (−0.08 and −0.05), but low R² values
-   (0.35 and 0.15) indicate the power-law model is not a good fit — likely due
-   to onset effects where ℓ ≈ B makes the indicator nearly trivial.  The ratio
-   column still shows the same qualitative trend: growing with ℓ.
+3. **B = 100, 300:** Moderate to marginal excess (1.61× and 1.23× mean).
+   The high smooth_fraction at small ℓ makes the indicator nearly constant,
+   reducing signal.  At large ℓ, the excess rises (3.45× for B=100 at ℓ=50021).
 
 4. **Physical meaning:** The smoothness indicator has genuine **multiplicative
-   Fourier bias** that parity lacks.  This is consistent with the product-of-
-   local-factors structure: ŝ_B(r) = Π_{p≤B} (local DFT at p), which creates
-   constructive interference for characters χ_r that are "nearly trivial" on
-   the small primes.  This is precisely the structure that GNFS's smoothness
-   sieving exploits — now measured quantitatively in the Fourier domain.
+   Fourier bias** that parity lacks, confirmed after density normalization.
+   This is consistent with the product-of-local-factors structure:
+   ŝ_B(r) = Π_{p≤B} (local DFT at p), which creates constructive interference
+   for characters χ_r that are "nearly trivial" on the small primes.
 
-5. **Implication for factoring:** The slower Fourier decay means that the
-   smoothness function retains more harmonic structure at large ℓ than parity.
-   In principle, a Fourier-domain algorithm that detects B-smooth residues
-   via their anomalous character amplitudes could exploit this — but only if
-   the dominant character r* (or a small set of characters) can be identified
-   and evaluated from N alone.  The E21 barrier (product test B ≈ 0) shows
-   that for the parity-based CRT matrix, this is not possible.  Whether the
-   smoothness-based version of the barrier also holds is an open question.
+5. **Implication for factoring:** The bias is real, but **bias in χ-space is
+   not automatically factor information**.  The hinge scalar barrier still
+   applies: factoring requires extracting something about specific primes p, q
+   dividing N, not just global group structure.  The next test is whether the
+   smoothness-tuned r* survives prime restriction (E21b Step 2) and passes
+   the product test (E21b Step 3).
 
 ## Conclusions
 
@@ -302,14 +329,20 @@ slope to the parity baseline.
    s_B(a) has significantly slower Fourier decay than parity for B ≥ 30.
    At B = 30, the decay exponent is −0.24 vs parity's −0.44 (Δ = +0.20),
    and the smoothness-to-parity ratio grows from 0.42 to 2.0 across
-   ℓ = 101 to 50021.  This quantifies the multiplicative bias that GNFS
-   exploits: smooth numbers are not "random" in the Fourier domain.
+   ℓ = 101 to 50021.
 
-8. **Open question from E21b:** Does the smoothness-based barrier also hold?
+8. **Density-normalized bias survives** (E21b): after correcting for the
+   density effect (smooth_fraction drops with ℓ), the excess ratio
+   A_max / null_A_max is 2.90× for B=10 and 2.32× for B=30, growing with ℓ.
+   Head energy is 2.78× (B=10) and 1.79× (B=30) of parity.  This is
+   genuine multiplicative structure, not a max-statistics artifact.
+
+9. **Open question from E21b:** Does the smoothness-based barrier also hold?
    E21 showed that parity-based u₁(p)·u₁(q) is not N-extractable.  But the
    smoothness indicator's dominant characters may have different product-test
    behaviour.  If a smoothness-tuned character r* satisfies
    |corr(ŝ_B(r*), N^{k−1} mod ℓ)| > 0, a new Fourier-domain corridor opens.
+   Next step: prime-restricted diagnostic (E21b Step 2).
 
 ## Data files
 
