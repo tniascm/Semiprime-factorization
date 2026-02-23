@@ -125,6 +125,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cf-factor-ms"
+version = "0.1.0"
+dependencies = [
+ "cf-factor",
+ "factoring-core",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -785,6 +799,22 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "smooth-pilatte"
+version = "0.1.0"
+dependencies = [
+ "classical-nfs",
+ "factoring-core",
+ "lattice-reduction",
+ "num-bigint",
+ "num-integer",
+ "num-prime",
+ "num-traits",
+ "rand",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
