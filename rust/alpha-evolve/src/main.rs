@@ -15,8 +15,9 @@ use alpha_evolve::fitness::{
 };
 use alpha_evolve::novelty::NoveltyArchive;
 use alpha_evolve::{
-    seed_fermat_like, seed_hart_like, seed_lehman_like, seed_pollard_rho, seed_trial_like,
-    Program,
+    seed_cf_regulator_jump, seed_dixon_smooth, seed_ecm_cf_hybrid, seed_fermat_like,
+    seed_hart_like, seed_lattice_gcd, seed_lehman_like, seed_pm1_rho_hybrid,
+    seed_pollard_rho, seed_trial_like, Program,
 };
 
 /// Checkpoint data serialized to JSON periodically.
@@ -117,6 +118,11 @@ fn main() {
         ("Fermat-Like", seed_fermat_like()),
         ("Lehman-Like", seed_lehman_like()),
         ("Hart-Like", seed_hart_like()),
+        ("Dixon Smooth", seed_dixon_smooth()),
+        ("CF Regulator", seed_cf_regulator_jump()),
+        ("Lattice GCD", seed_lattice_gcd()),
+        ("ECM-CF Hybrid", seed_ecm_cf_hybrid()),
+        ("Pm1+Rho Hybrid", seed_pm1_rho_hybrid()),
     ];
 
     for (name, program) in &seeds {

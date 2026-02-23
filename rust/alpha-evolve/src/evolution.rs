@@ -13,8 +13,9 @@ use rayon::prelude::*;
 
 use crate::{
     macros::{MacroKind, MacroParams},
-    seed_fermat_like, seed_hart_like, seed_lehman_like, seed_pollard_rho, seed_trial_like,
-    Individual, PrimitiveOp, Program, ProgramNode,
+    seed_cf_regulator_jump, seed_dixon_smooth, seed_ecm_cf_hybrid, seed_fermat_like,
+    seed_hart_like, seed_lattice_gcd, seed_lehman_like, seed_pm1_rho_hybrid,
+    seed_pollard_rho, seed_trial_like, Individual, PrimitiveOp, Program, ProgramNode,
 };
 
 // ---------------------------------------------------------------------------
@@ -552,17 +553,22 @@ pub struct Population {
 }
 
 impl Population {
-    /// Create an initial population with random programs plus the three seed programs.
+    /// Create an initial population with random programs plus 10 seed programs.
     pub fn new(size: usize, rng: &mut impl Rng) -> Self {
         let mut individuals = Vec::with_capacity(size);
 
-        // Add seed programs first
+        // Add seed programs first (5 original + 5 from E1-E20 domain knowledge)
         let seeds = vec![
             seed_pollard_rho(),
             seed_trial_like(),
             seed_fermat_like(),
             seed_lehman_like(),
             seed_hart_like(),
+            seed_dixon_smooth(),
+            seed_cf_regulator_jump(),
+            seed_lattice_gcd(),
+            seed_ecm_cf_hybrid(),
+            seed_pm1_rho_hybrid(),
         ];
         for seed in seeds {
             individuals.push(Individual {

@@ -841,6 +841,146 @@ pub fn seed_hart_like() -> Program {
     Program { root }
 }
 
+// ---------------------------------------------------------------------------
+// New seed programs from E1-E20 domain knowledge
+// ---------------------------------------------------------------------------
+
+/// Seed: Dixon-style smooth square accumulation.
+///
+/// Inspired by E13 (Eisenstein congruences): accumulate smooth squares,
+/// then combine them to find congruences of squares.
+/// Structure: Seq[ Rand, Loop(200, Seq[DixonAcc, DixonCmb]) ]
+pub fn seed_dixon_smooth() -> Program {
+    let inner = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::Square),
+        ProgramNode::Leaf(PrimitiveOp::DixonAccumulate),
+        ProgramNode::Leaf(PrimitiveOp::AddConst { c: 1 }),
+        ProgramNode::Leaf(PrimitiveOp::DixonCombine),
+    ]);
+
+    let root = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::RandomElement),
+        ProgramNode::IterateNode {
+            body: Box::new(inner),
+            steps: 200,
+        },
+    ]);
+
+    Program { root }
+}
+
+/// Seed: CF convergent + regulator-guided jump.
+///
+/// Inspired by Prong 4 (Murru-Salvatori regulator-guided factoring):
+/// use CF convergents to estimate the regulator, then walk the class
+/// group infrastructure to find ambiguous forms.
+/// Structure: Seq[ CF(10), Store(0), CF(20), Store(1), MacroClassWalk(500) ]
+pub fn seed_cf_regulator_jump() -> Program {
+    let root = ProgramNode::Sequence(vec![
+        // Compute early CF convergent
+        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: 10 }),
+        ProgramNode::MemoryOp {
+            store: true,
+            slot: 0,
+        },
+        // Compute later CF convergent
+        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: 30 }),
+        ProgramNode::MemoryOp {
+            store: true,
+            slot: 1,
+        },
+        // Walk class group infrastructure
+        ProgramNode::MacroBlock {
+            kind: macros::MacroKind::ClassWalk,
+            params: macros::MacroParams {
+                param1: 500,
+                param2: 1,
+            },
+        },
+        // Fall back to SQUFOF
+        ProgramNode::Leaf(PrimitiveOp::SqufofStep),
+    ]);
+
+    Program { root }
+}
+
+/// Seed: Lattice-based factoring via Pilatte short vectors.
+///
+/// Inspired by Prong 2 (smooth-pilatte): build a Pilatte lattice,
+/// extract short vectors, compute products, and check gcd.
+/// Structure: Seq[ PilatteVec, GcdChk, MacroLattice(6) ]
+pub fn seed_lattice_gcd() -> Program {
+    let root = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::PilatteVector),
+        ProgramNode::GcdCheck {
+            setup: Box::new(ProgramNode::Leaf(PrimitiveOp::LllShortVector)),
+        },
+        ProgramNode::MacroBlock {
+            kind: macros::MacroKind::LatticeSmooth,
+            params: macros::MacroParams {
+                param1: 6,
+                param2: 1,
+            },
+        },
+    ]);
+
+    Program { root }
+}
+
+/// Seed: ECM + CF hybrid.
+///
+/// Novel composition: use CF convergent as ECM curve seed, then run ECM.
+/// The idea is that CF convergents of sqrt(N) produce algebraic values
+/// structurally tied to N that might make better curve parameters.
+/// Structure: Seq[ CF(5), Store(0), ECM(500), Load(0), ECM(1000) ]
+pub fn seed_ecm_cf_hybrid() -> Program {
+    let root = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: 5 }),
+        ProgramNode::MemoryOp {
+            store: true,
+            slot: 0,
+        },
+        ProgramNode::Leaf(PrimitiveOp::EcmCurve { b1: 500 }),
+        ProgramNode::MemoryOp {
+            store: false,
+            slot: 0,
+        },
+        ProgramNode::Leaf(PrimitiveOp::EcmCurve { b1: 1000 }),
+    ]);
+
+    Program { root }
+}
+
+/// Seed: Pollard p-1 + rho hybrid via Hybrid node.
+///
+/// Inspired by BSGS infrastructure: try Pollard p-1 first (works when
+/// p-1 is smooth), then fall back to Pollard rho.
+/// Structure: Hybrid[ Pm1(200), Seq[Rand, Loop(100, Seq[Sq, Add(1), SubGcd])] ]
+pub fn seed_pm1_rho_hybrid() -> Program {
+    let pm1_branch = ProgramNode::Leaf(PrimitiveOp::PollardPm1 { bound: 200 });
+
+    let rho_inner = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::Square),
+        ProgramNode::Leaf(PrimitiveOp::AddConst { c: 1 }),
+        ProgramNode::Leaf(PrimitiveOp::SubtractGcd),
+    ]);
+
+    let rho_branch = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::RandomElement),
+        ProgramNode::IterateNode {
+            body: Box::new(rho_inner),
+            steps: 100,
+        },
+    ]);
+
+    let root = ProgramNode::Hybrid {
+        first: Box::new(pm1_branch),
+        second: Box::new(rho_branch),
+    };
+
+    Program { root }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
