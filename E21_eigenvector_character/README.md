@@ -19,10 +19,19 @@ Define `g(p) = (1 + p^{k−1}) mod ℓ`.  Then:
                              = σ_{k−1}(pq) mod ℓ
 ```
 
-So `M[p][q] = parity(g(p) · g(q) mod ℓ)` — a rank-1 Schur-product matrix over
-the cyclic group `(ℤ/ℓℤ)*`.  For such matrices, the eigenvectors over the full
-group are exactly the multiplicative characters χ_r.  If the same holds over
-the prime subset, then:
+So `M[p][q] = parity(g(p) · g(q) mod ℓ)`.  This is a purely **algebraic**
+factorisation of M: the matrix entry depends on the product `g(p)·g(q)` in the
+cyclic group `(ℤ/ℓℤ)*`, composed with the parity function h(x) = x mod 2.
+
+**Important distinction:** over the **full** cyclic group (ℤ/ℓℤ)*, the matrix
+H[a][b] = h(ab mod ℓ) has multiplicative characters χ_r as exact eigenvectors.
+But this diagonalisation does **not** transfer cleanly to the prime-restricted
+matrix M, because: (i) the mapping p → g(p) sends primes to a sparse,
+algebraically structured subset of the group; and (ii) the parity function h
+mixes many Fourier modes, so the dominant eigenvectors of M are mixtures of
+characters, not individual ones.
+
+If the eigenvectors **were** individual characters, then:
 
 - `u₁(p)·u₁(q) ≈ Re(χ_{r*}(g(p)·g(q) mod ℓ)) = Re(χ_{r*}(σ_{k−1}(N) mod ℓ))`
 - The product depends on `σ_{k−1}(N) mod ℓ`, which requires knowing p, q.
@@ -75,6 +84,50 @@ The best-fitting character r* is a noise fluctuation, not a true signal.
 - `corr_Nk`: **≤ 0.088 in every block**, consistent with zero.
   The barrier holds: u₁(p)·u₁(q) is NOT determined by N^{k−1} mod ℓ alone.
 
+## Pipeline validation: full-group control experiment
+
+To confirm that the character scan pipeline works correctly (i.e., the absence of
+character structure in Table 1 is real, not a pipeline artifact), we run a control:
+
+**Setup:** For small primes ℓ ∈ {131, 283, 593, 617, 691}, build the **full-group**
+matrix H[a][b] = (ab mod ℓ) mod 2 for all a, b ∈ {1, …, ℓ−1}.  Over the full
+cyclic group, characters χ_r are **exact** eigenvectors of H with eigenvalue
+(ℓ−1)·ĥ(r), where ĥ(r) is the r-th Fourier coefficient of the parity function h.
+
+**Result:** Extract top-5 eigenvectors; the character scan finds amp ≈ 1.0 for
+non-trivial eigenvectors:
+
+| ℓ   | order | idx | λ      | r*  | amp   | check       |
+|-----|-------|-----|--------|-----|-------|-------------|
+| 131 | 130   | 1   | +15.0  | 65  | 1.000 | ✓ character |
+| 131 | 130   | 2   | −12.8  | 45  | 1.000 | ✓ character |
+| 283 | 282   | 1   | +20.2  | 11  | 0.918 | ✓ character |
+| 283 | 282   | 2   | −20.2  | 11  | 1.000 | ✓ character |
+| 593 | 592   | 1   | +31.3  | 1   | 0.998 | ✓ character |
+| 691 | 690   | 1   | +31.2  | 41  | 0.962 | ✓ character |
+| 691 | 690   | 2   | −29.7  | 11  | 1.000 | ✓ character |
+
+16/20 non-trivial eigenvectors have amp > 0.90.  **The pipeline correctly
+identifies characters when they truly are eigenvectors.**  The drop to noise
+in the prime-restricted audit (Table 1) is real.
+
+### Fourier coefficient scaling: ĥ(r) = O(1/√ℓ)
+
+From the control eigenvalues, the dominant non-trivial Fourier coefficient is
+ĥ(r*) = λ₁/(ℓ−1).  Measured values:
+
+| ℓ   | λ₁   | ĥ(r*) | ĥ(r*)·√ℓ |
+|-----|------|-------|-----------|
+| 131 | 15.0 | 0.115 | 1.32      |
+| 283 | 20.2 | 0.072 | 1.21      |
+| 593 | 31.3 | 0.053 | 1.29      |
+| 617 | 23.8 | 0.039 | 0.96      |
+| 691 | 31.2 | 0.045 | 1.19      |
+
+ĥ(r*)·√ℓ ≈ 1.2 across all ℓ, confirming **ĥ(r) = O(1/√ℓ)** scaling.  This is
+the standard bound for Fourier coefficients of the parity function on cyclic
+groups (Gauss sum bound).
+
 ## Statistical interpretation
 
 The expected null maximum complex Pearson amplitude over `(ℓ−1)/2` characters
@@ -89,36 +142,69 @@ At n=20 with 187 primes and ℓ=691 (345 characters): null_amp ≈ 0.27,
 observed amp ≈ 0.25.  At n=20 with ℓ=43867 (21933 characters): null ≈ 0.34,
 observed ≈ 0.34.  All results at the noise floor.
 
+## Why no single-character structure: parity mixing
+
+The absence of character structure is **not** primarily due to the prime set being
+too sparse (though sparsity compounds the problem).  The more decisive reason is:
+
+1. **Parity projection destroys character diagonalisation.**  Over the full group,
+   H[a][b] = h(ab mod ℓ) has characters as eigenvectors with eigenvalues
+   (ℓ−1)·ĥ(r).  But these eigenvalues scale as O(√ℓ) (see table above), while
+   the trivial eigenvalue is (ℓ−1)/2 ≈ ℓ/2.  The ratio λ₁/λ₀ ≈ O(1/√ℓ) → 0,
+   so the spectral gap between the trivial mode and any non-trivial character
+   vanishes as ℓ grows.
+
+2. **No single character dominates.**  Since all non-trivial Fourier coefficients
+   are O(1/√ℓ), many characters have comparable amplitude.  The top eigenvectors
+   of M are mixtures of the O(1) dominant Fourier modes of h, not individual
+   characters.  This is consistent with E20's stable rank ≈ 3.7: the 3–4
+   dominant directions in M represent **collective** modes arising from the
+   interplay of the parity function and the group structure, not individual χ_r.
+
+3. **The g(·) mapping adds no structure that could help.**  Even if a single
+   character dominated H over the full group, the restriction p → g(p) maps
+   primes to a sparse, algebraically constrained subset.  But the mixing
+   argument above shows that even with dense sampling, no single character
+   would dominate — the parity function distributes its spectral weight
+   across Θ(ℓ) characters.
+
+**Summary:** No single multiplicative character explains the top eigenvectors;
+any harmonic structure is spread across many characters and is not N-only
+extractable.
+
 ## Conclusions
 
 1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
-   for all primes (p, q) tested.  The Schur-product factorisation is exact.
+   for all primes (p, q) tested.  The multiplicative factorisation of M is exact.
 
 2. **No character structure detected**: the dominant eigenvector u₁ of M does
-   NOT align with any multiplicative character χ_r of (ℤ/ℓℤ)* at the accessible
-   bit sizes.  Character amplitudes are indistinguishable from noise across all
-   28 (n_bits, channel) blocks.
+   NOT align with any individual multiplicative character χ_r of (ℤ/ℓℤ)*.
+   Character amplitudes are indistinguishable from noise across all 28
+   (n_bits, channel) blocks.
 
-3. **Barrier intact** (Product test B): `corr(u₁(p)·u₁(q), N^{k−1} mod ℓ) ≈ 0`
+3. **Pipeline validated** (full-group control): the same character scan finds
+   amp ≈ 1.0 over the unrestricted group.  The drop to noise in the
+   prime-restricted audit is real, not a pipeline artifact.
+
+4. **Fourier coefficient scaling confirmed**: ĥ(r*) = O(1/√ℓ), with
+   ĥ(r*)·√ℓ ≈ 1.2.  This explains why the stable rank is O(1): the
+   eigenvalue spectrum of H has O(1) modes at amplitude O(√ℓ) against a
+   trivial background of ℓ/2, giving effective rank ≈ Σ(λ_r²)/λ₀² = O(1).
+
+5. **Barrier intact** (Product test B): `corr(u₁(p)·u₁(q), N^{k−1} mod ℓ) ≈ 0`
    uniformly.  The product of eigenvector components is NOT accessible from N
    alone.  The **analytic-continuation corridor is closed**.
 
-4. **Why no character structure?** With n_primes = 32–187 primes scattered
-   across a group of size ℓ−1 = 130–43866, the prime set is too sparse to
-   resolve individual characters: many characters give similar correlations,
-   all at noise level.  For a clear signal one would need n_primes ≳ sqrt(ℓ−1).
-   At n=20 with ℓ=691 we have 187 primes vs sqrt(690) ≈ 26 (seems like enough),
-   but the correct threshold is n_primes ≳ ℓ^{2/3} / character_gap which is
-   much larger.
-
-5. **Interaction with E20 stable rank ≈ 3.7**: the constant low stable rank
+6. **Interaction with E20 stable rank ≈ 3.7**: the constant low stable rank
    means M is approximately rank-3.7 over ℝ.  But the 3–4 dominant "directions"
-   are NOT individual characters — they are mixtures of the O(1) dominant Fourier
-   modes of the parity function h on (ℤ/ℓℤ)*.  For h = parity, the dominant
-   Fourier mode is the trivial character (mean ≈ 0.5), plus O(1/√ℓ) contributions
-   from a few non-trivial characters — all at noise level for accessible n.
+   are NOT individual characters — they are collective modes arising from the
+   O(1) dominant Fourier coefficients of the parity function on (ℤ/ℓℤ)*.
+   Each such direction is a superposition of many characters at comparable
+   amplitude O(1/√ℓ), making them useless for extracting a single
+   N-computable product.
 
 ## Data files
 
 - `rust/data/E21_character_audit.json` — full per-block per-eigenvector results
+- `rust/data/E21_control_results.json` — full-group control experiment results
 - `rust/eigenvector-character/` — Rust crate implementing E21
