@@ -728,6 +728,267 @@ pub fn smoothness_spectrum(ell: u64, bound: u64, top_k: usize) -> SmoothnessSpec
     }
 }
 
+// ---------------------------------------------------------------------------
+// Prime-restricted smoothness character diagnostic (E21b Step 2)
+// ---------------------------------------------------------------------------
+
+/// Result of testing whether the smoothness-tuned character r* survives
+/// restriction to the prime image set {g(p) : p in balanced-semiprime set}.
+///
+/// Full group: the smoothness indicator s_B has a dominant character r* with
+/// excess ratio > 1 (confirmed in E21b Step 1).
+/// Prime-restricted: do the same characters still show signal when evaluated
+/// only on {g(p)} instead of all of (ℤ/ℓℤ)*?
+#[derive(Debug, Clone, Serialize)]
+pub struct PrimeRestrictedResult {
+    pub ell: u64,
+    pub order: usize,
+    pub smoothness_bound: u64,
+    pub n_bits: u32,
+    pub channel_weight: u32,
+    // ─── Full-group baseline ───
+    /// Dominant character from full-group smoothness DFT.
+    pub full_r_star: usize,
+    /// Full-group A_max of the smoothness indicator.
+    pub full_a_max: f64,
+    /// Full-group excess ratio (A_max / null_A_max).
+    pub full_excess: f64,
+    // ─── Restricted set info ───
+    /// Number of distinct primes in the balanced-semiprime set.
+    pub n_primes: usize,
+    /// Number of primes with g(p) ≠ 0 mod ℓ (valid for character evaluation).
+    pub n_valid: usize,
+    /// Fraction of g(p) values that are B-smooth (restricted smoothness density).
+    pub restricted_smooth_fraction: f64,
+    // ─── Fixed-r* test ───
+    /// Pearson amplitude of χ_{full_r_star} against s_B(g(·)) on the prime set.
+    pub fixed_r_amplitude: f64,
+    /// Null amplitude for a single pre-specified character: √(2/(n_valid−2)).
+    pub fixed_r_null: f64,
+    /// Excess: fixed_r_amplitude / fixed_r_null.
+    pub fixed_r_excess: f64,
+    // ─── Full scan on restricted set ───
+    /// Best character found by scanning all r on the restricted set.
+    pub scanned_r_star: usize,
+    /// Pearson amplitude of the best character on the restricted set.
+    pub scanned_amplitude: f64,
+    /// Null for scanned-max: √(2·ln(order/2) / (n_valid−2)).
+    pub scanned_null: f64,
+    /// Excess: scanned_amplitude / scanned_null.
+    pub scanned_excess: f64,
+    // ─── Product tests (at scanned_r_star) ───
+    /// corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(σ_{k−1}(N) mod ℓ)))  [needs p,q]
+    pub product_corr_sigma: f64,
+    /// corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ)))      [from N only]
+    pub product_corr_nk: f64,
+    /// Number of pairs used in product tests.
+    pub n_pairs: usize,
+}
+
+/// Run the prime-restricted smoothness character diagnostic for a single
+/// (n_bits, channel, B) combination.
+///
+/// Steps:
+/// 1. Compute full-group smoothness DFT on (ℤ/ℓℤ)* → find r* and A_max.
+/// 2. Enumerate primes from balanced semiprimes of n_bits bits.
+/// 3. For each prime p, compute g(p) = (1 + p^{k−1}) mod ℓ and s_B(g(p)).
+/// 4. Fixed-r* test: Pearson amplitude of χ_{r*} against s_B on restricted set.
+/// 5. Full scan: find best character on restricted set.
+/// 6. Product tests at the scanned best character.
+pub fn run_prime_restricted_smoothness(
+    n_bits: u32,
+    ch: &Channel,
+    bound: u64,
+    top_k: usize,
+) -> PrimeRestrictedResult {
+    use algebra::{
+        best_character, build_dlog_table, im_char, pearson_corr, primitive_root, re_char,
+    };
+
+    let ell = ch.ell;
+    let k1 = (ch.weight - 1) as u64;
+    let order = (ell - 1) as usize;
+
+    // 1. Full-group smoothness spectrum.
+    let full = smoothness_spectrum(ell, bound, top_k);
+    let full_r_star = full.top_amplitudes.first().map(|&(r, _)| r).unwrap_or(1);
+
+    // 2. Enumerate primes from balanced semiprimes.
+    let pairs = enumerate_balanced_semiprimes(n_bits);
+    let mut prime_set: Vec<u64> = pairs.iter().flat_map(|&(p, q)| [p, q]).collect();
+    prime_set.sort_unstable();
+    prime_set.dedup();
+    let n_primes = prime_set.len();
+
+    // 3. Compute g(p) and smoothness for each prime.
+    let prim_g = primitive_root(ell);
+    let dlog = build_dlog_table(ell, prim_g);
+
+    let g_vals: Vec<u64> = prime_set
+        .iter()
+        .map(|&p| (1 + mod_pow(p, k1, ell)) % ell)
+        .collect();
+
+    let dlogs_g: Vec<u32> = g_vals
+        .iter()
+        .map(|&gp| if gp == 0 { u32::MAX } else { dlog[gp as usize] })
+        .collect();
+
+    // s_B(g(p)) = 1 if g(p) is B-smooth, 0 otherwise.
+    let smooth_vals: Vec<f64> = g_vals
+        .iter()
+        .zip(dlogs_g.iter())
+        .map(|(&gp, &d)| {
+            if d != u32::MAX && gp > 0 && is_b_smooth(gp, bound) {
+                1.0
+            } else {
+                0.0
+            }
+        })
+        .collect();
+
+    // Valid primes (g(p) ≠ 0 mod ℓ).
+    let valid_mask: Vec<bool> = dlogs_g.iter().map(|&d| d != u32::MAX).collect();
+    let n_valid = valid_mask.iter().filter(|&&m| m).count();
+
+    let smooth_count: f64 = (0..n_primes)
+        .filter(|&i| valid_mask[i])
+        .map(|i| smooth_vals[i])
+        .sum();
+    let restricted_smooth_fraction = if n_valid > 0 {
+        smooth_count / n_valid as f64
+    } else {
+        0.0
+    };
+
+    // Extract valid (smooth_val, dlog) pairs for correlation tests.
+    let (valid_smooth, valid_dlogs): (Vec<f64>, Vec<u32>) = smooth_vals
+        .iter()
+        .zip(dlogs_g.iter())
+        .filter(|(_, &d)| d != u32::MAX)
+        .map(|(&s, &d)| (s, d))
+        .unzip();
+
+    // 4. Fixed-r* test: amplitude of full-group's r* on the restricted set.
+    let fixed_r_amplitude = if valid_smooth.len() >= 2 {
+        let re_vals: Vec<f64> = valid_dlogs
+            .iter()
+            .map(|&d| re_char(d, full_r_star, order))
+            .collect();
+        let im_vals: Vec<f64> = valid_dlogs
+            .iter()
+            .map(|&d| im_char(d, full_r_star, order))
+            .collect();
+        let cr = pearson_corr(&valid_smooth, &re_vals);
+        let ci = pearson_corr(&valid_smooth, &im_vals);
+        (cr * cr + ci * ci).sqrt()
+    } else {
+        0.0
+    };
+
+    // Null for a single pre-specified r: Rayleigh with σ = 1/√(n−2).
+    let fixed_r_null = if n_valid > 2 {
+        (2.0 / (n_valid - 2) as f64).sqrt()
+    } else {
+        1.0
+    };
+    let fixed_r_excess = if fixed_r_null > 1e-15 {
+        fixed_r_amplitude / fixed_r_null
+    } else {
+        0.0
+    };
+
+    // 5. Full character scan on the restricted set.
+    let (scanned_r_star, scanned_amplitude, _, _) =
+        best_character(&valid_smooth, &valid_dlogs, order, top_k);
+
+    // Null for max over ~order/2 characters: √(2·ln(order/2) / (n_valid−2)).
+    let scanned_null = if n_valid > 2 && order > 2 {
+        (2.0 * ((order as f64 / 2.0).ln()) / (n_valid - 2) as f64).sqrt()
+    } else {
+        1.0
+    };
+    let scanned_excess = if scanned_null > 1e-15 {
+        scanned_amplitude / scanned_null
+    } else {
+        0.0
+    };
+
+    // 6. Product tests at scanned_r_star.
+    let mut actual: Vec<f64> = Vec::new();
+    let mut pred_sigma: Vec<f64> = Vec::new();
+    let mut pred_nk: Vec<f64> = Vec::new();
+
+    for &(p, q) in &pairs {
+        let pi = prime_set.partition_point(|&x| x < p);
+        let qi = prime_set.partition_point(|&x| x < q);
+
+        if !valid_mask[pi] || !valid_mask[qi] {
+            continue;
+        }
+
+        // Product of smoothness values.
+        let prod = smooth_vals[pi] * smooth_vals[qi];
+
+        // χ_{r*}(σ_{k−1}(N) mod ℓ) = χ_{r*}(g(p)·g(q) mod ℓ)
+        let sigma_val = g_vals[pi] * g_vals[qi] % ell;
+        let dlog_sigma = dlog[sigma_val as usize];
+        if dlog_sigma == u32::MAX {
+            continue;
+        }
+        let re_sigma = re_char(dlog_sigma, scanned_r_star, order);
+
+        // χ_{r*}(N^{k−1} mod ℓ)
+        let n_val = p * q;
+        let nk_val = mod_pow(n_val, k1, ell);
+        let dlog_nk = dlog[nk_val as usize];
+        if dlog_nk == u32::MAX {
+            continue;
+        }
+        let re_nk = re_char(dlog_nk, scanned_r_star, order);
+
+        actual.push(prod);
+        pred_sigma.push(re_sigma);
+        pred_nk.push(re_nk);
+    }
+
+    let n_pairs = actual.len();
+    let product_corr_sigma = if n_pairs >= 2 {
+        pearson_corr(&actual, &pred_sigma)
+    } else {
+        0.0
+    };
+    let product_corr_nk = if n_pairs >= 2 {
+        pearson_corr(&actual, &pred_nk)
+    } else {
+        0.0
+    };
+
+    PrimeRestrictedResult {
+        ell,
+        order,
+        smoothness_bound: bound,
+        n_bits,
+        channel_weight: ch.weight,
+        full_r_star,
+        full_a_max: full.a_max,
+        full_excess: full.excess_ratio,
+        n_primes,
+        n_valid,
+        restricted_smooth_fraction,
+        fixed_r_amplitude,
+        fixed_r_null,
+        fixed_r_excess,
+        scanned_r_star,
+        scanned_amplitude,
+        scanned_null,
+        scanned_excess,
+        product_corr_sigma,
+        product_corr_nk,
+        n_pairs,
+    }
+}
+
 /// Run smoothness Fourier scaling across many primes for a fixed B.
 pub fn run_smoothness_scaling(
     primes: &[u64],
@@ -1164,6 +1425,40 @@ mod tests {
         );
         // Parity slope should also be negative.
         assert!(analysis.parity_slope < 0.0);
+    }
+
+    #[test]
+    fn test_prime_restricted_smoothness_smoke() {
+        // Smoke test: 14-bit, channel 5 (k=22, ℓ=131), B=10.
+        let ch = &CHANNELS[5]; // k=22, ℓ=131
+        let result = run_prime_restricted_smoothness(14, ch, 10, 5);
+        assert_eq!(result.ell, 131);
+        assert_eq!(result.smoothness_bound, 10);
+        assert!(result.n_primes > 0, "should find primes");
+        assert!(result.n_valid > 0, "should have valid primes");
+        // Full-group should have finite values.
+        assert!(result.full_a_max > 0.0 && result.full_a_max.is_finite());
+        assert!(result.full_excess > 0.0 && result.full_excess.is_finite());
+        // Restricted amplitudes should be finite and non-negative.
+        assert!(result.fixed_r_amplitude >= 0.0 && result.fixed_r_amplitude.is_finite());
+        assert!(result.scanned_amplitude >= 0.0 && result.scanned_amplitude.is_finite());
+        // Product correlations should be in [-1, 1].
+        assert!(result.product_corr_sigma.abs() <= 1.0 + 1e-9);
+        assert!(result.product_corr_nk.abs() <= 1.0 + 1e-9);
+    }
+
+    #[test]
+    fn test_prime_restricted_smoothness_barrier_expected() {
+        // For 16-bit, channel 0 (k=12, ℓ=691), B=30:
+        // The product test B (corr_Nk) should be near zero — barrier intact.
+        let ch = &CHANNELS[0]; // k=12, ℓ=691
+        let result = run_prime_restricted_smoothness(16, ch, 30, 5);
+        assert!(result.n_pairs > 10, "need enough pairs for meaningful test");
+        assert!(
+            result.product_corr_nk.abs() < 0.5,
+            "product test B should be near zero (barrier), got {:.4}",
+            result.product_corr_nk,
+        );
     }
 
     #[test]
