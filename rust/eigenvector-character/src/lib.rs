@@ -2206,6 +2206,100 @@ fn ols_r_squared(x_rows: &[Vec<f64>], y: &[f64], beta: &[f64]) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Binned mutual information estimator
+// ---------------------------------------------------------------------------
+
+/// Assign values to quantile bins.  Returns a vector of bin indices in 0..n_bins.
+///
+/// Ties are broken by position: values sharing the same rank are assigned
+/// to successive bins in input order.
+fn assign_quantile_bins(values: &[u32], n_bins: usize) -> Vec<usize> {
+    let n = values.len();
+    if n == 0 || n_bins == 0 {
+        return vec![0; n];
+    }
+    // Rank by value (stable sort preserves order within ties).
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_by_key(|&i| values[i]);
+
+    let mut bins = vec![0usize; n];
+    for (rank, &idx) in indices.iter().enumerate() {
+        bins[idx] = (rank * n_bins) / n;
+    }
+    bins
+}
+
+/// Compute binned mutual information I(target; bins_i, bins_j) where
+/// target is binary (0.0 or 1.0) and bins_i, bins_j are quantile bin indices.
+///
+/// Builds a Q × Q × 2 contingency table and computes:
+///   MI = H(target) − H(target | bins_i, bins_j)
+///
+/// Returns MI in nats.  For independent variables, MI ≈ 0.
+fn binned_mutual_information(
+    target: &[f64],
+    bins_i: &[usize],
+    bins_j: &[usize],
+    n_bins: usize,
+) -> f64 {
+    let n = target.len();
+    debug_assert_eq!(n, bins_i.len());
+    debug_assert_eq!(n, bins_j.len());
+    if n == 0 {
+        return 0.0;
+    }
+
+    // Count(bin_i, bin_j, target_class).
+    let n_cells = n_bins * n_bins;
+    let mut count_0 = vec![0u64; n_cells]; // target = 0
+    let mut count_1 = vec![0u64; n_cells]; // target = 1
+
+    for idx in 0..n {
+        let cell = bins_i[idx] * n_bins + bins_j[idx];
+        if target[idx] > 0.5 {
+            count_1[cell] += 1;
+        } else {
+            count_0[cell] += 1;
+        }
+    }
+
+    // H(target): marginal entropy.
+    let n_pos: u64 = count_1.iter().sum();
+    let n_neg: u64 = count_0.iter().sum();
+    let n_f = n as f64;
+    let p_pos = n_pos as f64 / n_f;
+    let p_neg = n_neg as f64 / n_f;
+    let h_target = -safe_plogp(p_pos) - safe_plogp(p_neg);
+
+    // H(target | bins): conditional entropy.
+    let mut h_cond = 0.0f64;
+    for cell in 0..n_cells {
+        let c0 = count_0[cell] as f64;
+        let c1 = count_1[cell] as f64;
+        let total = c0 + c1;
+        if total < 0.5 {
+            continue;
+        }
+        let weight = total / n_f;
+        let p0 = c0 / total;
+        let p1 = c1 / total;
+        h_cond += weight * (-safe_plogp(p0) - safe_plogp(p1));
+    }
+
+    h_target - h_cond
+}
+
+/// Safe p·log(p): returns 0.0 when p ≤ 0 (avoids NaN from log(0)).
+#[inline]
+fn safe_plogp(p: f64) -> f64 {
+    if p <= 0.0 {
+        0.0
+    } else {
+        p * p.ln()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -2695,6 +2789,27 @@ mod tests {
         assert!(
             r2 > 0.999,
             "R² should be ≈ 1 for exact fit, got {r2}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // E21c: Binned MI test
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_binned_mi_independent_is_near_zero() {
+        // Target and bins are independent: MI should be ≈ 0.
+        // Construct 200 data points with uniform bins and random-ish target.
+        let n = 200;
+        let n_bins = 5;
+        let bins_i: Vec<usize> = (0..n).map(|i| i % n_bins).collect();
+        let bins_j: Vec<usize> = (0..n).map(|i| (i * 3 + 1) % n_bins).collect();
+        // Target alternates 0/1 in a pattern unrelated to bin assignment.
+        let target: Vec<f64> = (0..n).map(|i| if i % 2 == 0 { 1.0 } else { 0.0 }).collect();
+        let mi = binned_mutual_information(&target, &bins_i, &bins_j, n_bins);
+        assert!(
+            mi.abs() < 0.05,
+            "MI for independent bins/target should be near 0, got {mi}"
         );
     }
 }
