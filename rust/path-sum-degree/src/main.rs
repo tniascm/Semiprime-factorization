@@ -44,6 +44,8 @@ fn run_audit(opts: &HashMap<String, String>) {
         n_semiprimes: 3000,
         n_monomials: 300,
         run_crt_rank: true,
+        n_null_sims: 200,
+        null_quantile: 0.99,
         seed,
     };
 
@@ -70,6 +72,8 @@ fn run_scale(opts: &HashMap<String, String>) {
         n_semiprimes: samples,
         n_monomials: monomials,
         run_crt_rank: true,
+        n_null_sims: 50,
+        null_quantile: 0.99,
         seed,
     };
 
@@ -86,6 +90,8 @@ fn run_quick() {
         n_semiprimes: 300,
         n_monomials: 50,
         run_crt_rank: true,
+        n_null_sims: 30,
+        null_quantile: 0.99,
         seed: 42,
     };
     let result = run_scan(&config);

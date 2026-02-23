@@ -10,7 +10,10 @@
 ///   b ≈ 1/2     → degree grows as n^{1/2}       (random function baseline)
 ///   b ≈ 1       → degree grows linearly with n  (hard: no improvement over brute force)
 
-use crate::degree::{run_correlation_scan, run_fit_degree, CorrelationResult, CrtRankResult, FitDegreeResult};
+use crate::degree::{
+    run_correlation_scan, run_fit_degree, real_spectrum,
+    CorrelationResult, CrtRankResult, FitDegreeResult, RealSpectrum,
+};
 use eisenstein_hunt::{Channel, CHANNELS};
 use rayon::prelude::*;
 use serde::Serialize;
@@ -26,8 +29,13 @@ pub struct ScanConfig {
     pub n_semiprimes: usize,
     /// Number of random monomials to sample per (n_bits, degree, channel).
     pub n_monomials: usize,
-    /// Whether to also run the CRT rank analysis (only for n_bits ≤ 20).
+    /// Whether to also run CRT rank + real spectrum (for n_bits ≤ 24).
     pub run_crt_rank: bool,
+    /// Number of permutation simulations for the calibrated null threshold.
+    /// Set to 0 to use the old fixed 3/√m threshold.
+    pub n_null_sims: usize,
+    /// Quantile for the calibrated threshold (e.g. 0.99 → 1% false-positive rate).
+    pub null_quantile: f64,
     /// Random seed.
     pub seed: u64,
 }
@@ -40,6 +48,8 @@ impl Default for ScanConfig {
             n_semiprimes: 2000,
             n_monomials: 200,
             run_crt_rank: true,
+            n_null_sims: 50,
+            null_quantile: 0.99,
             seed: 0x4e32_dead_beef_0001,
         }
     }
@@ -54,6 +64,8 @@ pub struct BlockResult {
     pub correlations: Vec<CorrelationResult>,
     pub fit_degree: Option<FitDegreeResult>,
     pub crt_rank: Option<CrtRankResult>,
+    /// Real-valued spectral analysis (for n_bits ≤ 24 when run_crt_rank is set).
+    pub real_spectrum: Option<RealSpectrum>,
 }
 
 /// Full scan result across all channels and bit sizes.
@@ -100,8 +112,11 @@ pub fn run_scan(config: &ScanConfig) -> ScanResult {
             let ch = &CHANNELS[ci];
             let seed = config.seed ^ (ci as u64 * 0x9e37_79b9) ^ (n_bits as u64 * 0x6c62_272e);
 
-            let correlations =
-                run_correlation_scan(ch, n_bits, config.max_degree, config.n_semiprimes, config.n_monomials, seed);
+            let correlations = run_correlation_scan(
+                ch, n_bits, config.max_degree,
+                config.n_semiprimes, config.n_monomials, seed,
+                config.n_null_sims, config.null_quantile,
+            );
 
             let fit_degree = if n_bits <= 32 {
                 let samples = config.n_semiprimes.min(5000);
@@ -110,8 +125,16 @@ pub fn run_scan(config: &ScanConfig) -> ScanResult {
                 None
             };
 
-            let crt_rank = if config.run_crt_rank && n_bits <= 20 {
+            // CRT rank extended to n_bits ≤ 24 (improvement #2).
+            let crt_rank = if config.run_crt_rank && n_bits <= 24 {
                 Some(crate::degree::crt_rank(n_bits, ch))
+            } else {
+                None
+            };
+
+            // Real-valued spectrum for n_bits ≤ 24 (improvement #3).
+            let real_spectrum = if config.run_crt_rank && n_bits <= 24 {
+                Some(real_spectrum(n_bits, ch))
             } else {
                 None
             };
@@ -123,6 +146,7 @@ pub fn run_scan(config: &ScanConfig) -> ScanResult {
                 correlations,
                 fit_degree,
                 crt_rank,
+                real_spectrum,
             }
         })
         .collect();
@@ -273,7 +297,20 @@ pub fn print_summary(result: &ScanResult) {
 
     // Per-channel, per-n_bits correlation table
     println!("\nCorrelation Lower Bounds (max |corr| over sampled monomials)");
-    println!("  '*' = significant (> threshold = 3/sqrt(m))");
+    // Report which threshold was used (calibrated vs fixed).
+    let using_calibrated = result.blocks.first()
+        .and_then(|b| b.correlations.first())
+        .map(|r| r.null_quantile > 0.0)
+        .unwrap_or(false);
+    if using_calibrated {
+        let q = result.blocks.first()
+            .and_then(|b| b.correlations.first())
+            .map(|r| r.null_quantile)
+            .unwrap_or(0.99);
+        println!("  '*' = significant (> calibrated {:.0}%-quantile of null distribution)", q * 100.0);
+    } else {
+        println!("  '*' = significant (> fixed threshold 3/sqrt(m))");
+    }
     for ch in eisenstein_hunt::CHANNELS {
         println!("\n  Channel k={}, ℓ={}", ch.weight, ch.ell);
         println!("  {:>8}  {}", "n_bits", (1..=result.config_max_degree).map(|d| format!("  d={d}  ")).collect::<String>());
@@ -297,7 +334,7 @@ pub fn print_summary(result: &ScanResult) {
     // CRT rank summary
     let has_crt = result.blocks.iter().any(|b| b.crt_rank.is_some());
     if has_crt {
-        println!("\nCRT Rank (n_bits ≤ 20)");
+        println!("\nCRT Rank (n_bits ≤ 24)");
         println!("{:>8} {:>8} {:>10} {:>10} {:>12}", "weight", "ell", "n_bits", "n_primes", "rank_fraction");
         println!("{}", "-".repeat(55));
         let mut crt_rows: Vec<_> = result.blocks.iter()
@@ -307,6 +344,49 @@ pub fn print_summary(result: &ScanResult) {
         for (_, r) in crt_rows {
             println!("{:>8} {:>8} {:>10} {:>10} {:>12.3}",
                 r.channel_weight, r.channel_ell, r.n_bits, r.n_primes, r.rank_fraction);
+        }
+    }
+
+    // Real spectrum summary
+    let has_spec = result.blocks.iter().any(|b| b.real_spectrum.is_some());
+    if has_spec {
+        println!("\nReal Spectrum (n_bits ≤ 24)");
+        println!(
+            "{:>8} {:>8} {:>8} {:>9} {:>9} {:>10} {:>10} {:>13}",
+            "weight", "ell", "n_bits", "n_primes", "f2_rank", "real_rank",
+            "stable_rk", "frac_stable"
+        );
+        println!("{}", "-".repeat(80));
+        let mut spec_rows: Vec<_> = result.blocks.iter()
+            .filter_map(|b| b.real_spectrum.as_ref().map(|s| {
+                let f2 = b.crt_rank.as_ref().map(|r| r.rank).unwrap_or(0);
+                (b, s, f2)
+            }))
+            .collect();
+        spec_rows.sort_by_key(|(b, s, _)| (s.n_bits, b.channel_weight, b.channel_ell));
+        for (_, s, f2) in &spec_rows {
+            let frac = if s.n_primes > 0 { s.stable_rank / s.n_primes as f64 } else { 0.0 };
+            println!(
+                "{:>8} {:>8} {:>8} {:>9} {:>9} {:>10} {:>10.2} {:>13.3}",
+                s.channel_weight, s.channel_ell, s.n_bits, s.n_primes,
+                f2, if s.real_rank > 0 { s.real_rank.to_string() } else { "—".to_string() },
+                s.stable_rank, frac
+            );
+        }
+
+        // Top-eigenvalue spectrum for the first channel at each n_bits where computed.
+        let mut shown: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        for (_, s, _) in &spec_rows {
+            if !s.top_eigenvalues.is_empty() && shown.insert(s.n_bits) {
+                let top5: Vec<String> = s.top_eigenvalues.iter().take(5)
+                    .map(|&v| format!("{:.2}", v))
+                    .collect();
+                println!(
+                    "  n={} (ch k={},ℓ={}): top-5 |λ| = [{}]  spectral_norm={:.3}",
+                    s.n_bits, s.channel_weight, s.channel_ell,
+                    top5.join(", "), s.spectral_norm
+                );
+            }
         }
     }
 }
@@ -354,6 +434,8 @@ mod tests {
             n_semiprimes: 100,
             n_monomials: 20,
             run_crt_rank: true,
+            n_null_sims: 10,
+            null_quantile: 0.99,
             seed: 42,
         };
         let result = run_scan(&config);
