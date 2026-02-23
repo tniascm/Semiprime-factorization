@@ -1,6 +1,6 @@
 # E21: Dominant Eigenvector Multiplicative Character Structure
 
-**Status:** Complete (negative result — barrier confirmed).
+**Status:** Complete (E21 barrier confirmed; E21b smoothness spectrum measured).
 
 ## Motivation
 
@@ -184,6 +184,85 @@ too sparse (though sparsity compounds the problem).  The more decisive reason is
 any harmonic structure is spread across many characters and is not N-only
 extractable.
 
+## E21b: Smoothness Fourier spectrum
+
+### Motivation
+
+The parity function h(a) = a mod 2 has Fourier amplitudes decaying as
+A_max = Θ(√(log ℓ)/√ℓ) (confirmed above).  This uniform decay is WHY parity
+provides no exploitable multiplicative bias.  But GNFS works precisely because
+**B-smooth numbers** have special multiplicative structure.
+
+**Question:** Does the B-smoothness indicator s_B(a) = 1_{a is B-smooth} have
+different Fourier scaling from parity?  Specifically: does its maximum Fourier
+amplitude A_max^{(B)}(ℓ) decay *slower* than ℓ^{−1/2}?
+
+If yes: the smoothness function retains multiplicative bias in the Fourier domain
+that parity does not — a quantitative signature of the structure GNFS exploits.
+
+### Method
+
+For each (ℓ, B): build the centered smoothness indicator
+s̃_B(a) = s_B(a) − mean(s_B) on (ℤ/ℓℤ)* in dlog order, compute the exact DFT,
+and record A_max^{(B)}(ℓ) = max_{r≥1} |ŝ̃_B(r)|.  Compare the power-law decay
+slope to the parity baseline.
+
+30 primes ℓ = 101 to 50021.  Smoothness bounds B ∈ {10, 30, 100, 300}.
+
+### Results
+
+#### Table 3: Smoothness vs parity scaling comparison
+
+| B   | slope    | parity slope | Δslope  | R²     | verdict                       |
+|-----|----------|--------------|---------|--------|-------------------------------|
+| 10  | −0.4905  | −0.4387      | −0.052  | 0.968  | same as parity                |
+| 30  | −0.2382  | −0.4387      | **+0.201** | 0.884 | **slower decay** — bias detected |
+| 100 | −0.0838  | −0.4403      | **+0.357** | 0.351 | **slower decay** — bias detected |
+| 300 | −0.0548  | −0.4420      | **+0.387** | 0.153 | **slower decay** — bias detected |
+
+#### Table 4: Smoothness-to-parity ratio (B = 30, selected ℓ)
+
+| ℓ     | smooth% | A_max    | A·√ℓ | parity A·√ℓ | ratio |
+|-------|---------|----------|------|-------------|-------|
+| 101   | 79.0%   | 0.09534  | 0.96 | 2.27        | 0.42  |
+| 701   | 45.7%   | 0.08554  | 2.27 | 2.57        | 0.88  |
+| 3109  | 26.0%   | 0.06358  | 3.55 | 2.92        | 1.21  |
+| 11197 | 15.0%   | 0.04848  | 5.13 | 3.11        | 1.65  |
+| 50021 | 7.3%    | 0.02957  | 6.61 | 3.30        | **2.00** |
+
+### Interpretation
+
+1. **B = 10 (very small bound):** Decay matches parity (Δslope ≈ 0).  At such
+   small B, the smoothness indicator is essentially like a generic multiplicative
+   function — no special structure beyond what parity already captures.
+
+2. **B ≥ 30:** **Significantly slower Fourier decay than parity.**  For B = 30,
+   the slope is −0.24 vs parity's −0.44 — a positive Δslope of +0.20.  The
+   smoothness-to-parity ratio grows from 0.42 at ℓ = 101 to **2.0 at ℓ = 50021**
+   and shows no sign of levelling off.  This means A_max^{(B)} ∝ ℓ^{−α} with
+   α ≈ 0.24, far shallower than parity's α ≈ 0.44.
+
+3. **B = 100, 300:** Even shallower slopes (−0.08 and −0.05), but low R² values
+   (0.35 and 0.15) indicate the power-law model is not a good fit — likely due
+   to onset effects where ℓ ≈ B makes the indicator nearly trivial.  The ratio
+   column still shows the same qualitative trend: growing with ℓ.
+
+4. **Physical meaning:** The smoothness indicator has genuine **multiplicative
+   Fourier bias** that parity lacks.  This is consistent with the product-of-
+   local-factors structure: ŝ_B(r) = Π_{p≤B} (local DFT at p), which creates
+   constructive interference for characters χ_r that are "nearly trivial" on
+   the small primes.  This is precisely the structure that GNFS's smoothness
+   sieving exploits — now measured quantitatively in the Fourier domain.
+
+5. **Implication for factoring:** The slower Fourier decay means that the
+   smoothness function retains more harmonic structure at large ℓ than parity.
+   In principle, a Fourier-domain algorithm that detects B-smooth residues
+   via their anomalous character amplitudes could exploit this — but only if
+   the dominant character r* (or a small set of characters) can be identified
+   and evaluated from N alone.  The E21 barrier (product test B ≈ 0) shows
+   that for the parity-based CRT matrix, this is not possible.  Whether the
+   smoothness-based version of the barrier also holds is an open question.
+
 ## Conclusions
 
 1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
@@ -219,9 +298,23 @@ extractable.
    amplitude O(√(log ℓ)/√ℓ), making them useless for extracting a single
    N-computable product.
 
+7. **Smoothness Fourier bias confirmed** (E21b): the B-smoothness indicator
+   s_B(a) has significantly slower Fourier decay than parity for B ≥ 30.
+   At B = 30, the decay exponent is −0.24 vs parity's −0.44 (Δ = +0.20),
+   and the smoothness-to-parity ratio grows from 0.42 to 2.0 across
+   ℓ = 101 to 50021.  This quantifies the multiplicative bias that GNFS
+   exploits: smooth numbers are not "random" in the Fourier domain.
+
+8. **Open question from E21b:** Does the smoothness-based barrier also hold?
+   E21 showed that parity-based u₁(p)·u₁(q) is not N-extractable.  But the
+   smoothness indicator's dominant characters may have different product-test
+   behaviour.  If a smoothness-tuned character r* satisfies
+   |corr(ŝ_B(r*), N^{k−1} mod ℓ)| > 0, a new Fourier-domain corridor opens.
+
 ## Data files
 
 - `rust/data/E21_character_audit.json` — full per-block per-eigenvector results
 - `rust/data/E21_control_results.json` — full-group control experiment results
 - `rust/data/E21_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
-- `rust/eigenvector-character/` — Rust crate implementing E21
+- `rust/data/E21b_smoothness_spectrum.json` — smoothness Fourier spectrum (B = 10, 30, 100, 300)
+- `rust/eigenvector-character/` — Rust crate implementing E21 and E21b
