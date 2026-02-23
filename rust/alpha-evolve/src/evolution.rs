@@ -9,6 +9,7 @@ use std::cmp::Ordering;
 use rand::Rng;
 
 use crate::{
+    macros::{MacroKind, MacroParams},
     seed_fermat_like, seed_hart_like, seed_lehman_like, seed_pollard_rho, seed_trial_like,
     Individual, PrimitiveOp, Program, ProgramNode,
 };
@@ -69,24 +70,69 @@ fn random_op(rng: &mut impl Rng) -> PrimitiveOp {
     }
 }
 
+/// Generate a random macro block kind.
+fn random_macro_kind(rng: &mut impl Rng) -> MacroKind {
+    match rng.gen_range(0..6) {
+        0 => MacroKind::Squfof,
+        1 => MacroKind::Ecm,
+        2 => MacroKind::PollardRho,
+        3 => MacroKind::FermatScan,
+        4 => MacroKind::LatticeSmooth,
+        _ => MacroKind::ClassWalk,
+    }
+}
+
+/// Generate random macro parameters appropriate for the given kind.
+fn random_macro_params(kind: &MacroKind, rng: &mut impl Rng) -> MacroParams {
+    match kind {
+        MacroKind::Squfof => MacroParams::default(),
+        MacroKind::Ecm => MacroParams {
+            param1: rng.gen_range(100..=2000), // B1
+            param2: rng.gen_range(1..=3),      // curves
+        },
+        MacroKind::PollardRho => MacroParams {
+            param1: rng.gen_range(100..=10000), // max_iters
+            param2: 1,
+        },
+        MacroKind::FermatScan => MacroParams {
+            param1: rng.gen_range(1..=100),    // k_start
+            param2: rng.gen_range(100..=1000), // k_end
+        },
+        MacroKind::LatticeSmooth => MacroParams {
+            param1: rng.gen_range(4..=10), // dimension
+            param2: 1,
+        },
+        MacroKind::ClassWalk => MacroParams {
+            param1: rng.gen_range(10..=2000), // steps
+            param2: 1,
+        },
+    }
+}
+
 /// Generate a random program node with bounded depth.
 ///
-/// Includes all 6 node types: Leaf, Sequence, IterateNode, GcdCheck,
-/// ConditionalGt, and MemoryOp.
+/// Includes all 9 node types: Leaf, Sequence, IterateNode, GcdCheck,
+/// ConditionalGt, MemoryOp, MacroBlock, and Hybrid.
 fn random_node(rng: &mut impl Rng, max_depth: u32) -> ProgramNode {
     if max_depth <= 1 {
-        // At max depth, only generate terminal nodes (Leaf or MemoryOp)
-        if rng.gen_bool(0.9) {
-            return ProgramNode::Leaf(random_op(rng));
-        } else {
-            return ProgramNode::MemoryOp {
-                store: rng.gen_bool(0.5),
-                slot: rng.gen_range(0..4),
-            };
+        // At max depth, only generate terminal nodes (Leaf, MemoryOp, or MacroBlock)
+        match rng.gen_range(0..10) {
+            0 => {
+                return ProgramNode::MemoryOp {
+                    store: rng.gen_bool(0.5),
+                    slot: rng.gen_range(0..4),
+                };
+            }
+            1 => {
+                let kind = random_macro_kind(rng);
+                let params = random_macro_params(&kind, rng);
+                return ProgramNode::MacroBlock { kind, params };
+            }
+            _ => return ProgramNode::Leaf(random_op(rng)),
         }
     }
 
-    match rng.gen_range(0..8) {
+    match rng.gen_range(0..11) {
         0 | 1 => ProgramNode::Leaf(random_op(rng)),
         2 => {
             let len = rng.gen_range(2..=4);
@@ -110,10 +156,24 @@ fn random_node(rng: &mut impl Rng, max_depth: u32) -> ProgramNode {
             store: true,
             slot: rng.gen_range(0..4),
         },
-        _ => ProgramNode::MemoryOp {
+        7 => ProgramNode::MemoryOp {
             store: false,
             slot: rng.gen_range(0..4),
         },
+        8 => {
+            // MacroBlock
+            let kind = random_macro_kind(rng);
+            let params = random_macro_params(&kind, rng);
+            ProgramNode::MacroBlock { kind, params }
+        }
+        9 => {
+            // Hybrid: run first, then feed state to second
+            ProgramNode::Hybrid {
+                first: Box::new(random_node(rng, max_depth - 1)),
+                second: Box::new(random_node(rng, max_depth - 1)),
+            }
+        }
+        _ => ProgramNode::Leaf(random_op(rng)),
     }
 }
 
@@ -281,6 +341,49 @@ fn mutate_node(node: &ProgramNode, rng: &mut impl Rng) -> ProgramNode {
                 ProgramNode::MemoryOp {
                     store: *store,
                     slot: rng.gen_range(0..4),
+                }
+            }
+        }
+        ProgramNode::MacroBlock { kind, params } => {
+            // Either change the macro kind entirely, or tweak parameters
+            if rng.gen_bool(0.3) {
+                // Change macro kind
+                let new_kind = random_macro_kind(rng);
+                let new_params = random_macro_params(&new_kind, rng);
+                ProgramNode::MacroBlock {
+                    kind: new_kind,
+                    params: new_params,
+                }
+            } else {
+                // Tweak parameters
+                let delta1: i64 = rng.gen_range(-200..=200);
+                let delta2: i64 = rng.gen_range(-2..=2);
+                ProgramNode::MacroBlock {
+                    kind: kind.clone(),
+                    params: MacroParams {
+                        param1: (params.param1 as i64 + delta1).max(1) as u64,
+                        param2: (params.param2 as i64 + delta2).max(1) as u64,
+                    },
+                }
+            }
+        }
+        ProgramNode::Hybrid { first, second } => {
+            // Either replace one branch or swap them
+            match rng.gen_range(0..3) {
+                0 => ProgramNode::Hybrid {
+                    first: Box::new(random_node(rng, 2)),
+                    second: second.clone(),
+                },
+                1 => ProgramNode::Hybrid {
+                    first: first.clone(),
+                    second: Box::new(random_node(rng, 2)),
+                },
+                _ => {
+                    // Swap the order (second runs first)
+                    ProgramNode::Hybrid {
+                        first: second.clone(),
+                        second: first.clone(),
+                    }
                 }
             }
         }

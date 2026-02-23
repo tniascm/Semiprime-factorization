@@ -6,6 +6,7 @@
 
 pub mod evolution;
 pub mod fitness;
+pub mod macros;
 pub mod primitives;
 
 use num_bigint::BigUint;
@@ -145,6 +146,19 @@ pub enum ProgramNode {
         store: bool,
         slot: u8,
     },
+    /// A macro algorithm block: runs a complete algorithm with evolved parameters.
+    /// State is passed as a hint to the macro. If the macro finds a factor, it's
+    /// set as the result. Otherwise, state is left unchanged.
+    MacroBlock {
+        kind: crate::macros::MacroKind,
+        params: crate::macros::MacroParams,
+    },
+    /// Hybrid composition: run child A first; if it doesn't find a factor,
+    /// feed the resulting state into child B.
+    Hybrid {
+        first: Box<ProgramNode>,
+        second: Box<ProgramNode>,
+    },
 }
 
 impl fmt::Display for ProgramNode {
@@ -181,6 +195,12 @@ impl fmt::Display for ProgramNode {
                     write!(f, "Load({})", slot)
                 }
             }
+            ProgramNode::MacroBlock { kind, params } => {
+                write!(f, "{}({},{})", kind, params.param1, params.param2)
+            }
+            ProgramNode::Hybrid { first, second } => {
+                write!(f, "Hybrid({}, {})", first, second)
+            }
         }
     }
 }
@@ -199,6 +219,10 @@ impl ProgramNode {
                 if_true, if_false, ..
             } => 1 + if_true.node_count() + if_false.node_count(),
             ProgramNode::MemoryOp { .. } => 1,
+            ProgramNode::MacroBlock { .. } => 1,
+            ProgramNode::Hybrid { first, second } => {
+                1 + first.node_count() + second.node_count()
+            }
         }
     }
 
@@ -216,7 +240,7 @@ impl ProgramNode {
         *counter += 1;
 
         match self {
-            ProgramNode::Leaf(_) | ProgramNode::MemoryOp { .. } => None,
+            ProgramNode::Leaf(_) | ProgramNode::MemoryOp { .. } | ProgramNode::MacroBlock { .. } => None,
             ProgramNode::Sequence(children) => {
                 for child in children {
                     if let Some(node) = child.get_node_impl(target, counter) {
@@ -234,6 +258,12 @@ impl ProgramNode {
                     return Some(node);
                 }
                 if_false.get_node_impl(target, counter)
+            }
+            ProgramNode::Hybrid { first, second } => {
+                if let Some(node) = first.get_node_impl(target, counter) {
+                    return Some(node);
+                }
+                second.get_node_impl(target, counter)
             }
         }
     }
@@ -264,6 +294,10 @@ impl ProgramNode {
                 store: *store,
                 slot: *slot,
             },
+            ProgramNode::MacroBlock { kind, params } => ProgramNode::MacroBlock {
+                kind: kind.clone(),
+                params: params.clone(),
+            },
             ProgramNode::Sequence(children) => {
                 let new_children: Vec<ProgramNode> = children
                     .iter()
@@ -286,6 +320,10 @@ impl ProgramNode {
                 threshold: *threshold,
                 if_true: Box::new(if_true.replace_node_impl(target, replacement, counter)),
                 if_false: Box::new(if_false.replace_node_impl(target, replacement, counter)),
+            },
+            ProgramNode::Hybrid { first, second } => ProgramNode::Hybrid {
+                first: Box::new(first.replace_node_impl(target, replacement, counter)),
+                second: Box::new(second.replace_node_impl(target, replacement, counter)),
             },
         }
     }
@@ -479,6 +517,30 @@ fn execute_node(node: &ProgramNode, eval: &mut EvalState) {
             } else {
                 eval.prev_state = eval.state.clone();
                 eval.state = eval.memory[idx].clone();
+            }
+        }
+        ProgramNode::MacroBlock { kind, params } => {
+            if eval.tick() {
+                return;
+            }
+            if let Some(factor) = crate::macros::execute_macro(
+                kind,
+                params,
+                &eval.n,
+                &eval.state,
+            ) {
+                let one = BigUint::one();
+                if factor > one && factor < eval.n {
+                    eval.found_factor = Some(factor);
+                }
+            }
+        }
+        ProgramNode::Hybrid { first, second } => {
+            // Run the first child
+            execute_node(first, eval);
+            // If no factor found, run the second child with the state from the first
+            if eval.found_factor.is_none() && !eval.timed_out() && eval.ops < eval.max_ops {
+                execute_node(second, eval);
             }
         }
     }
