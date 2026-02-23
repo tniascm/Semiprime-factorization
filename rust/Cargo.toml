@@ -22,6 +22,8 @@ members = [
     "trace-lattice",
     "cf-factor",
     "eisenstein-hunt",
+    "path-sum-degree",
+    "eigenvector-character",
 ]
 
 [workspace.dependencies]
