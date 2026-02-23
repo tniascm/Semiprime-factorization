@@ -1,112 +1,112 @@
 {
-  "generation": 50,
-  "elapsed_secs": 91.731802167,
-  "cache_entries": 1438,
-  "novelty_archive_size": 17,
-  "unique_behaviors": 17,
-  "global_best_fitness": 1605872.0,
-  "global_best_program": "ECM(592)",
+  "generation": 1000,
+  "elapsed_secs": 5479.834366042,
+  "cache_entries": 49914,
+  "novelty_archive_size": 594,
+  "unique_behaviors": 594,
+  "global_best_fitness": 1880400.6060606057,
+  "global_best_program": "ECM(6296)",
   "global_best_nodes": 1,
   "top_programs": [
     {
-      "fitness": 1605872.0,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(592)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1605872.0,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(592)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1600834.0740740737,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(5706)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1600834.0740740737,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(5706)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1597942.997903564,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "ECM(9597)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1528460.0,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "MacroRho(9005,1)"
+      "program": "ECM(6296)"
     },
     {
-      "fitness": 1528460.0,
+      "fitness": 1880400.6060606057,
       "nodes": 1,
-      "program": "MacroRho(6855,7)"
+      "program": "ECM(6296)"
     }
   ]
 }
