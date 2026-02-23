@@ -344,32 +344,39 @@ small-sample noise (only 167 pairs).
 parity), but the product test still confirms the barrier.  The smoothness
 bias is real and detectable on the restricted set, but **NOT N-extractable**.
 
+### E21b Step 2b: σ-approximation corridor test
+
+**Question:** The algebraic gap σ_{k−1}(N) − N^{k−1} = 1 + p^{k−1} + q^{k−1} reduces
+(via Newton's identity) to knowing p + q.  For balanced semiprimes p ≈ q ≈ √N, can we
+approximate σ_{k−1}(N) using only N?
+
+**Method:** Compute σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1} mod ℓ (replaces unknown
+p^{k−1} + q^{k−1} with 2·⌊√N⌋^{k−1}, exact when p = q).  Measure:
+- Circular distance error: |σ_approx − σ_true| / ℓ (wrapped to [0, 0.5])
+- Product correlation: corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(σ_approx mod ℓ)))
+
+56 blocks tested (same configuration as Step 2).
+
+#### Table 10: σ-approximation results (all 56 blocks)
+
+| B   | mean error | expected (random) | mean |corr_approx| | max |corr_approx| | verdict   |
+|-----|------------|-------------------|----------------------|---------------------|-----------|
+| 10  | 0.252      | 0.250             | 0.026                | 0.124               | ✓ RANDOM  |
+| 30  | 0.252      | 0.250             | 0.028                | 0.165               | ✓ RANDOM  |
+
+**Interpretation:** The mean circular distance error is 0.252, indistinguishable from
+the expected value 0.250 for a uniformly random residue.  High-order exponentiation
+(k−1 ≥ 11) completely destroys the proximity p ≈ q ≈ √N: even though |p − q| / √N
+is O(1) for balanced semiprimes, |p^{k−1} − (√N)^{k−1}| mod ℓ is uniformly distributed
+because the exponential amplifies small differences.  The correlation corr_approx ≈ 0
+confirms that the σ-approximation provides no signal whatsoever.
+
+**Conclusion:** The last algebraic loophole — exploiting the balanced-semiprime constraint
+to approximate the algebraic gap — is closed.  The smoothness Fourier corridor is
+definitively CLOSED at all three levels: character structure (Step 2), product
+extractability (Table 9), and σ-approximation (Table 10).
+
 ## Conclusions
-
-1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
-   for all primes (p, q) tested.  The multiplicative factorisation of M is exact.
-
-2. **No character structure detected**: the dominant eigenvector u₁ of M does
-   NOT align with any individual multiplicative character χ_r of (ℤ/ℓℤ)*.
-   Character amplitudes are indistinguishable from noise across all 28
-   (n_bits, channel) blocks.
-
-3. **Pipeline validated** (full-group control): the same character scan finds
-   amp ≈ 1.0 over the unrestricted group.  The drop to noise in the
-   prime-restricted audit is real, not a pipeline artifact.
-
-4. **Fourier scaling confirmed**: A_max(ℓ) = Θ(√(log ℓ)/√ℓ), measured via
-   exact DFT of centered parity h̃ = 2h − 1 on (ℤ/ℓℤ)* for 30 primes
-   (ℓ = 101 to 50021).  The corrected ratio A_max·√ℓ/√(log ℓ) = 1.050 ± 0.035
-   is constant to 3.3% CV across 3 orders of magnitude.  The √(log ℓ) factor
-   is the extremal-value correction from maximising over ~ℓ/2 characters.
-   This explains why the stable rank is O(1): the eigenvalue spectrum of H
-   has O(1) modes at amplitude O(√(ℓ·log ℓ)) against a trivial background
-   of ℓ/2, giving effective rank ≈ Σ(λ_r²)/λ₀² = O(log ℓ/ℓ) · (ℓ/2) = O(1).
-
-5. **Barrier intact** (Product test B): `corr(u₁(p)·u₁(q), N^{k−1} mod ℓ) ≈ 0`
-   uniformly.  The product of eigenvector components is NOT accessible from N
-   alone.  The **analytic-continuation corridor is closed**.
 
 1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
    for all primes (p, q) tested.  The multiplicative factorisation of M is exact.
@@ -427,6 +434,12 @@ bias is real and detectable on the restricted set, but **NOT N-extractable**.
     (55/56 blocks with |corr_Nk| < 0.15).  Despite the smoothness character
     surviving restriction, the product is NOT predictable from N alone.
     The **smoothness Fourier corridor is CLOSED**.
+
+11. **σ-approximation corridor closed** (E21b Step 2b): the balanced-semiprime
+    approximation σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1} mod ℓ has circular
+    distance error 0.252 ≈ 0.250 (random), with corr_approx ≈ 0 in all 56 blocks.
+    High-order exponentiation (k−1 ≥ 11) destroys p ≈ q proximity modulo ℓ.
+    The last algebraic loophole is closed.
 
 ## Data files
 
