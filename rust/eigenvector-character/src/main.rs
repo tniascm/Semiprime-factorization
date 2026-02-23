@@ -20,10 +20,12 @@
 use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
     run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
+    run_cross_channel_tests,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
     PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
     PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
+    CrossChannelResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -39,10 +41,11 @@ fn main() {
         "control"  => run_control_mode(&opts),
         "scaling"  => run_scaling_mode(&opts),
         "smooth"   => run_smooth_mode(&opts),
-        "restrict" => run_restrict_mode(&opts),
-        "stress"   => run_stress_mode(&opts),
+        "restrict"  => run_restrict_mode(&opts),
+        "stress"    => run_stress_mode(&opts),
+        "crosschan" => run_crosschan_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan");
             std::process::exit(1);
         }
     }
@@ -1055,6 +1058,196 @@ fn run_stress_mode(opts: &HashMap<String, String>) {
     println!();
     print_stress_summary(&result);
     write_json(&result, "data/E21b_stress_tests.json");
+}
+
+// ---------------------------------------------------------------------------
+// Mode: crosschan (E21c joint cross-channel N-only tests)
+// ---------------------------------------------------------------------------
+
+fn run_crosschan_mode(opts: &HashMap<String, String>) {
+    let top_k = parse_usize(opts, "topk", 10);
+    let bit_sizes = parse_bit_sizes(opts, &[14, 16, 18, 20, 24, 28, 32, 40, 48]);
+    let n_perm = parse_usize(opts, "permutations", 200);
+    let n_bins = parse_usize(opts, "bins", 8);
+    let seed = parse_u64(opts, "seed", 0xE21c_C400_5EED);
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![10, 30]);
+
+    println!("E21c CROSS-CHANNEL TESTS: joint N-only across 7 Eisenstein channels");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Bounds B     : {:?}", bounds);
+    println!("Permutations : {n_perm}");
+    println!("MI bins      : {n_bins}");
+    println!("{}", "─".repeat(72));
+
+    let result = run_cross_channel_tests(&bit_sizes, &bounds, top_k, n_perm, n_bins, seed);
+
+    println!();
+    print_crosschan_summary(&result);
+    write_json(&result, "data/E21c_cross_channel.json");
+}
+
+fn print_crosschan_summary(result: &CrossChannelResult) {
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E21c CROSS-CHANNEL TESTS: joint N-only across 7 Eisenstein channels       │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Table C1: Pairwise interaction correlations ───
+    println!("Test C1: PAIRWISE INTERACTION CORRELATIONS (84 tests per block)");
+    println!("  max|corr| < Bonferroni threshold = no significant cross-channel signal");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>10} {:>10} {:>10}  {}",
+        "n", "B", "pairs", "max|corr|", "mean|corr|", "Bonf_thr", "verdict"
+    );
+    println!("  {}", "─".repeat(62));
+    for b in &result.blocks {
+        let verdict = if b.pairwise.max_abs_corr < b.pairwise.bonferroni_threshold {
+            "✓ noise"
+        } else {
+            "✗ SIGNAL"
+        };
+        println!(
+            "  {:>4} {:>4} {:>6} {:>10.4} {:>10.4} {:>10.4}  {}",
+            b.n_bits,
+            b.smoothness_bound,
+            b.pairwise.n_pairs,
+            b.pairwise.max_abs_corr,
+            b.pairwise.mean_abs_corr,
+            b.pairwise.bonferroni_threshold,
+            verdict,
+        );
+    }
+    let n_c1_pass = result
+        .blocks
+        .iter()
+        .filter(|b| b.pairwise.max_abs_corr < b.pairwise.bonferroni_threshold)
+        .count();
+    println!(
+        "  Summary: {n_c1_pass}/{} blocks with max|corr| < Bonferroni threshold",
+        result.blocks.len()
+    );
+    println!();
+
+    // ─── Table C2: OLS regression ───
+    println!("Test C2: OLS REGRESSION (35 features, 50/50 holdout)");
+    println!("  test R² ≤ 0 = no generalizable signal from linear/cross features");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>6} {:>10} {:>10}  {}",
+        "n", "B", "train", "test", "test_R²", "best_1ch", "verdict"
+    );
+    println!("  {}", "─".repeat(58));
+    for b in &result.blocks {
+        let verdict = if b.ols.test_r_squared <= 0.0 {
+            "✓ no signal"
+        } else {
+            "✗ SIGNAL"
+        };
+        println!(
+            "  {:>4} {:>4} {:>6} {:>6} {:>10.4} {:>10.4}  {}",
+            b.n_bits,
+            b.smoothness_bound,
+            b.ols.n_train,
+            b.ols.n_test,
+            b.ols.test_r_squared,
+            b.ols.best_single_r_squared,
+            verdict,
+        );
+    }
+    let n_c2_pass = result
+        .blocks
+        .iter()
+        .filter(|b| b.ols.test_r_squared <= 0.0)
+        .count();
+    println!(
+        "  Summary: {n_c2_pass}/{} blocks with test R² ≤ 0",
+        result.blocks.len()
+    );
+    println!();
+
+    // ─── Table C3: Mutual information ───
+    println!("Test C3: BINNED MUTUAL INFORMATION (channels 5,3; permutation null)");
+    println!("  p > 0.05 = MI consistent with independence");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>10} {:>10} {:>10} {:>8}  {}",
+        "n", "B", "pairs", "MI", "null_μ", "null_σ", "p-val", "verdict"
+    );
+    println!("  {}", "─".repeat(72));
+    let mut n_c3_tested = 0;
+    let mut n_c3_pass = 0;
+    for b in &result.blocks {
+        match &b.mi {
+            Some(m) => {
+                let verdict = if m.empirical_p_value > 0.05 {
+                    "✓ independent"
+                } else {
+                    "✗ DEPENDENT"
+                };
+                println!(
+                    "  {:>4} {:>4} {:>6} {:>10.6} {:>10.6} {:>10.6} {:>8.3}  {}",
+                    b.n_bits,
+                    b.smoothness_bound,
+                    m.n_pairs,
+                    m.observed_mi,
+                    m.null_mean,
+                    m.null_std,
+                    m.empirical_p_value,
+                    verdict,
+                );
+                n_c3_tested += 1;
+                if m.empirical_p_value > 0.05 {
+                    n_c3_pass += 1;
+                }
+            }
+            None => {
+                println!(
+                    "  {:>4} {:>4} {:>6}  (skipped: insufficient pairs)",
+                    b.n_bits, b.smoothness_bound, b.n_pairs,
+                );
+            }
+        }
+    }
+    println!("  Summary: {n_c3_pass}/{n_c3_tested} tested blocks with p > 0.05");
+    println!();
+
+    // ─── Table C4: Permutation null on strongest feature ───
+    println!("Test C4: PERMUTATION NULL on strongest cross-channel feature");
+    println!("  p > 0.05 = strongest feature consistent with noise");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>8} {:>8} {:>8} {:>8}  {}",
+        "n", "B", "pairs", "obs", "null_μ", "null_σ", "p-val", "verdict"
+    );
+    println!("  {}", "─".repeat(66));
+    for b in &result.blocks {
+        let verdict = if b.perm_null.empirical_p_value > 0.05 {
+            "✓ noise"
+        } else {
+            "✗ SIGNAL"
+        };
+        println!(
+            "  {:>4} {:>4} {:>6} {:>8.4} {:>8.4} {:>8.4} {:>8.3}  {}",
+            b.n_bits,
+            b.smoothness_bound,
+            b.perm_null.n_pairs,
+            b.perm_null.observed_corr,
+            b.perm_null.null_mean,
+            b.perm_null.null_std,
+            b.perm_null.empirical_p_value,
+            verdict,
+        );
+    }
+    let n_c4_pass = result
+        .blocks
+        .iter()
+        .filter(|b| b.perm_null.empirical_p_value > 0.05)
+        .count();
+    println!(
+        "  Summary: {n_c4_pass}/{} blocks with p > 0.05",
+        result.blocks.len()
+    );
 }
 
 fn print_stress_summary(result: &StressTestResult) {

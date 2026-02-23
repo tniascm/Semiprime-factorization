@@ -2329,6 +2329,7 @@ struct CrossChannelBlock {
     /// Pair indices where ALL channels have valid g(p) and g(q).
     valid_indices: Vec<usize>,
     /// Target: s_B(g(p))·s_B(g(q)) averaged across channels for valid pairs.
+    #[allow(dead_code)]
     target_mean: Vec<f64>,
     /// Target from reference channel (idx 5: k=22, ℓ=131).
     target_ref: Vec<f64>,
