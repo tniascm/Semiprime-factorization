@@ -39,7 +39,6 @@ impl InfraForm {
     pub fn principal(n: &BigUint) -> Self {
         let sqrt_n = isqrt(n);
         let b = BigInt::from(2u32) * BigInt::from(sqrt_n.clone());
-        let d = BigInt::from(4u32) * BigInt::from(n.clone());
         // c = (b^2 - D) / (4*a) = (4*floor(sqrt(N))^2 - 4N) / 4 = floor(sqrt(N))^2 - N
         let c = BigInt::from(&sqrt_n * &sqrt_n) - BigInt::from(n.clone());
         let form = QuadForm::new(BigInt::one(), b, c).reduce();
@@ -64,7 +63,7 @@ pub fn rho_step(form: &InfraForm, n: &BigUint) -> InfraForm {
     let sqrt_d = isqrt(&d_uint);
     let sqrt_d_int = BigInt::from(sqrt_d);
 
-    let a = &form.form.a;
+    let _a = &form.form.a;
     let b = &form.form.b;
     let c = &form.form.c;
 
@@ -228,7 +227,6 @@ fn form_key(f: &QuadForm) -> (String, String) {
 /// For discriminant D = 4N, an ambiguous form (a, 0, c) or (a, a, c)
 /// satisfies gcd(a, N) = factor. Also check gcd(c, N).
 pub fn form_reveals_factor(form: &QuadForm, n: &BigUint) -> Option<BigUint> {
-    let n_int = BigInt::from(n.clone());
     let one = BigUint::one();
 
     // Check gcd(a, N)
