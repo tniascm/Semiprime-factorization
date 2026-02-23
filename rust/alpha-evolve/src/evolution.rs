@@ -18,8 +18,10 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// Generate a random primitive operation.
+///
+/// Covers all 25 primitive variants: 14 original + 11 new crate-wrapping operations.
 fn random_op(rng: &mut impl Rng) -> PrimitiveOp {
-    match rng.gen_range(0..14) {
+    match rng.gen_range(0..25) {
         0 => PrimitiveOp::ModPow,
         1 => PrimitiveOp::Gcd,
         2 => PrimitiveOp::RandomElement,
@@ -43,30 +45,74 @@ fn random_op(rng: &mut impl Rng) -> PrimitiveOp {
             bound: rng.gen_range(100..=10000),
         },
         12 => PrimitiveOp::ISqrt,
-        _ => PrimitiveOp::IsPerfectSquare,
+        13 => PrimitiveOp::IsPerfectSquare,
+        // --- New crate-wrapping primitives ---
+        14 => PrimitiveOp::CfConvergent {
+            k: rng.gen_range(1..=50),
+        },
+        15 => PrimitiveOp::SqufofStep,
+        16 => PrimitiveOp::RhoFormStep,
+        17 => PrimitiveOp::EcmCurve {
+            b1: rng.gen_range(100..=10000),
+        },
+        18 => PrimitiveOp::LllShortVector,
+        19 => PrimitiveOp::SmoothTest {
+            bound: rng.gen_range(50..=5000),
+        },
+        20 => PrimitiveOp::PilatteVector,
+        21 => PrimitiveOp::QuadraticResidue,
+        22 => PrimitiveOp::PollardPm1 {
+            bound: rng.gen_range(50..=5000),
+        },
+        23 => PrimitiveOp::DixonAccumulate,
+        _ => PrimitiveOp::DixonCombine,
     }
 }
 
 /// Generate a random program node with bounded depth.
+///
+/// Includes all 6 node types: Leaf, Sequence, IterateNode, GcdCheck,
+/// ConditionalGt, and MemoryOp.
 fn random_node(rng: &mut impl Rng, max_depth: u32) -> ProgramNode {
     if max_depth <= 1 {
-        return ProgramNode::Leaf(random_op(rng));
+        // At max depth, only generate terminal nodes (Leaf or MemoryOp)
+        if rng.gen_bool(0.9) {
+            return ProgramNode::Leaf(random_op(rng));
+        } else {
+            return ProgramNode::MemoryOp {
+                store: rng.gen_bool(0.5),
+                slot: rng.gen_range(0..4),
+            };
+        }
     }
 
-    match rng.gen_range(0..4) {
-        0 => ProgramNode::Leaf(random_op(rng)),
-        1 => {
+    match rng.gen_range(0..8) {
+        0 | 1 => ProgramNode::Leaf(random_op(rng)),
+        2 => {
             let len = rng.gen_range(2..=4);
             let children: Vec<ProgramNode> =
                 (0..len).map(|_| random_node(rng, max_depth - 1)).collect();
             ProgramNode::Sequence(children)
         }
-        2 => ProgramNode::IterateNode {
+        3 => ProgramNode::IterateNode {
             body: Box::new(random_node(rng, max_depth - 1)),
             steps: rng.gen_range(5..=100),
         },
-        _ => ProgramNode::GcdCheck {
+        4 => ProgramNode::GcdCheck {
             setup: Box::new(random_node(rng, max_depth - 1)),
+        },
+        5 => ProgramNode::ConditionalGt {
+            threshold: rng.gen_range(1..=1000),
+            if_true: Box::new(random_node(rng, max_depth - 1)),
+            if_false: Box::new(random_node(rng, max_depth - 1)),
+        },
+        6 => ProgramNode::MemoryOp {
+            store: true,
+            slot: rng.gen_range(0..4),
+        },
+        _ => ProgramNode::MemoryOp {
+            store: false,
+            slot: rng.gen_range(0..4),
         },
     }
 }
@@ -139,6 +185,27 @@ fn mutate_node(node: &ProgramNode, rng: &mut impl Rng) -> ProgramNode {
                         let new_bound = (*bound as i64 + delta).max(10) as u64;
                         ProgramNode::Leaf(PrimitiveOp::WilliamsStep { bound: new_bound })
                     }
+                    // --- New parameterized primitives ---
+                    PrimitiveOp::CfConvergent { k } => {
+                        let delta: i32 = rng.gen_range(-10..=10);
+                        let new_k = (*k as i32 + delta).max(1) as u32;
+                        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: new_k })
+                    }
+                    PrimitiveOp::EcmCurve { b1 } => {
+                        let delta: i64 = rng.gen_range(-2000..=2000);
+                        let new_b1 = (*b1 as i64 + delta).max(50) as u64;
+                        ProgramNode::Leaf(PrimitiveOp::EcmCurve { b1: new_b1 })
+                    }
+                    PrimitiveOp::SmoothTest { bound } => {
+                        let delta: i64 = rng.gen_range(-500..=500);
+                        let new_bound = (*bound as i64 + delta).max(10) as u64;
+                        ProgramNode::Leaf(PrimitiveOp::SmoothTest { bound: new_bound })
+                    }
+                    PrimitiveOp::PollardPm1 { bound } => {
+                        let delta: i64 = rng.gen_range(-500..=500);
+                        let new_bound = (*bound as i64 + delta).max(10) as u64;
+                        ProgramNode::Leaf(PrimitiveOp::PollardPm1 { bound: new_bound })
+                    }
                     _ => ProgramNode::Leaf(random_op(rng)),
                 }
             }
@@ -166,6 +233,55 @@ fn mutate_node(node: &ProgramNode, rng: &mut impl Rng) -> ProgramNode {
             // Replace setup with a new random node
             ProgramNode::GcdCheck {
                 setup: Box::new(random_node(rng, 2)),
+            }
+        }
+        ProgramNode::ConditionalGt {
+            threshold,
+            if_true,
+            if_false,
+        } => {
+            // Either tweak the threshold, or replace one branch
+            match rng.gen_range(0..3) {
+                0 => {
+                    // Tweak threshold
+                    let delta: i64 = rng.gen_range(-100..=100);
+                    let new_threshold = (*threshold as i64 + delta).max(1) as u64;
+                    ProgramNode::ConditionalGt {
+                        threshold: new_threshold,
+                        if_true: if_true.clone(),
+                        if_false: if_false.clone(),
+                    }
+                }
+                1 => {
+                    // Replace if_true branch
+                    ProgramNode::ConditionalGt {
+                        threshold: *threshold,
+                        if_true: Box::new(random_node(rng, 2)),
+                        if_false: if_false.clone(),
+                    }
+                }
+                _ => {
+                    // Replace if_false branch
+                    ProgramNode::ConditionalGt {
+                        threshold: *threshold,
+                        if_true: if_true.clone(),
+                        if_false: Box::new(random_node(rng, 2)),
+                    }
+                }
+            }
+        }
+        ProgramNode::MemoryOp { store, slot } => {
+            // Either toggle store/load, or change slot
+            if rng.gen_bool(0.5) {
+                ProgramNode::MemoryOp {
+                    store: !store,
+                    slot: *slot,
+                }
+            } else {
+                ProgramNode::MemoryOp {
+                    store: *store,
+                    slot: rng.gen_range(0..4),
+                }
             }
         }
     }

@@ -36,12 +36,17 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "alpha-evolve"
 version = "0.1.0"
 dependencies = [
+ "cf-factor",
+ "cf-factor-ms",
+ "ecm",
  "factoring-core",
+ "lattice-reduction",
  "num-bigint",
  "num-integer",
  "num-traits",
  "rand",
  "rayon",
+ "smooth-pilatte",
 ]
 
 [[package]]

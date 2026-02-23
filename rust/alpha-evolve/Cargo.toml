@@ -10,3 +10,8 @@ num-integer = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
 factoring-core = { path = "../factoring-core" }
+cf-factor = { path = "../cf-factor" }
+ecm = { path = "../ecm" }
+lattice-reduction = { path = "../lattice-reduction" }
+smooth-pilatte = { path = "../smooth-pilatte" }
+cf-factor-ms = { path = "../cf-factor-ms" }
