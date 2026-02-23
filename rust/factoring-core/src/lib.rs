@@ -42,6 +42,8 @@ pub enum Algorithm {
     GroupStructure,
     MLAGuided,
     MultiBaseAnalysis,
+    SmoothPilatte,
+    MurruSalvatori,
 }
 
 impl fmt::Display for Algorithm {
@@ -62,6 +64,8 @@ impl fmt::Display for Algorithm {
             Algorithm::GroupStructure => write!(f, "Group Structure Analysis"),
             Algorithm::MLAGuided => write!(f, "MLA-Guided"),
             Algorithm::MultiBaseAnalysis => write!(f, "Multi-Base Analysis"),
+            Algorithm::SmoothPilatte => write!(f, "Smooth Pilatte (Lattice-Geometric)"),
+            Algorithm::MurruSalvatori => write!(f, "Murru-Salvatori (CF + BSGS)"),
         }
     }
 }
