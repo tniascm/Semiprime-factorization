@@ -28,6 +28,8 @@ use serde::Serialize;
 pub struct CorrelationResult {
     pub n_bits: u32,
     pub degree: u32,
+    /// Quantile used for the calibrated null threshold (0.0 = fixed 3/√m).
+    pub null_quantile: f64,
     pub channel_weight: u32,
     pub channel_ell: u64,
     /// Maximum |correlation| found over sampled monomials (in ±1 encoding).
@@ -68,6 +70,41 @@ pub struct FitDegreeResult {
     /// Minimum d in {0,1,2} for which a degree-d polynomial over F2 fits all samples,
     /// or None if even degree-2 doesn't fit.
     pub min_fitting_degree: Option<u32>,
+}
+
+/// Real-valued spectral analysis of M[p][q] = f_{k,ℓ}(pq) ∈ {0,1} viewed over ℝ.
+///
+/// M is symmetric (f(pq) = f(qp)), so singular values equal |eigenvalues|.
+///
+/// Key metrics:
+/// - `stable_rank` = ‖M‖_F² / σ_max² ∈ [1, n_primes].
+///   ≈ n_primes → flat spectrum (no compression; consistent with random function).
+///   « n_primes → heavy-tailed spectrum (low effective rank; potential structure).
+/// - `real_rank` = number of eigenvalues above 1e-6 (numerical rank over ℝ).
+///   Differs from F2 rank: can be lower (some F2-independent directions cancel over ℝ)
+///   or higher (F2 dependencies that don't hold over ℝ).
+/// - `top_eigenvalues` sorted descending by absolute value.
+///   Empty for n_primes > 250 (too slow without BLAS; use stable_rank instead).
+#[derive(Debug, Clone, Serialize)]
+pub struct RealSpectrum {
+    pub n_bits: u32,
+    pub channel_weight: u32,
+    pub channel_ell: u64,
+    /// Number of distinct primes in the valid-pair set.
+    pub n_primes: usize,
+    /// Number of valid (p, q) pairs that fill entries of M.
+    pub n_valid_pairs: usize,
+    /// ‖M‖_F² = number of 1-entries in M (since entries ∈ {0,1}).
+    pub frobenius_sq: f64,
+    /// σ_max = largest singular value = largest |eigenvalue| (power iteration).
+    pub spectral_norm: f64,
+    /// ‖M‖_F² / σ_max²: effective number of dimensions (1 = rank-1, n = flat).
+    pub stable_rank: f64,
+    /// Numerical rank over ℝ via Gram-Schmidt (0 if n_primes > 300).
+    pub real_rank: usize,
+    /// Top min(20, n_primes) eigenvalues by |λ|, sorted descending.
+    /// Empty if n_primes > 250.
+    pub top_eigenvalues: Vec<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +448,9 @@ fn random_degree_mask(n_bits: u32, degree: u32, rng: &mut StdRng) -> u64 {
 }
 
 /// Run the full correlation lower bound scan for a single channel at a given bit size.
+///
+/// `n_null_sims > 0` enables the calibrated permutation threshold (recommended).
+/// Set `n_null_sims = 0` to fall back to the fixed 3/√m threshold.
 pub fn run_correlation_scan(
     ch: &Channel,
     n_bits: u32,
@@ -418,6 +458,8 @@ pub fn run_correlation_scan(
     n_semiprimes: usize,
     n_monomials: usize,
     seed: u64,
+    n_null_sims: usize,
+    null_quantile: f64,
 ) -> Vec<CorrelationResult> {
     let sps = get_semiprimes(n_bits, n_semiprimes, seed);
     let actual_n = sps.len();
@@ -427,15 +469,25 @@ pub fn run_correlation_scan(
     // Convert to ±1: 0 → +1, 1 → -1
     let pm1: Vec<i8> = bits.iter().map(|&b| 1 - 2 * b as i8).collect();
 
-    let threshold = 3.0 / (actual_n as f64).sqrt();
-    let mut rng = StdRng::seed_from_u64(seed ^ 0xdeadbeef);
+    // Separate RNGs so null simulation draws don't consume monomial seeds.
+    let mut rng_mono = StdRng::seed_from_u64(seed ^ 0xdeadbeef);
+    let mut rng_null = StdRng::seed_from_u64(seed ^ 0xcafe_babe);
 
     (1..=max_degree)
         .map(|d| {
-            let max_corr = correlation_lower_bound(&ns, &pm1, n_bits, d, n_monomials, &mut rng);
+            // Calibrated threshold via permutation test; fallback to 3/√m.
+            let threshold = if n_null_sims > 0 && actual_n > 0 {
+                null_max_corr_quantile(&ns, n_bits, d, n_monomials, null_quantile, n_null_sims, &mut rng_null)
+            } else {
+                3.0 / (actual_n as f64).sqrt().max(1.0)
+            };
+            let reported_quantile = if n_null_sims > 0 { null_quantile } else { 0.0 };
+
+            let max_corr = correlation_lower_bound(&ns, &pm1, n_bits, d, n_monomials, &mut rng_mono);
             CorrelationResult {
                 n_bits,
                 degree: d,
+                null_quantile: reported_quantile,
                 channel_weight: ch.weight,
                 channel_ell: ch.ell,
                 max_abs_corr: max_corr,
@@ -463,6 +515,224 @@ pub fn run_fit_degree(
     result.channel_weight = ch.weight;
     result.channel_ell = ch.ell;
     result
+}
+
+// ---------------------------------------------------------------------------
+// Calibrated null threshold (permutation test)
+// ---------------------------------------------------------------------------
+
+/// Estimate the `quantile`-th quantile of the null distribution of
+/// `max |correlation|` over `n_monomials` random degree-`degree` monomials.
+///
+/// Under H₀ the labels are i.i.d. ±1 independent of the input bits.  We fix
+/// the semiprime N-values and re-draw labels for each simulation, making this
+/// a permutation-style calibration.
+///
+/// This corrects the ~42% false-positive rate that the fixed 3/√m threshold
+/// suffers when 200+ monomials are tested: the expected max of 200 null
+/// correlations already exceeds 3/√m when m=2000.
+pub fn null_max_corr_quantile(
+    ns: &[u64],
+    n_bits: u32,
+    degree: u32,
+    n_monomials: usize,
+    quantile: f64,
+    n_sims: usize,
+    rng: &mut StdRng,
+) -> f64 {
+    if n_sims == 0 || ns.is_empty() {
+        return 3.0 / (ns.len() as f64).sqrt().max(1.0);
+    }
+    let m_f = ns.len() as f64;
+    let mut maxima = Vec::with_capacity(n_sims);
+
+    for _ in 0..n_sims {
+        // Random ±1 labels — null hypothesis: no signal.
+        let pm1: Vec<i8> = (0..ns.len())
+            .map(|_| if rng.gen::<bool>() { 1i8 } else { -1i8 })
+            .collect();
+
+        let max_c: f64 = (0..n_monomials)
+            .map(|_| {
+                let mask = random_degree_mask(n_bits, degree, rng);
+                ns.iter()
+                    .zip(pm1.iter())
+                    .map(|(&n, &y)| {
+                        let mx = 1i64 - 2 * monomial_value(n, mask) as i64;
+                        (mx * y as i64) as f64
+                    })
+                    .sum::<f64>()
+                    .abs()
+                    / m_f
+            })
+            .fold(0.0f64, f64::max);
+
+        maxima.push(max_c);
+    }
+
+    maxima.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = ((quantile * n_sims as f64) as usize).min(n_sims - 1);
+    maxima[idx]
+}
+
+// ---------------------------------------------------------------------------
+// Real-valued spectral analysis
+// ---------------------------------------------------------------------------
+
+/// Build the real-valued CRT matrix and compute spectral metrics.
+///
+/// For n_primes ≤ 250: computes top-20 eigenvalues via deflated power
+/// iteration.  For n_primes > 250: only stable_rank and spectral_norm
+/// (power iteration is O(n²·iters) and stays fast at any supported size).
+pub fn real_spectrum(n_bits: u32, ch: &Channel) -> RealSpectrum {
+    let pairs = enumerate_balanced_semiprimes(n_bits);
+    let n_valid_pairs = pairs.len();
+
+    let mut prime_set: Vec<u64> = pairs.iter().flat_map(|&(p, q)| [p, q]).collect();
+    prime_set.sort_unstable();
+    prime_set.dedup();
+    let np = prime_set.len();
+
+    // Build M ∈ ℝ^{np × np} with entries in {0.0, 1.0}.
+    let mut m = vec![vec![0.0f64; np]; np];
+    let mut n_ones = 0u64;
+    for &(p, q) in &pairs {
+        let pi = prime_set.partition_point(|&x| x < p);
+        let qi = prime_set.partition_point(|&x| x < q);
+        let sp = Semiprime { n: p * q, p, q };
+        let val = target_bit(&sp, ch) as f64;
+        m[pi][qi] = val;
+        m[qi][pi] = val;
+        // Count ones, avoiding double-count on diagonal (p≠q guaranteed by enum).
+        if val > 0.5 { n_ones += 2; }
+    }
+    // frobenius_sq = ∑_{i,j} m_{ij}^2 = number of 1-entries (since entries ∈ {0,1}).
+    let frobenius_sq = n_ones as f64;
+
+    let mut rng = StdRng::seed_from_u64(0xabcd_1234 ^ ch.ell ^ (n_bits as u64 * 0x1111));
+
+    let spectral_norm = power_iter_spectral_norm(&m, np, 80, &mut rng);
+
+    let stable_rank = if spectral_norm > 1e-10 {
+        frobenius_sq / (spectral_norm * spectral_norm)
+    } else {
+        0.0
+    };
+
+    let real_rank = if np <= 300 {
+        gs_real_rank(&m, np, 1e-6)
+    } else {
+        0 // skipped — too expensive without BLAS
+    };
+
+    let top_eigenvalues = if np <= 250 {
+        top_k_eigenvalues(&m, np, 20, 80, &mut rng)
+    } else {
+        vec![]
+    };
+
+    RealSpectrum {
+        n_bits,
+        channel_weight: ch.weight,
+        channel_ell: ch.ell,
+        n_primes: np,
+        n_valid_pairs,
+        frobenius_sq,
+        spectral_norm,
+        stable_rank,
+        real_rank,
+        top_eigenvalues,
+    }
+}
+
+/// Power iteration for the spectral norm (largest |eigenvalue|) of a
+/// symmetric real matrix.  Runs `n_iters` Rayleigh-quotient iterations.
+fn power_iter_spectral_norm(m: &[Vec<f64>], n: usize, n_iters: usize, rng: &mut StdRng) -> f64 {
+    if n == 0 { return 0.0; }
+    let mut v: Vec<f64> = (0..n).map(|_| rng.gen::<f64>() - 0.5).collect();
+    let vn = vec_norm(&v);
+    if vn < 1e-10 { return 0.0; }
+    for x in &mut v { *x /= vn; }
+
+    for _ in 0..n_iters {
+        let w = sym_matvec(m, &v, n);
+        let wn = vec_norm(&w);
+        if wn < 1e-10 { break; }
+        for j in 0..n { v[j] = w[j] / wn; }
+    }
+    // Rayleigh quotient = v^T M v = eigenvalue (can be negative for symmetric M).
+    let mv = sym_matvec(m, &v, n);
+    let ray: f64 = v.iter().zip(mv.iter()).map(|(a, b)| a * b).sum();
+    ray.abs()
+}
+
+/// Numerical rank of M over ℝ via Gram-Schmidt on the rows.
+/// A row is linearly dependent if its residual 2-norm < `tol`.
+fn gs_real_rank(m: &[Vec<f64>], n: usize, tol: f64) -> usize {
+    let mut basis: Vec<Vec<f64>> = Vec::new();
+    for row in m.iter().take(n) {
+        let mut v = row.clone();
+        for b in &basis {
+            let dot: f64 = v.iter().zip(b.iter()).map(|(a, x)| a * x).sum();
+            for j in 0..n { v[j] -= dot * b[j]; }
+        }
+        let vn = vec_norm(&v);
+        if vn > tol {
+            for x in &mut v { *x /= vn; }
+            basis.push(v);
+        }
+    }
+    basis.len()
+}
+
+/// Top-k eigenvalues by |λ| of symmetric M, via deflated power iteration
+/// with re-orthogonalisation against all previously found eigenvectors.
+fn top_k_eigenvalues(m: &[Vec<f64>], n: usize, k: usize, n_iters: usize, rng: &mut StdRng) -> Vec<f64> {
+    if n == 0 { return vec![]; }
+    let k = k.min(n);
+    let mut eigenvalues = Vec::with_capacity(k);
+    let mut basis: Vec<Vec<f64>> = Vec::with_capacity(k);
+
+    for _ in 0..k {
+        let mut v: Vec<f64> = (0..n).map(|_| rng.gen::<f64>() - 0.5).collect();
+        orth_against(&mut v, &basis, n);
+        let vn = vec_norm(&v);
+        if vn < 1e-10 { break; }
+        for x in &mut v { *x /= vn; }
+
+        for _ in 0..n_iters {
+            let mut w = sym_matvec(m, &v, n);
+            orth_against(&mut w, &basis, n);
+            let wn = vec_norm(&w);
+            if wn < 1e-10 { break; }
+            for j in 0..n { v[j] = w[j] / wn; }
+        }
+        let mv = sym_matvec(m, &v, n);
+        let ray: f64 = v.iter().zip(mv.iter()).map(|(a, b)| a * b).sum();
+        eigenvalues.push(ray.abs());
+        basis.push(v);
+    }
+    eigenvalues.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    eigenvalues
+}
+
+#[inline]
+fn sym_matvec(m: &[Vec<f64>], v: &[f64], n: usize) -> Vec<f64> {
+    let mut w = vec![0.0f64; n];
+    for i in 0..n {
+        for j in 0..n { w[i] += m[i][j] * v[j]; }
+    }
+    w
+}
+
+#[inline]
+fn vec_norm(v: &[f64]) -> f64 { v.iter().map(|x| x * x).sum::<f64>().sqrt() }
+
+fn orth_against(v: &mut Vec<f64>, basis: &[Vec<f64>], n: usize) {
+    for b in basis {
+        let dot: f64 = v.iter().zip(b.iter()).map(|(a, x)| a * x).sum();
+        for j in 0..n { v[j] -= dot * b[j]; }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -610,7 +880,8 @@ mod tests {
     #[test]
     fn test_correlation_scan_returns_results() {
         let ch = &CHANNELS[6]; // k=22, ℓ=593
-        let results = run_correlation_scan(ch, 16, 3, 200, 50, 42);
+        // n_null_sims=0 → fast fixed-threshold mode (calibration skipped in tests)
+        let results = run_correlation_scan(ch, 16, 3, 200, 50, 42, 0, 0.99);
         assert_eq!(results.len(), 3);
         for r in &results {
             assert!(r.max_abs_corr >= 0.0 && r.max_abs_corr <= 1.0);
