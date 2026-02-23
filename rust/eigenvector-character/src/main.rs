@@ -18,10 +18,10 @@
 ///   - JSON to data/E21_*.json
 
 use eigenvector_character::{
-    run_character_audit, run_full_group_control, scaling_primes,
-    smoothness_spectrum,
+    run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
+    scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
-    SmoothnessScalingAnalysis,
+    PrimeRestrictedResult, SmoothnessScalingAnalysis,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -33,12 +33,13 @@ fn main() {
     let mode = opts.get("mode").map(|s| s.as_str()).unwrap_or("audit");
 
     match mode {
-        "audit"   => run_audit_mode(&opts),
-        "control" => run_control_mode(&opts),
-        "scaling" => run_scaling_mode(&opts),
-        "smooth"  => run_smooth_mode(&opts),
+        "audit"    => run_audit_mode(&opts),
+        "control"  => run_control_mode(&opts),
+        "scaling"  => run_scaling_mode(&opts),
+        "smooth"   => run_smooth_mode(&opts),
+        "restrict" => run_restrict_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict");
             std::process::exit(1);
         }
     }
@@ -194,6 +195,228 @@ fn run_smooth_mode(opts: &HashMap<String, String>) {
 
     // Write all analyses to JSON.
     write_json(&all_analyses, "data/E21b_smoothness_spectrum.json");
+}
+
+fn run_restrict_mode(opts: &HashMap<String, String>) {
+    let top_k = parse_usize(opts, "topk", 10);
+    let bit_sizes = parse_bit_sizes(opts, &[14, 16, 18, 20]);
+    let channel_ids = parse_channel_ids(opts, 7);
+
+    // Smoothness bounds to test.  Default: 10, 30.
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![10, 30]);
+
+    println!("E21b PRIME-RESTRICTED SMOOTHNESS: does the smoothness character survive?");
+    println!("Bit sizes  : {:?}", bit_sizes);
+    println!("Channels   : {:?}", channel_ids);
+    println!("Bounds B   : {:?}", bounds);
+    println!("Top-k chars: {top_k}");
+    println!("{}", "─".repeat(72));
+
+    let mut all_results: Vec<PrimeRestrictedResult> = Vec::new();
+
+    for &b in &bounds {
+        println!();
+        println!("═══ B = {b} ═══");
+
+        for &n_bits in &bit_sizes {
+            for &ch_idx in &channel_ids {
+                let ch = &CHANNELS[ch_idx];
+                eprint!(
+                    "  n={n_bits:2}, k={:2}, ℓ={:6}, B={b:3} … ",
+                    ch.weight, ch.ell
+                );
+
+                let result = run_prime_restricted_smoothness(n_bits, ch, b, top_k);
+
+                eprintln!(
+                    "done  ({} primes, fix_exc={:.2}, scan_exc={:.2}, corr_Nk={:+.4})",
+                    result.n_primes,
+                    result.fixed_r_excess,
+                    result.scanned_excess,
+                    result.product_corr_nk,
+                );
+                all_results.push(result);
+            }
+        }
+    }
+
+    println!();
+    print_restrict_summary(&all_results);
+    write_json(&all_results, "data/E21b_prime_restricted.json");
+}
+
+fn print_restrict_summary(results: &[PrimeRestrictedResult]) {
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E21b PRIME-RESTRICTED: smoothness character under prime restriction       │");
+    println!("│ Tests whether full-group smoothness bias survives when restricted to      │");
+    println!("│ the prime image set {{g(p) : p in balanced semiprimes}}                    │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Table A: Fixed-r* test ───
+    println!("Table A: Fixed-r* test  (full-group r* tested on restricted set)");
+    println!("  fixed_amp = Pearson amplitude of χ_{{full_r*}} against s_B(g(·)) on primes");
+    println!("  null = √(2/(n-2)) for single pre-specified r");
+    println!("  excess > 2.0 = signal survives restriction");
+    println!();
+    println!(
+        "{:>4}  {:>3}  {:>6}  {:>3}  {:>6}  {:>6}  {:>5}  {:>7}  {:>7}  {:>5}",
+        "bits", "k", "ℓ", "B", "r*_full", "full_x", "dens",
+        "fix_amp", "null", "fix_x"
+    );
+    println!("{}", "─".repeat(78));
+
+    for r in results {
+        println!(
+            "{:>4}  {:>3}  {:>6}  {:>3}  {:>6}  {:>6.2}  {:>4.1}%  {:>7.4}  {:>7.4}  {:>5.2}",
+            r.n_bits,
+            r.channel_weight,
+            r.ell,
+            r.smoothness_bound,
+            r.full_r_star,
+            r.full_excess,
+            r.restricted_smooth_fraction * 100.0,
+            r.fixed_r_amplitude,
+            r.fixed_r_null,
+            r.fixed_r_excess,
+        );
+    }
+
+    println!();
+
+    // ─── Table B: Full scan on restricted set ───
+    println!("Table B: Full character scan on restricted set");
+    println!("  scan_amp = max Pearson amplitude over all r on the prime set");
+    println!("  null = √(2·ln(order/2) / (n-2)) — accounts for scanning ~order/2 chars");
+    println!("  excess > 1.5 = signal above noise after scan correction");
+    println!();
+    println!(
+        "{:>4}  {:>3}  {:>6}  {:>3}  {:>6}  {:>6}  {:>7}  {:>7}  {:>5}  {:>7}",
+        "bits", "k", "ℓ", "B", "r*_full", "r*_scn", "scn_amp", "null", "scn_x", "verdict"
+    );
+    println!("{}", "─".repeat(78));
+
+    for r in results {
+        let verdict = if r.scanned_excess > 1.5 {
+            "⚠ SIGNAL"
+        } else if r.scanned_excess > 1.1 {
+            "~ weak"
+        } else {
+            "✓ noise"
+        };
+        let r_match = if r.scanned_r_star == r.full_r_star {
+            format!("{}=", r.scanned_r_star)
+        } else {
+            format!("{}", r.scanned_r_star)
+        };
+        println!(
+            "{:>4}  {:>3}  {:>6}  {:>3}  {:>6}  {:>6}  {:>7.4}  {:>7.4}  {:>5.2}  {:>7}",
+            r.n_bits,
+            r.channel_weight,
+            r.ell,
+            r.smoothness_bound,
+            r.full_r_star,
+            r_match,
+            r.scanned_amplitude,
+            r.scanned_null,
+            r.scanned_excess,
+            verdict,
+        );
+    }
+
+    println!();
+
+    // ─── Table C: Product tests ───
+    println!("Table C: Product tests  s_B(g(p))·s_B(g(q)) vs χ_{{r*_scn}}(·)");
+    println!("  corr_σ  = corr with Re(χ(σ_{{k-1}}(N) mod ℓ))  [needs p,q]");
+    println!("  corr_Nk = corr with Re(χ(N^{{k-1}} mod ℓ))      [from N only]");
+    println!("  |corr_Nk| < 0.1 = barrier.  |corr_Nk| > 0.3 = corridor.");
+    println!();
+    println!(
+        "{:>4}  {:>3}  {:>6}  {:>3}  {:>6}  {:>8}  {:>8}  {:>6}  verdict",
+        "bits", "k", "ℓ", "B", "#pairs", "corr_σ", "corr_Nk", "r*_scn"
+    );
+    println!("{}", "─".repeat(72));
+
+    for r in results {
+        let verdict = if r.product_corr_nk.abs() > 0.3 {
+            "⚠ CORRIDOR?"
+        } else if r.product_corr_nk.abs() > 0.15 {
+            "~ weak signal"
+        } else {
+            "✓ barrier"
+        };
+        println!(
+            "{:>4}  {:>3}  {:>6}  {:>3}  {:>6}  {:>+8.4}  {:>+8.4}  {:>6}  {}",
+            r.n_bits,
+            r.channel_weight,
+            r.ell,
+            r.smoothness_bound,
+            r.n_pairs,
+            r.product_corr_sigma,
+            r.product_corr_nk,
+            r.scanned_r_star,
+            verdict,
+        );
+    }
+
+    println!();
+
+    // ─── Aggregate summary ───
+    let n_total = results.len();
+    let n_fixed_signal = results.iter().filter(|r| r.fixed_r_excess > 2.0).count();
+    let n_scan_signal = results.iter().filter(|r| r.scanned_excess > 1.5).count();
+    let n_barrier = results
+        .iter()
+        .filter(|r| r.product_corr_nk.abs() < 0.15)
+        .count();
+
+    // Group by B.
+    let mut bounds: Vec<u64> = results.iter().map(|r| r.smoothness_bound).collect();
+    bounds.sort_unstable();
+    bounds.dedup();
+
+    println!("Summary by B:");
+    for &b in &bounds {
+        let group: Vec<&PrimeRestrictedResult> =
+            results.iter().filter(|r| r.smoothness_bound == b).collect();
+        let n_g = group.len();
+        let mean_fix_x: f64 = group.iter().map(|r| r.fixed_r_excess).sum::<f64>() / n_g as f64;
+        let mean_scan_x: f64 =
+            group.iter().map(|r| r.scanned_excess).sum::<f64>() / n_g as f64;
+        let mean_corr_nk: f64 =
+            group.iter().map(|r| r.product_corr_nk.abs()).sum::<f64>() / n_g as f64;
+        println!(
+            "  B={:>3}: mean fixed_excess={:.2}, mean scan_excess={:.2}, mean |corr_Nk|={:.4}",
+            b, mean_fix_x, mean_scan_x, mean_corr_nk,
+        );
+    }
+
+    println!();
+    println!("Overall: {n_total} blocks tested");
+    println!("  Fixed-r* signal (excess > 2.0): {n_fixed_signal}/{n_total}");
+    println!("  Scanned signal (excess > 1.5):  {n_scan_signal}/{n_total}");
+    println!("  Barrier intact (|corr_Nk| < 0.15): {n_barrier}/{n_total}");
+
+    if n_scan_signal == 0 {
+        println!();
+        println!("  ✓ Smoothness character does NOT survive prime restriction.");
+        println!("    Like parity, the multiplicative Fourier bias vanishes when");
+        println!("    restricted to the algebraically constrained set {{g(p)}}.");
+        println!("    The smoothness corridor is CLOSED.");
+    } else if n_barrier == n_total {
+        println!();
+        println!("  ~ Smoothness character partially survives restriction,");
+        println!("    but the product test confirms the barrier: corr_Nk ≈ 0.");
+        println!("    The bias is present but NOT N-extractable.");
+    } else {
+        let n_open = n_total - n_barrier;
+        println!();
+        println!("  ⚠ {n_open} block(s) show elevated corr_Nk — investigate!");
+    }
 }
 
 /// Build a `SmoothnessScalingAnalysis` from pre-computed results.
