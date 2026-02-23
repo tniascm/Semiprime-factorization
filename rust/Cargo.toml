@@ -24,6 +24,7 @@ members = [
     "eisenstein-hunt",
     "smooth-pilatte",
     "cf-factor-ms",
+    "cado-evolve",
 ]
 
 [workspace.dependencies]
