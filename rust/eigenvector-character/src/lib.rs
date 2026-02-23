@@ -2968,6 +2968,108 @@ fn run_cross_channel_perm(
 }
 
 // ---------------------------------------------------------------------------
+// Top-level cross-channel runner
+// ---------------------------------------------------------------------------
+
+/// Run the full E21c cross-channel test suite across multiple bit sizes and bounds.
+pub fn run_cross_channel_tests(
+    bit_sizes: &[u32],
+    bounds: &[u64],
+    top_k: usize,
+    n_permutations: usize,
+    n_bins: usize,
+    seed: u64,
+) -> CrossChannelResult {
+    let mut blocks = Vec::new();
+
+    for &n_bits in bit_sizes {
+        for &bound in bounds {
+            eprintln!(
+                "[E21c] Preparing cross-channel block: n_bits={}, B={}",
+                n_bits, bound,
+            );
+
+            let block = prepare_cross_channel_block(n_bits, bound, top_k);
+            let n_primes = block.prime_set.len();
+            let n_valid = block.valid_indices.len();
+
+            eprintln!(
+                "  {} primes, {} pairs, {} valid (all channels)",
+                n_primes,
+                block.pairs.len(),
+                n_valid,
+            );
+
+            if n_valid < 10 {
+                eprintln!("  Skipping: too few valid pairs ({n_valid})");
+                continue;
+            }
+
+            let features = compute_n_only_features(&block);
+
+            // C1: Pairwise interaction correlations.
+            let pairwise = run_pairwise_interactions(&block, &features);
+            eprintln!(
+                "  C1: max|corr|={:.4}, mean|corr|={:.4}, Bonf={:.4}",
+                pairwise.max_abs_corr, pairwise.mean_abs_corr, pairwise.bonferroni_threshold,
+            );
+
+            // C2: OLS with holdout.
+            let ols = run_cross_channel_ols(&block, &features);
+            eprintln!(
+                "  C2: test R²={:.4}, best single R²={:.4}",
+                ols.test_r_squared, ols.best_single_r_squared,
+            );
+
+            // C3: Binned mutual information.
+            let mi = run_cross_channel_mi(
+                &block,
+                &features,
+                n_bins,
+                n_permutations,
+                seed ^ (n_bits as u64 * 0x1000 + bound),
+            );
+            if let Some(ref m) = mi {
+                eprintln!(
+                    "  C3: MI={:.6}, z={:.2}, p={:.3}",
+                    m.observed_mi, m.z_score, m.empirical_p_value,
+                );
+            } else {
+                eprintln!("  C3: skipped (insufficient pairs for binning)");
+            }
+
+            // C4: Permutation null on strongest feature.
+            let perm_null = run_cross_channel_perm(
+                &block,
+                &features,
+                pairwise.max_corr_ch_i,
+                pairwise.max_corr_ch_j,
+                &pairwise.max_corr_type,
+                n_permutations,
+                seed ^ (n_bits as u64 * 0x2000 + bound),
+            );
+            eprintln!(
+                "  C4: obs={:.4}, z={:.2}, p={:.3}",
+                perm_null.observed_corr, perm_null.z_score, perm_null.empirical_p_value,
+            );
+
+            blocks.push(CrossChannelBlockResult {
+                n_bits,
+                smoothness_bound: bound,
+                n_primes,
+                n_pairs: n_valid,
+                pairwise,
+                ols,
+                mi,
+                perm_null,
+            });
+        }
+    }
+
+    CrossChannelResult { blocks }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -3480,6 +3582,30 @@ mod tests {
                 assert!(f.abs() <= 1.0 + 1e-10, "feature out of range: {f}");
             }
         }
+    }
+
+    #[test]
+    fn test_cross_channel_smoke() {
+        // Full pipeline at n=14, B=10, 20 permutations.
+        let result = run_cross_channel_tests(&[14], &[10], 5, 20, 5, 0xE21C);
+        assert_eq!(result.blocks.len(), 1);
+        let b = &result.blocks[0];
+        assert_eq!(b.n_bits, 14);
+        assert_eq!(b.smoothness_bound, 10);
+        assert!(b.n_pairs > 0, "should have valid pairs");
+
+        // C1: max |corr| should be finite.
+        assert!(b.pairwise.max_abs_corr.is_finite());
+        assert!(b.pairwise.n_tests == 84);
+
+        // C2: R² should be finite (may be negative for noise-only).
+        assert!(b.ols.test_r_squared.is_finite());
+        assert_eq!(b.ols.n_features, 35);
+
+        // C4: permutation null should have valid z-score.
+        assert!(b.perm_null.z_score.is_finite());
+        assert!(b.perm_null.empirical_p_value >= 0.0);
+        assert!(b.perm_null.empirical_p_value <= 1.0);
     }
 
     #[test]
