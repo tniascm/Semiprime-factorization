@@ -716,7 +716,7 @@ draws), recompute the product correlation.  500 resamples per block.
     High-order exponentiation (k−1 ≥ 11) destroys p ≈ q proximity modulo ℓ.
     The last algebraic loophole is closed.
 
-13. **Joint cross-channel N-only tests confirm no nonlinear signal** (E21c):
+13. **Joint cross-channel N-only tests find no tested nonlinear signal** (E21c):
     testing whether the JOINT distribution of N^{k−1} mod ℓ across all 7
     Eisenstein channels reveals cross-channel structure invisible to
     individual channels.  Four tests across 18 blocks (9 bit sizes × 2 bounds):
@@ -725,11 +725,13 @@ draws), recompute the product correlation.  500 resamples per block.
     - **C2 OLS regression:** 35 features (14 linear + 21 products), 50/50
       holdout; 18/18 blocks with test R² ≤ 0.
     - **C3 Mutual information:** binned MI between channels 5,3; 13/16
-      tested blocks consistent with independence (p > 0.05).
+      tested blocks consistent with independence (p > 0.05); 2 blocks
+      skipped (n=14: insufficient pairs for Q=8 binning, requiring
+      n ≥ Q² × 4 = 256 but only 167 available).
     - **C4 Permutation null:** max|corr| over all 84 features vs shuffled
       target; 16/18 blocks consistent with noise (p > 0.05).
-    The barrier is closed not just per-channel but for all pairwise and
-    joint observables in the tested Eisenstein family.
+    The barrier is closed not just per-channel but for all tested pairwise,
+    linear-combination, and binned-MI observables across the 7-channel family.
 
 ## E21c: Joint cross-channel N-only tests
 
@@ -847,11 +849,13 @@ Negative R² indicates the model is worse than predicting the mean — pure over
 |  48 | 10 | 19753 | 0.00281  | 0.00160 | 0.00029 | 0.000 | ✗ |
 |  48 | 30 | 19753 | 0.00193  | 0.00162 | 0.00030 | 0.155 | ✓ |
 
-13/16 tested blocks pass (n=14 skipped: insufficient pairs for Q=8 binning).
-The 3 marginal/failing blocks (n=32 both bounds, n=48 B=10) show MI barely
-above null mean.  With 18 blocks at α=0.05, 0.9 false positives expected;
-3 observed is slightly elevated but not systematic — the n=48/B=10 anomaly
-does not replicate at B=30.
+13/16 tested blocks pass.  2 blocks skipped: both n=14 blocks have only 167
+valid pairs, below the minimum occupancy requirement n ≥ Q² × 4 = 256 for
+Q=8 quantile bins (ensures ≥ 4 expected samples per cell in the Q×Q×2
+contingency table).  The 3 marginal/failing blocks (n=32 both bounds,
+n=48 B=10) show MI barely above null mean.  With 16 tested blocks at
+α=0.05, 0.8 false positives expected; 3 observed is slightly elevated but
+not systematic — the n=48/B=10 anomaly does not replicate at B=30.
 
 **Table 18: C4 — Permutation null on max|corr| (200 permutations)**
 
@@ -895,9 +899,47 @@ Combined with E21b's per-channel results (126 blocks confirming individual
 corridor closure), E21c closes the joint/interaction corridor:
 
 > **The barrier holds not only for each Eisenstein channel individually, but
-> also for all pairwise and linear-combination observables across the tested
-> 7-channel family.  No nonlinear cross-channel interaction rescues
-> predictability of the smoothness product from N alone.**
+> also for all tested pairwise, linear-combination, and binned-MI observables
+> across the 7-channel family.  No tested nonlinear cross-channel interaction
+> (pairwise character products, OLS on engineered features, binned mutual
+> information) rescues predictability of the smoothness product from N alone.**
+
+## Scope and limitations
+
+The negative results (barrier closure) are established for a specific hypothesis class.
+The following directions remain untested and are explicitly outside the scope of E21b/E21c:
+
+1. **Richer nonlinear function classes.**  E21c tests pairwise character products
+   and OLS on engineered features (35-dimensional).  Higher-order interactions
+   (3-way products, polynomial kernels, deep nonlinear models) are not tested.
+   However, the 14-dimensional feature space is small enough that any strong
+   signal would likely manifest in pairwise interactions.
+
+2. **Multi-ℓ joint observables beyond character products.**  The features tested
+   are Re/Im of χ_{r*}(N^{k−1} mod ℓ) — character evaluations at the optimal
+   r* per channel.  Joint observables involving other character frequencies,
+   or functions of the raw residues N^{k−1} mod ℓ not mediated by characters,
+   are untested.
+
+3. **Information-theoretic functionals beyond binned MI.**  The MI estimator uses
+   Q=8 quantile bins on two channels.  Continuous MI estimators (k-NN, kernel
+   density), higher-dimensional MI (3+ channels jointly), or conditional MI
+   conditioned on auxiliary variables are not tested.
+
+4. **NFS-structured norm distributions.**  All tests use generic balanced
+   semiprimes N = pq.  The NFS setting involves polynomial norms
+   |F(m)| = |f(m)| where m ≈ N^{1/d}, introducing algebraic structure
+   (lattice locality, polynomial evaluation) absent from the product-test
+   framework.  This is a qualitatively different hypothesis class.
+
+5. **Representation-level features beyond character basis.**  The Eisenstein
+   channels use 1-dimensional Galois representations (Dirichlet characters).
+   Features derived from higher-dimensional representations (e.g., weight-2
+   cusp forms, symmetric-square lifts) are unexplored.
+
+6. **Bit sizes beyond 48.**  The sampled regime (n > 24) uses 500 primes and
+   up to 20,000 pairs.  Behaviour at cryptographic scales (512+ bits) is
+   extrapolated from the observed scaling trend, not directly measured.
 
 ## Data files
 
@@ -909,11 +951,3 @@ corridor closure), E21c closes the joint/interaction corridor:
 - `rust/data/E21b_stress_tests.json` — stress test validation results (126 blocks, 4 tests)
 - `rust/data/E21c_cross_channel.json` — joint cross-channel test results (18 blocks, 4 tests)
 - `rust/eigenvector-character/` — Rust crate implementing E21, E21b, and E21c
-
-- `rust/data/E21_character_audit.json` — full per-block per-eigenvector results
-- `rust/data/E21_control_results.json` — full-group control experiment results
-- `rust/data/E21_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
-- `rust/data/E21b_smoothness_spectrum.json` — smoothness Fourier spectrum (B = 10, 30, 100, 300)
-- `rust/data/E21b_prime_restricted.json` — prime-restricted smoothness diagnostic (126 blocks, n=14–48)
-- `rust/data/E21b_stress_tests.json` — stress test validation results (126 blocks, 4 tests)
-- `rust/eigenvector-character/` — Rust crate implementing E21 and E21b
