@@ -35,6 +35,7 @@ use eisenstein_hunt::{
     arith::{is_prime_u64, mod_pow},
     Channel, Semiprime,
 };
+use algebra::im_char;
 use rand::{rngs::StdRng, SeedableRng};
 use serde::Serialize;
 
@@ -56,8 +57,11 @@ pub struct EigenvectorCharResult {
     /// Number of character frequencies scanned (= (ℓ−1)/2 + 1).
     pub n_chars_scanned: usize,
     /// Pearson corr(u(p), Re(χ_{r*}(g(p)))).
-    /// Near ±1 confirms eigenvector ≈ real part of a multiplicative character.
+    /// Near ±1: eigenvector is the real part of a multiplicative character.
     pub corr_re_best: f64,
+    /// Pearson corr(u(p), Im(χ_{r*}(g(p)))).
+    /// Non-zero: eigenvector has an imaginary-part component (complex character).
+    pub corr_im_best: f64,
     /// Product test A: Pearson corr(u(p)·u(q), Re(χ_{r*}(σ_{k−1}(N) mod ℓ))).
     /// σ_{k−1}(N) = g(p)·g(q) mod ℓ requires knowing p, q.
     pub product_corr_sigma: f64,
@@ -206,21 +210,24 @@ pub fn run_character_audit(
     let mut ev_results = Vec::with_capacity(eigenpairs.len());
 
     for (idx, (eigenvalue, u)) in eigenpairs.iter().enumerate() {
-        // --- 5a. Character amplitude scan ---
-        let (best_r, best_amp, top_chars) = best_character(u, &dlogs_g, order, 10);
+        // --- 5a. Character amplitude scan (Pearson-based, skips r=0) ---
+        let (best_r, best_amp, best_corr_re_from_scan, top_chars) =
+            best_character(u, &dlogs_g, order, 10);
 
-        // Pearson corr between u(p) and Re(χ_{r*}(g(p))), for valid primes only.
-        let (u_valid, re_valid): (Vec<f64>, Vec<f64>) = dlogs_g
+        // Recompute corr_re and corr_im at best_r with explicit Pearson.
+        let (u_valid, dlog_valid): (Vec<f64>, Vec<u32>) = dlogs_g
             .iter()
             .zip(u.iter())
             .filter(|(&d, _)| d != u32::MAX)
-            .map(|(&d, &ui)| (ui, re_char(d, best_r, order)))
+            .map(|(&d, &ui)| (ui, d))
             .unzip();
 
-        let corr_re_best = if u_valid.len() >= 2 {
-            pearson_corr(&u_valid, &re_valid)
+        let (corr_re_best, corr_im_best) = if u_valid.len() >= 2 {
+            let re_vals: Vec<f64> = dlog_valid.iter().map(|&d| re_char(d, best_r, order)).collect();
+            let im_vals: Vec<f64> = dlog_valid.iter().map(|&d| im_char(d, best_r, order)).collect();
+            (pearson_corr(&u_valid, &re_vals), pearson_corr(&u_valid, &im_vals))
         } else {
-            0.0
+            (best_corr_re_from_scan, 0.0)
         };
 
         // --- 5b. Product tests over valid pairs ---
@@ -285,8 +292,9 @@ pub fn run_character_audit(
             eigenvalue: *eigenvalue,
             best_char_r: best_r,
             best_char_amp: best_amp,
-            n_chars_scanned: order / 2 + 1,
+            n_chars_scanned: order / 2,  // r = 1 … order/2
             corr_re_best,
+            corr_im_best,
             product_corr_sigma,
             product_corr_nk,
             n_pairs_used,

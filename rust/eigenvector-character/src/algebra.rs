@@ -157,41 +157,74 @@ pub fn pearson_corr(x: &[f64], y: &[f64]) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Best-character search
+// Best-character search (Pearson-correlation based)
 // ---------------------------------------------------------------------------
 
-/// Scan r = 0 … order/2 (inclusive) and return the r with maximum amplitude.
+/// Scan r = 1 … order/2 and return the r with maximum complex Pearson amplitude.
 ///
-/// Returns `(r*, max_amplitude, top_chars)` where `top_chars` is a vec of
-/// `(r, amplitude)` for the top-`top_n` characters by amplitude.
+/// The **complex Pearson amplitude** for character r is:
+///   amp(r) = sqrt( corr(u₁, Re(χ_r(g(.))))² + corr(u₁, Im(χ_r(g(.))))² )
 ///
-/// Using only r ≤ order/2 exploits the conjugate symmetry
-/// |⟨u₁, χ_r⟩| = |⟨u₁, χ_{order−r}⟩| when u₁ is real.
+/// This is in [0, √2] in theory but ≤ 1 in practice.  It measures how much
+/// of u₁'s variance is explained by the r-th character restricted to the
+/// prime set via g(·).
+///
+/// r = 0 (trivial character, constant 1) is **skipped**: since Re(χ_0) is
+/// constant its Pearson correlation with any zero-variance predictor is
+/// undefined (0), and its amplitude would only measure the mean of u₁ via
+/// the inner-product formula, which is uninteresting.
+///
+/// Exploits conjugate symmetry |corr(u₁, χ_r)| = |corr(u₁, χ_{order−r})|
+/// for real u₁: only scan r = 1 … order/2.
+///
+/// Returns `(r*, max_amp, top_chars)` where `top_chars` = top-`top_n`
+/// `(r, amp)` pairs sorted by amp descending.
 pub fn best_character(
     u1: &[f64],
     dlogs_g: &[u32],
     order: usize,
     top_n: usize,
-) -> (usize, f64, Vec<(usize, f64)>) {
-    let half = order / 2;
-    let mut best_r   = 0usize;
-    let mut best_amp = 0.0f64;
-    let mut all: Vec<(usize, f64)> = Vec::with_capacity(half + 1);
+) -> (usize, f64, f64, Vec<(usize, f64)>) {
+    // Extract valid (u, dlog) pairs — skip entries where g(p) = 0.
+    let (u_valid, dlog_valid): (Vec<f64>, Vec<u32>) = u1
+        .iter()
+        .zip(dlogs_g.iter())
+        .filter(|(_, &d)| d != u32::MAX)
+        .map(|(&u, &d)| (u, d))
+        .unzip();
 
-    for r in 0..=half {
-        let amp = char_amplitude(u1, dlogs_g, r, order);
+    if u_valid.len() < 2 {
+        return (1, 0.0, 0.0, vec![]);
+    }
+
+    let half = order / 2;
+    let mut best_r    = 1usize;
+    let mut best_amp  = 0.0f64;
+    let mut best_corr_re = 0.0f64;
+    let mut all: Vec<(usize, f64)> = Vec::with_capacity(half);
+
+    for r in 1..=half {
+        // Precompute Re(χ_r(g(p))) and Im(χ_r(g(p))) for valid primes.
+        let re_vals: Vec<f64> = dlog_valid.iter().map(|&d| re_char(d, r, order)).collect();
+        let im_vals: Vec<f64> = dlog_valid.iter().map(|&d| im_char(d, r, order)).collect();
+
+        let cr  = pearson_corr(&u_valid, &re_vals);
+        let ci  = pearson_corr(&u_valid, &im_vals);
+        // Complex Pearson amplitude = sqrt(corr_re² + corr_im²).
+        let amp = (cr * cr + ci * ci).sqrt();
+
         all.push((r, amp));
         if amp > best_amp {
-            best_amp = amp;
-            best_r   = r;
+            best_amp     = amp;
+            best_r       = r;
+            best_corr_re = cr;
         }
     }
 
-    // Keep only top_n by amplitude
     all.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     all.truncate(top_n);
 
-    (best_r, best_amp, all)
+    (best_r, best_amp, best_corr_re, all)
 }
 
 // ---------------------------------------------------------------------------
