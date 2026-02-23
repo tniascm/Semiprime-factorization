@@ -1,0 +1,6358 @@
+{
+  "config_max_degree": 6,
+  "config_n_semiprimes": 2000,
+  "config_n_monomials": 200,
+  "blocks": [
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.12574850299401197,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.12574850299401197,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.1377245508982036,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.10179640718562874,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.07784431137724551,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 22,
+        "rank_fraction": 0.6875
+      }
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.09869646182495345,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.11359404096834265,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.10986964618249534,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.10986964618249534,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.10614525139664804,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.08007448789571694,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 42,
+        "rank_fraction": 0.711864406779661
+      }
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.06728004600345026,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.06728004600345026,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.06728004600345026,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.0523289246693502,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.050028752156411734,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.03852788959171938,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 78,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.048,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.03,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.021,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 144,
+        "rank_fraction": 0.7700534759358288
+      }
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.058,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.065,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.072,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.045,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.027,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.03,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.073,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.075,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.057,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.032,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.019,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 12,
+        "channel_ell": 691,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.031,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.027,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.019,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.071,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.065,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.059,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.037,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.063,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.063,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.032,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 12,
+          "channel_ell": 691,
+          "max_abs_corr": 0.02,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.17365269461077845,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.17365269461077845,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.1377245508982036,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.1497005988023952,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.12574850299401197,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 24,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.12104283054003724,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.12104283054003724,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.10986964618249534,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.10614525139664804,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.10986964618249534,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.10986964618249534,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 44,
+        "rank_fraction": 0.7457627118644068
+      }
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.029327199539965498,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.039677975848188614,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.06267970097757332,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.04312823461759632,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.03737780333525014,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.0327774583093732,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 80,
+        "rank_fraction": 0.7692307692307693
+      }
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.036,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 142,
+        "rank_fraction": 0.7593582887700535
+      }
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.079,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.086,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.077,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.072,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.07,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.066,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.07,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.068,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.059,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.048,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.074,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.072,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.024,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.023,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 16,
+        "channel_ell": 3617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.038,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.035,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.029,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.072,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.063,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.058,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.041,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.028,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 16,
+          "channel_ell": 3617,
+          "max_abs_corr": 0.024,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.2694610778443114,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": true
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.2694610778443114,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": true
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.20958083832335328,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.20958083832335328,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.1497005988023952,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.1497005988023952,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 22,
+        "rank_fraction": 0.6875
+      }
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.13966480446927373,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.15083798882681565,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.16201117318435754,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.18063314711359404,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.18808193668528864,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.16945996275605213,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 40,
+        "rank_fraction": 0.6779661016949152
+      }
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.05922944220816561,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.08223116733755031,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": true
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.08223116733755031,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": true
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.07533064979873491,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": true
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.0684301322599195,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.06612995974698102,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 80,
+        "rank_fraction": 0.7692307692307693
+      }
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.038,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.025,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 144,
+        "rank_fraction": 0.7700534759358288
+      }
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.049,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.078,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.037,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.026,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.029,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.022,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.035,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.028,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 18,
+        "channel_ell": 43867,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.037,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.028,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.026,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.057,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.037,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.032,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.07,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.064,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.07,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.028,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 18,
+          "channel_ell": 43867,
+          "max_abs_corr": 0.015,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.1377245508982036,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.1377245508982036,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.1377245508982036,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.08982035928143713,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 24,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.09124767225325885,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.09124767225325885,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.08752327746741155,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.07635009310986965,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.06890130353817504,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.054003724394785846,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 44,
+        "rank_fraction": 0.7457627118644068
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.0523289246693502,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.0684301322599195,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.0684301322599195,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.0523289246693502,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.04312823461759632,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.04542840713053479,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 80,
+        "rank_fraction": 0.7692307692307693
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.049,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.037,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.034,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 146,
+        "rank_fraction": 0.7807486631016043
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.045,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.041,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.029,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.041,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.065,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.059,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.058,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 20,
+        "channel_ell": 283,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.045,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.028,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.034,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.02,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.064,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.045,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.038,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.027,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.075,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.071,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.066,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.058,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.049,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 283,
+          "max_abs_corr": 0.048,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.12574850299401197,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.18562874251497005,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.17365269461077845,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.17365269461077845,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.16167664670658682,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.1497005988023952,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 24,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.09124767225325885,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.12104283054003724,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.14711359404096835,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.13966480446927373,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.12476722532588454,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.12476722532588454,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 44,
+        "rank_fraction": 0.7457627118644068
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.05922944220816561,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.07648073605520414,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": true
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.07648073605520414,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": true
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.056929269695227144,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.0684301322599195,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.03852788959171938,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 78,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.048,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.034,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.024,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 142,
+        "rank_fraction": 0.7593582887700535
+      }
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.065,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.027,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.017,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.063,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.041,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.07,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.037,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.025,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.019,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 20,
+        "channel_ell": 617,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.049,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.053,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.041,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.059,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.036,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.026,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.055,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.072,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.063,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.069,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.057,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.048,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.052,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.039,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 20,
+          "channel_ell": 617,
+          "max_abs_corr": 0.03,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.10179640718562874,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.10179640718562874,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.10179640718562874,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.12574850299401197,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.08982035928143713,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.0658682634730539,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 24,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.08752327746741155,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.12476722532588454,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.12476722532588454,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.10614525139664804,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.061452513966480445,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.07635009310986965,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 44,
+        "rank_fraction": 0.7457627118644068
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.041978148361127086,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.05462909718228867,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.039677975848188614,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.04082806210465785,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.04082806210465785,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.022426682001150087,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 78,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.034,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.028,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.023,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 144,
+        "rank_fraction": 0.7700534759358288
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.066,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.069,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.034,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.063,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.066,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.062,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.048,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.058,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.022,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.018,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 22,
+        "channel_ell": 131,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.072,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.051,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.049,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.03,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.029,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.058,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.056,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.088,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.077,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.096,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.078,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.078,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.04,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.065,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.064,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.062,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.059,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 131,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 14,
+      "correlations": [
+        {
+          "n_bits": 14,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.18562874251497005,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.18562874251497005,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.1377245508982036,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        },
+        {
+          "n_bits": 14,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.11377245508982035,
+          "n_monomials": 200,
+          "n_samples": 167,
+          "threshold": 0.23214696976024105,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 14,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 167,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 14,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_primes": 32,
+        "matrix_entries": 167,
+        "rank": 24,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 16,
+      "correlations": [
+        {
+          "n_bits": 16,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.11359404096834265,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.13221601489757914,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.08752327746741155,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.13221601489757914,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": true
+        },
+        {
+          "n_bits": 16,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.10242085661080075,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        },
+        {
+          "n_bits": 16,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.061452513966480445,
+          "n_monomials": 200,
+          "n_samples": 537,
+          "threshold": 0.12945955560063094,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 16,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 537,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 16,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_primes": 59,
+        "matrix_entries": 537,
+        "rank": 44,
+        "rank_fraction": 0.7457627118644068
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 18,
+      "correlations": [
+        {
+          "n_bits": 18,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.04427832087406555,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.0684301322599195,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.06958021851638872,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.06958021851638872,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.06267970097757332,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        },
+        {
+          "n_bits": 18,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.05807935595169638,
+          "n_monomials": 200,
+          "n_samples": 1739,
+          "threshold": 0.07194017065667524,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 18,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 1739,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 18,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_primes": 104,
+        "matrix_entries": 1739,
+        "rank": 78,
+        "rank_fraction": 0.75
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 20,
+      "correlations": [
+        {
+          "n_bits": 20,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.045,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.082,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 20,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.082,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 20,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.077,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 20,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.066,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 20,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.064,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 20,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": {
+        "n_bits": 20,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_primes": 187,
+        "matrix_entries": 5662,
+        "rank": 146,
+        "rank_fraction": 0.7807486631016043
+      }
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 24,
+      "correlations": [
+        {
+          "n_bits": 24,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.074,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.082,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.117,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.101,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.096,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        },
+        {
+          "n_bits": 24,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.091,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": true
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 24,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 28,
+      "correlations": [
+        {
+          "n_bits": 28,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.036,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.035,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 28,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.035,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 28,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 32,
+      "correlations": [
+        {
+          "n_bits": 32,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.065,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.06,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.057,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 32,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.049,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": {
+        "n_bits": 32,
+        "channel_weight": 22,
+        "channel_ell": 593,
+        "n_samples": 2000,
+        "min_fitting_degree": null
+      },
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 36,
+      "correlations": [
+        {
+          "n_bits": 36,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.067,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.043,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 36,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.041,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 40,
+      "correlations": [
+        {
+          "n_bits": 40,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.046,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.061,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.044,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 40,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.034,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 44,
+      "correlations": [
+        {
+          "n_bits": 44,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.047,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.042,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.035,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.033,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 44,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.021,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "n_bits": 48,
+      "correlations": [
+        {
+          "n_bits": 48,
+          "degree": 1,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.054,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 2,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.057,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 3,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.05,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 4,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.045,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 5,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.032,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        },
+        {
+          "n_bits": 48,
+          "degree": 6,
+          "channel_weight": 22,
+          "channel_ell": 593,
+          "max_abs_corr": 0.023,
+          "n_monomials": 200,
+          "n_samples": 2000,
+          "threshold": 0.06708203932499368,
+          "significant": false
+        }
+      ],
+      "fit_degree": null,
+      "crt_rank": null
+    }
+  ],
+  "power_law_fits": [
+    {
+      "channel_weight": 12,
+      "channel_ell": 691,
+      "exponent_b": -0.06650147085410112,
+      "coefficient_a": 3.2953195786933627,
+      "r_squared": 0.005292572032181253,
+      "interpretation": "CONSTANT: degree bounded — Amy-Stinchcombe poly-time regime"
+    },
+    {
+      "channel_weight": 16,
+      "channel_ell": 3617,
+      "exponent_b": -2.1035861460995586,
+      "coefficient_a": 3848.6444689042128,
+      "r_squared": 0.7719921076370214,
+      "interpretation": "CONSTANT: degree bounded — Amy-Stinchcombe poly-time regime"
+    },
+    {
+      "channel_weight": 18,
+      "channel_ell": 43867,
+      "exponent_b": -1.1225759409071647,
+      "coefficient_a": 82.14372688037786,
+      "r_squared": 0.6455791928766141,
+      "interpretation": "CONSTANT: degree bounded — Amy-Stinchcombe poly-time regime"
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 283,
+      "exponent_b": null,
+      "coefficient_a": null,
+      "r_squared": null,
+      "interpretation": "insufficient_data"
+    },
+    {
+      "channel_weight": 20,
+      "channel_ell": 617,
+      "exponent_b": -0.09812790231561991,
+      "coefficient_a": 4.296778914264083,
+      "r_squared": 0.020506681075069588,
+      "interpretation": "CONSTANT: degree bounded — Amy-Stinchcombe poly-time regime"
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 131,
+      "exponent_b": 0.5842733152671998,
+      "coefficient_a": 0.3360780230936819,
+      "r_squared": 0.03987317884850483,
+      "interpretation": "SQRT_REGIME: degree ≈ n^{1/2} — consistent with random function"
+    },
+    {
+      "channel_weight": 22,
+      "channel_ell": 593,
+      "exponent_b": 0.963185796070017,
+      "coefficient_a": 0.25900938326147116,
+      "r_squared": 0.698146098679929,
+      "interpretation": "LINEAR: degree ≈ n — full hardness, barrier confirmed"
+    }
+  ]
+}
