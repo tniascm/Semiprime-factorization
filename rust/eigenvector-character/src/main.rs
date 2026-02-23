@@ -72,20 +72,21 @@ fn print_summary(results: &[CharacterAuditResult]) {
     // -----------------------------------------------------------------------
     println!("Table 1: Eigenvector-character fit (top eigenvector, u₁)");
     println!(
-        "{:>4}  {:>3}  {:>6}  {:>6}  {:>5}  {:>5}  {:>5}  {:>6}",
-        "bits", "k", "ℓ", "r*", "|corr|", "amp", "λ₁", "#pairs"
+        "{:>4}  {:>3}  {:>6}  {:>6}  {:>6}  {:>6}  {:>5}  {:>5}  {:>6}",
+        "bits", "k", "ℓ", "r*", "corr_re", "corr_im", "amp", "λ₁", "#pairs"
     );
-    println!("{}", "─".repeat(52));
+    println!("{}", "─".repeat(63));
 
     for r in results {
         let Some(ev) = r.eigenvectors.first() else { continue };
         println!(
-            "{:>4}  {:>3}  {:>6}  {:>6}  {:>5.3}  {:>5.3}  {:>+6.2}  {:>6}",
+            "{:>4}  {:>3}  {:>6}  {:>6}  {:>+6.3}  {:>+6.3}  {:>5.3}  {:>+5.1}  {:>6}",
             r.n_bits,
             r.channel_weight,
             r.channel_ell,
             ev.best_char_r,
-            ev.corr_re_best.abs(),
+            ev.corr_re_best,
+            ev.corr_im_best,
             ev.best_char_amp,
             ev.eigenvalue,
             ev.n_pairs_used,
