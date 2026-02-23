@@ -408,10 +408,12 @@ is O(1) for balanced semiprimes, |p^{k−1} − (√N)^{k−1}| mod ℓ is unifo
 because the exponential amplifies small differences.  The correlation corr_approx ≈ 0
 confirms that the σ-approximation provides no signal whatsoever.
 
-**Conclusion:** The last algebraic loophole — exploiting the balanced-semiprime constraint
-to approximate the algebraic gap — is closed.  The smoothness Fourier corridor is
-definitively CLOSED at all three levels: character structure (Step 2), product
-extractability (Table 9), and σ-approximation (Table 10).
+**Conclusion:** The last algebraic loophole in the tested invariant family — exploiting the
+balanced-semiprime constraint to approximate the algebraic gap — is closed.  The smoothness
+Fourier corridor is closed for the tested observables at all three levels: character
+structure (Step 2), product extractability (Table 9), and σ-approximation (Table 10).
+(Note: this closure is demonstrated for the tested character/product invariant family;
+alternative N-only observables are tested in Step 3 below.)
 
 ## Conclusions
 
@@ -473,7 +475,7 @@ extractability (Table 9), and σ-approximation (Table 10).
     (125/126 blocks with |corr_Nk| < 0.15, max = 0.18 at n=14 small-sample
     noise).  Despite the smoothness character surviving restriction at all
     bit sizes, the product is NOT predictable from N alone.
-    The **smoothness Fourier corridor is CLOSED**.
+    The **smoothness Fourier corridor is closed for the tested invariant family**.
 
 11. **σ-approximation corridor closed** (E21b Step 2b): the balanced-semiprime
     approximation σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1} mod ℓ has circular
