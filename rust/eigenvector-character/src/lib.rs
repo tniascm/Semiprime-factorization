@@ -2417,6 +2417,199 @@ pub struct CrossChannelResult {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-channel block preparation
+// ---------------------------------------------------------------------------
+
+/// Prepare a cross-channel block with shared primes/pairs across all 7 channels.
+///
+/// Uses a channel-independent seed `0xE21c_0000 + n_bits` so all channels
+/// operate on the SAME (p, q) pairs — critical for cross-channel tests.
+fn prepare_cross_channel_block(
+    n_bits: u32,
+    bound: u64,
+    top_k: usize,
+) -> CrossChannelBlock {
+    use algebra::{best_character, build_dlog_table, primitive_root};
+
+    let seed = 0xE21c_0000u64 + n_bits as u64;
+    let (prime_set, pairs) = generate_primes_and_pairs(n_bits, 500, 20_000, seed);
+
+    let mut channels = Vec::with_capacity(7);
+    for ch in eisenstein_hunt::CHANNELS {
+        let ell = ch.ell;
+        let k1 = (ch.weight - 1) as u64;
+        let order = (ell - 1) as usize;
+
+        // Full-group smoothness spectrum → find r*.
+        let full = smoothness_spectrum(ell, bound, top_k);
+        let full_r_star = full.top_amplitudes.first().map(|&(r, _)| r).unwrap_or(1);
+
+        let prim_g = primitive_root(ell);
+        let dlog = build_dlog_table(ell, prim_g);
+
+        let g_vals: Vec<u64> = prime_set
+            .iter()
+            .map(|&p| (1 + mod_pow(p, k1, ell)) % ell)
+            .collect();
+
+        let dlogs_g: Vec<u32> = g_vals
+            .iter()
+            .map(|&gp| if gp == 0 { u32::MAX } else { dlog[gp as usize] })
+            .collect();
+
+        let smooth_vals: Vec<f64> = g_vals
+            .iter()
+            .zip(dlogs_g.iter())
+            .map(|(&gp, &d)| {
+                if d != u32::MAX && gp > 0 && is_b_smooth(gp, bound) {
+                    1.0
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+
+        // Character scan on valid primes.
+        let (valid_smooth, valid_dlogs): (Vec<f64>, Vec<u32>) = smooth_vals
+            .iter()
+            .zip(dlogs_g.iter())
+            .filter(|(_, &d)| d != u32::MAX)
+            .map(|(&s, &d)| (s, d))
+            .unzip();
+
+        let (scanned_r_star, _, _, _) =
+            best_character(&valid_smooth, &valid_dlogs, order, top_k);
+
+        channels.push(ChannelData {
+            ell,
+            k1,
+            order,
+            prim_g,
+            dlog,
+            g_vals,
+            dlogs_g,
+            smooth_vals,
+            scanned_r_star,
+            full_r_star,
+            channel_weight: ch.weight,
+        });
+    }
+
+    // Find valid pairs: g(p) ≠ 0 AND g(q) ≠ 0 in ALL 7 channels.
+    let mut valid_indices = Vec::new();
+    let prime_idx = |p: u64| -> usize { prime_set.partition_point(|&x| x < p) };
+
+    for (pair_idx, &(p, q)) in pairs.iter().enumerate() {
+        let pi = prime_idx(p);
+        let qi = prime_idx(q);
+        let all_valid = channels
+            .iter()
+            .all(|ch| ch.dlogs_g[pi] != u32::MAX && ch.dlogs_g[qi] != u32::MAX);
+        if all_valid {
+            valid_indices.push(pair_idx);
+        }
+    }
+
+    // Build targets for valid pairs.
+    let n_valid = valid_indices.len();
+    let n_channels = channels.len();
+    let mut target_ref = Vec::with_capacity(n_valid);
+    let mut target_mean = Vec::with_capacity(n_valid);
+
+    for &pair_idx in &valid_indices {
+        let (p, q) = pairs[pair_idx];
+        let pi = prime_idx(p);
+        let qi = prime_idx(q);
+
+        // Reference channel (idx 5: k=22, ℓ=131).
+        let sp = channels[5].smooth_vals[pi] * channels[5].smooth_vals[qi];
+        target_ref.push(sp);
+
+        // Mean across all channels.
+        let mean: f64 = channels
+            .iter()
+            .map(|ch| ch.smooth_vals[pi] * ch.smooth_vals[qi])
+            .sum::<f64>()
+            / n_channels as f64;
+        target_mean.push(mean);
+    }
+
+    CrossChannelBlock {
+        n_bits,
+        bound,
+        prime_set,
+        pairs,
+        channels,
+        valid_indices,
+        target_mean,
+        target_ref,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-channel N-only feature computation
+// ---------------------------------------------------------------------------
+
+/// Compute 14-element N-only feature vectors for each valid pair.
+///
+/// For each valid pair (p, q) and each channel i (0..7):
+///   features[2*i]   = Re(χ_{r*_i}(N^{k_i-1} mod ℓ_i))
+///   features[2*i+1] = Im(χ_{r*_i}(N^{k_i-1} mod ℓ_i))
+///
+/// r* is the `scanned_r_star` from character scan on the restricted set.
+fn compute_n_only_features(block: &CrossChannelBlock) -> Vec<Vec<f64>> {
+    use algebra::{im_char, re_char};
+
+    let n_channels = block.channels.len();
+    let n_features = 2 * n_channels; // 14 for 7 channels
+
+    block
+        .valid_indices
+        .iter()
+        .map(|&pair_idx| {
+            let (p, q) = block.pairs[pair_idx];
+            let n_val = p as u128 * q as u128;
+
+            let mut feats = Vec::with_capacity(n_features);
+            for ch in &block.channels {
+                // N^{k-1} mod ℓ — use u128 intermediate for large N.
+                let nk_val = mod_pow_u128(n_val, ch.k1 as u128, ch.ell as u128) as u64;
+                let dlog_nk = if nk_val == 0 {
+                    u32::MAX
+                } else {
+                    ch.dlog[nk_val as usize]
+                };
+                if dlog_nk == u32::MAX {
+                    feats.push(0.0);
+                    feats.push(0.0);
+                } else {
+                    feats.push(re_char(dlog_nk, ch.scanned_r_star, ch.order));
+                    feats.push(im_char(dlog_nk, ch.scanned_r_star, ch.order));
+                }
+            }
+            feats
+        })
+        .collect()
+}
+
+/// Modular exponentiation for u128 base/modulus (needed for N > 2^64).
+fn mod_pow_u128(mut base: u128, mut exp: u128, modulus: u128) -> u128 {
+    if modulus == 1 {
+        return 0;
+    }
+    let mut result = 1u128;
+    base %= modulus;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result * base % modulus;
+        }
+        exp >>= 1;
+        base = base * base % modulus;
+    }
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -2912,6 +3105,24 @@ mod tests {
     // -----------------------------------------------------------------------
     // E21c: Binned MI test
     // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_n_only_features_shape() {
+        // Verify that compute_n_only_features returns 14 features per pair.
+        let block = prepare_cross_channel_block(14, 10, 5);
+        let features = compute_n_only_features(&block);
+        assert_eq!(features.len(), block.valid_indices.len());
+        for feats in &features {
+            assert_eq!(feats.len(), 14, "expected 14 features (2 per channel × 7 channels)");
+        }
+        // Check features are finite and in [-1, 1].
+        for feats in &features {
+            for &f in feats {
+                assert!(f.is_finite(), "feature is not finite: {f}");
+                assert!(f.abs() <= 1.0 + 1e-10, "feature out of range: {f}");
+            }
+        }
+    }
 
     #[test]
     fn test_binned_mi_independent_is_near_zero() {
