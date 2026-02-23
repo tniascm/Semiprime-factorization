@@ -4,5 +4,10 @@
 rust/target/
 **/target/
 
+# Experiment output artifacts
+rust/checkpoint_*.json
+rust/cado_*.json
+rust/cado_*.params
+
 # OS
 .DS_Store
