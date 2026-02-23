@@ -1,6 +1,6 @@
 # E21: Dominant Eigenvector Multiplicative Character Structure
 
-**Status:** Complete (E21 barrier confirmed; E21b smoothness spectrum measured).
+**Status:** Complete (E21 barrier confirmed; E21b smoothness bias real but NOT N-extractable).
 
 ## Motivation
 
@@ -286,11 +286,90 @@ concentration in few modes, not spread across all ~ℓ/2 characters.
 5. **Implication for factoring:** The bias is real, but **bias in χ-space is
    not automatically factor information**.  The hinge scalar barrier still
    applies: factoring requires extracting something about specific primes p, q
-   dividing N, not just global group structure.  The next test is whether the
-   smoothness-tuned r* survives prime restriction (E21b Step 2) and passes
-   the product test (E21b Step 3).
+   dividing N, not just global group structure.
+
+### E21b Step 2: Prime-restricted diagnostic
+
+**Question:** Does the smoothness character r* (identified on the full group)
+survive when restricted to the prime image set {g(p) : p in semiprime set}?
+In E21, parity characters dropped to noise under prime restriction.  Does
+smoothness behave differently?
+
+**Method:** For each (n_bits, channel, B):
+1. Compute full-group smoothness DFT → find r* and A_max.
+2. Restrict to primes: compute g(p) = (1 + p^{k−1}) mod ℓ, evaluate s_B(g(p)).
+3. Fixed-r* test: Pearson amplitude of χ_{r*} against s_B on restricted set.
+4. Full scan: find best character on restricted set (with scan-null correction).
+5. Product test: corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ))).
+
+56 blocks tested: 4 bit sizes × 7 channels × 2 smoothness bounds (B=10, 30).
+
+#### Table 7: Prime-restricted — fixed-r* test (summary)
+
+| B   | mean fix_excess | n_bits=14 | n_bits=20 | interpretation |
+|-----|-----------------|-----------|-----------|----------------|
+| 10  | 2.28            | 0.0–2.73  | 1.31–5.75 | **CHARACTER SURVIVES** |
+| 30  | 1.72            | 0.14–2.00 | 1.12–3.07 | **character survives** |
+
+Unlike parity (which drops to noise), the smoothness character r* retains
+signal when restricted to the prime image set.  The effect strengthens with
+n_bits (more primes → better statistics).
+
+#### Table 8: Prime-restricted — full scan (selected blocks, n=20)
+
+| k  | ℓ    | B  | r*_full | r*_scan | scan_amp | null   | excess | verdict     |
+|----|------|----|---------|---------|----------|--------|--------|-------------|
+| 20 | 283  | 10 | 7       | 7=      | 0.437    | 0.232  | 1.88   | ⚠ SIGNAL   |
+| 20 | 617  | 10 | 23      | 23=     | 0.394    | 0.249  | 1.58   | ⚠ SIGNAL   |
+| 22 | 131  | 10 | 11      | 11=     | 0.601    | 0.214  | 2.81   | ⚠ SIGNAL   |
+| 22 | 593  | 10 | 11      | 83      | 0.429    | 0.248  | 1.73   | ⚠ SIGNAL   |
+| 22 | 131  | 30 | 7       | 11      | 0.337    | 0.214  | 1.58   | ⚠ SIGNAL   |
+
+In 6/56 blocks, the scanned excess exceeds 1.5 even after the multiple-testing
+penalty.  The scanned r* often matches the full-group r* (marked with `=`),
+confirming the same character is active.
+
+#### Table 9: Product tests (all 56 blocks)
+
+| B   | mean |corr_Nk| | max |corr_Nk| | n(< 0.15) / 56 | verdict       |
+|-----|-----------------|----------------|-----------------|---------------|
+| 10  | 0.024           | 0.088          | 28/28           | ✓ **BARRIER** |
+| 30  | 0.029           | 0.179          | 27/28           | ✓ **BARRIER** |
+
+corr_Nk ≈ 0 uniformly (55/56 blocks with |corr_Nk| < 0.15).
+The one weak exception (n=14, k=20, ℓ=283, B=30: corr_Nk = −0.18) is
+small-sample noise (only 167 pairs).
+
+**Key finding:** The smoothness character SURVIVES prime restriction (unlike
+parity), but the product test still confirms the barrier.  The smoothness
+bias is real and detectable on the restricted set, but **NOT N-extractable**.
 
 ## Conclusions
+
+1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
+   for all primes (p, q) tested.  The multiplicative factorisation of M is exact.
+
+2. **No character structure detected**: the dominant eigenvector u₁ of M does
+   NOT align with any individual multiplicative character χ_r of (ℤ/ℓℤ)*.
+   Character amplitudes are indistinguishable from noise across all 28
+   (n_bits, channel) blocks.
+
+3. **Pipeline validated** (full-group control): the same character scan finds
+   amp ≈ 1.0 over the unrestricted group.  The drop to noise in the
+   prime-restricted audit is real, not a pipeline artifact.
+
+4. **Fourier scaling confirmed**: A_max(ℓ) = Θ(√(log ℓ)/√ℓ), measured via
+   exact DFT of centered parity h̃ = 2h − 1 on (ℤ/ℓℤ)* for 30 primes
+   (ℓ = 101 to 50021).  The corrected ratio A_max·√ℓ/√(log ℓ) = 1.050 ± 0.035
+   is constant to 3.3% CV across 3 orders of magnitude.  The √(log ℓ) factor
+   is the extremal-value correction from maximising over ~ℓ/2 characters.
+   This explains why the stable rank is O(1): the eigenvalue spectrum of H
+   has O(1) modes at amplitude O(√(ℓ·log ℓ)) against a trivial background
+   of ℓ/2, giving effective rank ≈ Σ(λ_r²)/λ₀² = O(log ℓ/ℓ) · (ℓ/2) = O(1).
+
+5. **Barrier intact** (Product test B): `corr(u₁(p)·u₁(q), N^{k−1} mod ℓ) ≈ 0`
+   uniformly.  The product of eigenvector components is NOT accessible from N
+   alone.  The **analytic-continuation corridor is closed**.
 
 1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
    for all primes (p, q) tested.  The multiplicative factorisation of M is exact.
@@ -337,12 +416,17 @@ concentration in few modes, not spread across all ~ℓ/2 characters.
    Head energy is 2.78× (B=10) and 1.79× (B=30) of parity.  This is
    genuine multiplicative structure, not a max-statistics artifact.
 
-9. **Open question from E21b:** Does the smoothness-based barrier also hold?
-   E21 showed that parity-based u₁(p)·u₁(q) is not N-extractable.  But the
-   smoothness indicator's dominant characters may have different product-test
-   behaviour.  If a smoothness-tuned character r* satisfies
-   |corr(ŝ_B(r*), N^{k−1} mod ℓ)| > 0, a new Fourier-domain corridor opens.
-   Next step: prime-restricted diagnostic (E21b Step 2).
+9. **Smoothness character survives prime restriction** (E21b Step 2): unlike
+   parity (which drops to noise), the smoothness-tuned character r* retains
+   signal when restricted to the prime image set {g(p)}.  Fixed-r* excess
+   is 2.28× for B=10 (mean over 28 blocks), growing with n_bits.
+   Full scan finds 6/56 blocks with scan_excess > 1.5.
+
+10. **Smoothness barrier also holds** (E21b Step 2, product test):
+    corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ))) ≈ 0 uniformly
+    (55/56 blocks with |corr_Nk| < 0.15).  Despite the smoothness character
+    surviving restriction, the product is NOT predictable from N alone.
+    The **smoothness Fourier corridor is CLOSED**.
 
 ## Data files
 
@@ -350,4 +434,5 @@ concentration in few modes, not spread across all ~ℓ/2 characters.
 - `rust/data/E21_control_results.json` — full-group control experiment results
 - `rust/data/E21_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
 - `rust/data/E21b_smoothness_spectrum.json` — smoothness Fourier spectrum (B = 10, 30, 100, 300)
+- `rust/data/E21b_prime_restricted.json` — prime-restricted smoothness diagnostic (56 blocks)
 - `rust/eigenvector-character/` — Rust crate implementing E21 and E21b
