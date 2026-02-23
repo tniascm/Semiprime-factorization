@@ -1,0 +1,853 @@
+{
+  "primitive_frequency": [
+    {
+      "primitive": "MacroPollardRho",
+      "count": 33,
+      "fraction": 0.66
+    },
+    {
+      "primitive": "EcmCurve",
+      "count": 16,
+      "fraction": 0.32
+    },
+    {
+      "primitive": "MacroSqufof",
+      "count": 1,
+      "fraction": 0.02
+    }
+  ],
+  "macro_frequency": [
+    {
+      "macro_kind": "MacroPollardRho",
+      "count": 33,
+      "fraction": 0.9705882352941176
+    },
+    {
+      "macro_kind": "MacroSqufof",
+      "count": 1,
+      "fraction": 0.029411764705882353
+    }
+  ],
+  "structural_motifs": [
+    {
+      "pattern": "MacroPollardRho",
+      "count": 33,
+      "avg_fitness": 1397304.3073422795
+    },
+    {
+      "pattern": "EcmCurve",
+      "count": 16,
+      "avg_fitness": 1430759.9537275399
+    }
+  ],
+  "scaling_curves": [
+    {
+      "program": "ECM(592)",
+      "fitness": 1605872.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.0
+        },
+        {
+          "bit_size": 40,
+          "successes": 2,
+          "attempts": 5,
+          "success_rate": 0.4,
+          "avg_time_ms": 20.2
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 5.0
+        }
+      ]
+    },
+    {
+      "program": "ECM(5706)",
+      "fitness": 1600834.0740740737,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.2
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 23.8
+        },
+        {
+          "bit_size": 40,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 28.0
+        },
+        {
+          "bit_size": 48,
+          "successes": 3,
+          "attempts": 5,
+          "success_rate": 0.6,
+          "avg_time_ms": 49.6
+        }
+      ]
+    },
+    {
+      "program": "ECM(9597)",
+      "fitness": 1597942.997903564,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 3.4
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 6.4
+        },
+        {
+          "bit_size": 48,
+          "successes": 3,
+          "attempts": 5,
+          "success_rate": 0.6,
+          "avg_time_ms": 47.0
+        }
+      ]
+    },
+    {
+      "program": "MacroRho(9005,1)",
+      "fitness": 1528460.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.0
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.0
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.6
+        }
+      ]
+    },
+    {
+      "program": "MacroRho(6855,7)",
+      "fitness": 1528460.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.8
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.6
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.0
+        }
+      ]
+    },
+    {
+      "program": "ECM(9782)",
+      "fitness": 1516427.8089618804,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 18.6
+        },
+        {
+          "bit_size": 40,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 25.8
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 20.0
+        }
+      ]
+    },
+    {
+      "program": "MacroRho(8922,1)",
+      "fitness": 1504866.6666666665,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.8
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.4
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.0
+        }
+      ]
+    },
+    {
+      "program": "MacroRho(6949,6)",
+      "fitness": 1483100.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.2
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.0
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.2
+        }
+      ]
+    },
+    {
+      "program": "MacroRho(6943,2)",
+      "fitness": 1472460.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.4
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.2
+        }
+      ]
+    },
+    {
+      "program": "MacroRho(8785,1)",
+      "fitness": 1472460.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.6
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.0
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.0
+        }
+      ]
+    }
+  ],
+  "co_occurrence": [],
+  "baseline_comparison": [
+    {
+      "bit_size": 16,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 1.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": false
+    },
+    {
+      "bit_size": 16,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 1.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": false
+    },
+    {
+      "bit_size": 16,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 1.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": false
+    },
+    {
+      "bit_size": 16,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.6,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.2,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 2.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.6,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 2.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.4,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 2.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 2.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.4,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.6,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.2,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.6,
+      "evolved_avg_time_ms": 12.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.6,
+      "evolved_avg_time_ms": 12.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.6,
+      "evolved_avg_time_ms": 12.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.6,
+      "evolved_avg_time_ms": 12.4,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 8.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 8.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 8.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 8.2,
+      "evolved_is_better": true
+    }
+  ],
+  "novel_compositions": [],
+  "novelty_stats": {
+    "archive_size": 17,
+    "unique_behaviors": 17
+  }
+}

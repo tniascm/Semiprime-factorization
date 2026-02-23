@@ -1,0 +1,112 @@
+{
+  "generation": 50,
+  "elapsed_secs": 91.731802167,
+  "cache_entries": 1438,
+  "novelty_archive_size": 17,
+  "unique_behaviors": 17,
+  "global_best_fitness": 1605872.0,
+  "global_best_program": "ECM(592)",
+  "global_best_nodes": 1,
+  "top_programs": [
+    {
+      "fitness": 1605872.0,
+      "nodes": 1,
+      "program": "ECM(592)"
+    },
+    {
+      "fitness": 1605872.0,
+      "nodes": 1,
+      "program": "ECM(592)"
+    },
+    {
+      "fitness": 1600834.0740740737,
+      "nodes": 1,
+      "program": "ECM(5706)"
+    },
+    {
+      "fitness": 1600834.0740740737,
+      "nodes": 1,
+      "program": "ECM(5706)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1597942.997903564,
+      "nodes": 1,
+      "program": "ECM(9597)"
+    },
+    {
+      "fitness": 1528460.0,
+      "nodes": 1,
+      "program": "MacroRho(9005,1)"
+    },
+    {
+      "fitness": 1528460.0,
+      "nodes": 1,
+      "program": "MacroRho(6855,7)"
+    }
+  ]
+}
