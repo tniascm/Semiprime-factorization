@@ -1,14 +1,21 @@
 /// E21: Eigenvector Multiplicative Character Audit — CLI
 ///
 /// Usage:
-///   eigenvector-character [--bits=14,16,18,20] [--channels=0,1,...,6]
-///                         [--eigenvectors=3] [--seed=N]
+///   eigenvector-character [--mode=audit|control] [--bits=14,16,18,20]
+///                         [--channels=0,1,...,6] [--eigenvectors=3] [--seed=N]
 ///
-/// Runs the character audit for each (n_bits, channel) pair and outputs:
-///   - A human-readable summary to stdout
-///   - Results JSON to data/E21_character_audit.json
+/// Modes:
+///   audit   — (default) run character audit over prime-restricted CRT matrix
+///   control — pipeline validation: full-group H[a][b]=parity(ab mod ℓ) matrix,
+///             where characters ARE exact eigenvectors → should find amp ≈ 1
+///
+/// Outputs:
+///   - Human-readable summary to stdout
+///   - JSON to data/E21_*.json
 
-use eigenvector_character::{run_character_audit, CharacterAuditResult};
+use eigenvector_character::{
+    run_character_audit, run_full_group_control, CharacterAuditResult, FullGroupControlResult,
+};
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
 
@@ -16,10 +23,23 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let opts = parse_args(&args);
 
-    let seed         = parse_u64(&opts, "seed", 0x4e32_e21_cafe_0001);
-    let n_eigenvecs  = parse_usize(&opts, "eigenvectors", 3);
-    let bit_sizes    = parse_bit_sizes(&opts, &[14, 16, 18, 20]);
-    let channel_ids  = parse_channel_ids(&opts, 7);
+    let mode = opts.get("mode").map(|s| s.as_str()).unwrap_or("audit");
+
+    match mode {
+        "audit"   => run_audit_mode(&opts),
+        "control" => run_control_mode(&opts),
+        other => {
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_audit_mode(opts: &HashMap<String, String>) {
+    let seed         = parse_u64(opts, "seed", 0x4e32_e21_cafe_0001);
+    let n_eigenvecs  = parse_usize(opts, "eigenvectors", 3);
+    let bit_sizes    = parse_bit_sizes(opts, &[14, 16, 18, 20]);
+    let channel_ids  = parse_channel_ids(opts, 7);
 
     println!("E21 CHARACTER AUDIT: eigenvector multiplicative character structure");
     println!("Bit sizes  : {:?}", bit_sizes);
@@ -49,6 +69,37 @@ fn main() {
     println!();
     print_summary(&all_results);
     write_json(&all_results, "data/E21_character_audit.json");
+}
+
+fn run_control_mode(opts: &HashMap<String, String>) {
+    let seed        = parse_u64(opts, "seed", 0x4e32_e210_c001);
+    let n_eigenvecs = parse_usize(opts, "eigenvectors", 5);
+
+    // Use channel primes ℓ ≤ 1000 for the control (larger ℓ makes O(ℓ²) matrices infeasible).
+    let mut ells: Vec<u64> = CHANNELS.iter().map(|c| c.ell)
+        .filter(|&e| e <= 1000)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter().collect();
+    ells.sort();
+
+    println!("E21 CONTROL: full-group H[a][b] = parity(ab mod ℓ), characters are exact eigenvectors");
+    println!("Primes ℓ   : {:?}", ells);
+    println!("Eigenvectors: {n_eigenvecs}");
+    println!("Seed       : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let mut all: Vec<FullGroupControlResult> = Vec::new();
+
+    for &ell in &ells {
+        eprint!("  ℓ={ell:6} (group order {}) … ", ell - 1);
+        let result = run_full_group_control(ell, n_eigenvecs, seed ^ ell);
+        eprintln!("done");
+        all.push(result);
+    }
+
+    println!();
+    print_control_summary(&all);
+    write_json(&all, "data/E21_control_results.json");
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +216,61 @@ fn print_summary(results: &[CharacterAuditResult]) {
     if n_barrier < n_total {
         let n_open = n_total - n_barrier;
         println!("  ⚠ WARNING: {n_open} block(s) show elevated corr_Nk — inspect JSON.");
+    }
+}
+
+fn print_control_summary(results: &[FullGroupControlResult]) {
+    println!("┌─────────────────────────────────────────────────┐");
+    println!("│ E21 CONTROL: Full-group eigenvector scan        │");
+    println!("│ Characters are exact eigenvectors over the full │");
+    println!("│ group — amp should be ~1.0 for non-trivial ones │");
+    println!("└─────────────────────────────────────────────────┘");
+    println!();
+    println!(
+        "{:>6}  {:>5}  {:>4}  {:>6}  {:>6}  {:>6}  {:>5}  check",
+        "ℓ", "order", "idx", "λ", "r*", "amp", "corr"
+    );
+    println!("{}", "─".repeat(60));
+
+    for ctrl in results {
+        for ev in &ctrl.eigenvectors {
+            let corr_mag = (ev.corr_re * ev.corr_re + ev.corr_im * ev.corr_im).sqrt();
+            let check = if ev.best_char_amp > 0.90 {
+                "✓ character"
+            } else if ev.best_char_amp > 0.50 {
+                "~ partial"
+            } else {
+                "✗ NOT char"
+            };
+            println!(
+                "{:>6}  {:>5}  {:>4}  {:>+6.1}  {:>6}  {:>6.3}  {:>5.3}  {}",
+                ctrl.ell,
+                ctrl.order,
+                ev.eigenvector_idx,
+                ev.eigenvalue,
+                ev.best_char_r,
+                ev.best_char_amp,
+                corr_mag,
+                check,
+            );
+        }
+    }
+
+    println!();
+    // Summarize: how many non-trivial eigenvectors (idx >= 1) are characters?
+    let n_nontrivial: usize = results.iter().map(|r| r.eigenvectors.iter().skip(1).count()).sum();
+    let n_char: usize = results.iter()
+        .flat_map(|r| r.eigenvectors.iter().skip(1))
+        .filter(|ev| ev.best_char_amp > 0.90)
+        .count();
+    println!("Pipeline validation: {n_char}/{n_nontrivial} non-trivial eigenvectors");
+    println!("   have character amplitude > 0.90 over the full group.");
+    if n_char == n_nontrivial {
+        println!("   ✓ Pipeline correctly identifies characters when they exist.");
+        println!("   → The drop to noise in the prime-restricted audit is REAL,");
+        println!("     not a pipeline artifact.");
+    } else {
+        println!("   ⚠ Some eigenvectors not matched — may indicate convergence issues.");
     }
 }
 

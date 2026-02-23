@@ -76,12 +76,16 @@ pub fn top_k_eigenvectors(
     let mut results: Vec<(f64, Vec<f64>)> = Vec::with_capacity(k);
     let mut basis: Vec<Vec<f64>>           = Vec::with_capacity(k);
 
-    for _ in 0..k {
+    for eigidx in 0..k {
         // Random initialisation
         let mut v: Vec<f64> = (0..n).map(|_| rng.gen::<f64>() - 0.5).collect();
         orth_against(&mut v, &basis);
         let vn = vec_norm(&v);
         if vn < 1e-10 {
+            eprintln!(
+                "Warning: eigenvector {eigidx}/{k} has near-zero norm after \
+                 orthogonalisation; stopping extraction (matrix may have rank < {k})"
+            );
             break;
         }
         for x in &mut v {
