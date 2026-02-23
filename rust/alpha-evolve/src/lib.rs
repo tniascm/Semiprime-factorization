@@ -4,6 +4,7 @@
 //! primitives. Programs are tree-structured combinations of modular arithmetic
 //! operations that are evolved via mutation, crossover, and tournament selection.
 
+pub mod analysis;
 pub mod evolution;
 pub mod fitness;
 pub mod macros;

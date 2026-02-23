@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::time::Instant;
 
+use alpha_evolve::analysis;
 use alpha_evolve::evolution::{FitnessCache, IslandModel};
 use alpha_evolve::fitness::{
     evaluate_fitness_cascaded, evaluate_fitness_multiobjective, FitnessResult,
@@ -284,15 +285,63 @@ fn main() {
         }
     }
 
-    // Write final JSON report
+    // Write checkpoint JSON
     let checkpoint = create_checkpoint(&model, &cache, &novelty_archive, &start);
     if let Ok(json) = serde_json::to_string_pretty(&checkpoint) {
-        let report_path = "alpha_evolve_final_report.json";
+        let report_path = "alpha_evolve_checkpoint_final.json";
         if let Err(e) = std::fs::write(report_path, &json) {
-            eprintln!("  Warning: failed to write final report: {}", e);
+            eprintln!("  Warning: failed to write checkpoint: {}", e);
         } else {
             println!();
-            println!("  Final report saved: {}", report_path);
+            println!("  Checkpoint saved: {}", report_path);
+        }
+    }
+
+    // --- Post-evolution analysis ---
+    println!();
+    println!("Running post-evolution analysis...");
+    println!();
+
+    // Collect top programs across all islands
+    let mut top_programs: Vec<(Program, f64)> = model
+        .islands
+        .iter()
+        .flat_map(|island| {
+            island
+                .individuals
+                .iter()
+                .map(|i| (i.program.clone(), i.fitness))
+        })
+        .collect();
+    top_programs.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal)
+    });
+    // Deduplicate by program string
+    let mut seen = std::collections::HashSet::new();
+    top_programs.retain(|(prog, _)| {
+        let key = format!("{}", prog);
+        seen.insert(key)
+    });
+    top_programs.truncate(50); // Top 50 unique programs
+
+    // Baselines for comparison
+    let baselines: Vec<(&str, Program)> = vec![
+        ("Pollard Rho", seed_pollard_rho()),
+        ("Fermat", seed_fermat_like()),
+        ("Hart", seed_hart_like()),
+        ("Lehman", seed_lehman_like()),
+    ];
+
+    let report = analysis::generate_report(&top_programs, &baselines, &novelty_archive);
+    analysis::print_report_summary(&report);
+
+    // Save analysis report as JSON
+    if let Ok(json) = serde_json::to_string_pretty(&report) {
+        let analysis_path = "alpha_evolve_analysis.json";
+        if let Err(e) = std::fs::write(analysis_path, &json) {
+            eprintln!("  Warning: failed to write analysis report: {}", e);
+        } else {
+            println!("  Analysis report saved: {}", analysis_path);
         }
     }
 
