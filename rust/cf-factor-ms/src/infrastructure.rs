@@ -10,7 +10,7 @@
 //! - distance tracking: cumulative sum of ln(partial quotients)
 
 use cf_factor::cf::isqrt;
-use cf_factor::forms::{gauss_compose, nucomp, QuadForm};
+use cf_factor::forms::{gauss_compose, QuadForm};
 use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use num_traits::{One, Signed, ToPrimitive, Zero};
@@ -126,9 +126,10 @@ pub fn walk_infrastructure(n: &BigUint, max_steps: usize) -> Vec<InfraForm> {
 /// Compose two infrastructure forms (giant step).
 ///
 /// Computes f1 * f2 in the class group and tracks the combined distance.
-/// Uses NUCOMP for large forms.
+/// Uses gauss_compose (not nucomp) to avoid discriminant drift in the
+/// nucomp fast path for large coefficients.
 pub fn giant_step(f1: &InfraForm, f2: &InfraForm) -> InfraForm {
-    let composed = nucomp(&f1.form, &f2.form);
+    let composed = gauss_compose(&f1.form, &f2.form);
     InfraForm {
         form: composed,
         distance: f1.distance + f2.distance,
