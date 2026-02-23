@@ -520,6 +520,229 @@ pub fn centered_parity_spectrum(ell: u64, top_k: usize) -> FourierScalingResult 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Generic DFT on (ℤ/ℓℤ)*
+// ---------------------------------------------------------------------------
+
+/// Compute the DFT of an arbitrary real function f on (ℤ/ℓℤ)* (given in
+/// discrete-log order) and return the top-k Fourier amplitudes.
+///
+/// Input: `f_dlog[k]` = f(g^k mod ℓ) for k = 0, …, ℓ−2.
+/// The function is automatically centered (mean subtracted) before DFT.
+///
+/// Returns `(dc, amplitudes)` where dc = mean(f) and amplitudes are
+/// sorted by |ĥ(r)| descending.
+fn dft_on_cyclic_group(f_dlog: &[f64], top_k: usize) -> (f64, Vec<(usize, f64)>) {
+    let n = f_dlog.len();
+    let n_f = n as f64;
+    let half = n / 2;
+
+    // DC component = mean.
+    let dc: f64 = f_dlog.iter().sum::<f64>() / n_f;
+
+    // Center the function for the DFT.
+    let centered: Vec<f64> = f_dlog.iter().map(|&x| x - dc).collect();
+
+    // DFT of centered function: ĥ(r) = (1/n) · Σ_k f̃(k) · exp(-2πi·r·k/n)
+    let mut amplitudes: Vec<(usize, f64)> = Vec::with_capacity(half + 1);
+
+    for r in 1..=half {
+        let mut re_sum = 0.0f64;
+        let mut im_sum = 0.0f64;
+        let phase_step = std::f64::consts::TAU * (r as f64) / n_f;
+        for k in 0..n {
+            let phase = phase_step * (k as f64);
+            re_sum += centered[k] * phase.cos();
+            im_sum -= centered[k] * phase.sin();
+        }
+        let amp = (re_sum * re_sum + im_sum * im_sum).sqrt() / n_f;
+        amplitudes.push((r, amp));
+    }
+
+    amplitudes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    amplitudes.truncate(top_k);
+
+    (dc, amplitudes)
+}
+
+/// Build the dlog-ordered sequence of a function h: {1,…,ℓ−1} → ℝ.
+///
+/// Returns f[k] = h(g^k mod ℓ) for k = 0, …, ℓ−2, plus the primitive root g.
+fn build_dlog_sequence(ell: u64, h: impl Fn(u64) -> f64) -> (Vec<f64>, u64) {
+    use algebra::primitive_root;
+
+    let order = (ell - 1) as usize;
+    let prim_g = primitive_root(ell);
+
+    let mut f = vec![0.0f64; order];
+    let mut val = 1u64;
+    for k in 0..order {
+        f[k] = h(val);
+        val = val * prim_g % ell;
+    }
+    debug_assert_eq!(val, 1, "primitive root cycle failed");
+
+    (f, prim_g)
+}
+
+// ---------------------------------------------------------------------------
+// Smoothness indicator DFT
+// ---------------------------------------------------------------------------
+
+/// Result of the Fourier scaling analysis for one (ℓ, B) pair.
+#[derive(Debug, Clone, Serialize)]
+pub struct SmoothnessSpectrumResult {
+    pub ell: u64,
+    pub order: usize,
+    pub smoothness_bound: u64,
+    /// Fraction of elements in {1,…,ℓ-1} that are B-smooth.
+    pub smooth_fraction: f64,
+    /// A_max = max_{r≥1} |ŝ̃_B(r)| for centered smoothness indicator.
+    pub a_max: f64,
+    /// A_max · √ℓ.
+    pub a_max_scaled: f64,
+    /// A_max · √ℓ / √(log ℓ).
+    pub a_max_corrected: f64,
+    /// For comparison: A_max of centered parity on the same group.
+    pub parity_a_max: f64,
+    /// Ratio: smoothness A_max / parity A_max. >1 means smoothness has MORE bias.
+    pub ratio_to_parity: f64,
+    /// Top-k character amplitudes.
+    pub top_amplitudes: Vec<(usize, f64)>,
+}
+
+/// Full smoothness Fourier scaling analysis across multiple primes.
+#[derive(Debug, Clone, Serialize)]
+pub struct SmoothnessScalingAnalysis {
+    pub smoothness_bound: u64,
+    pub results: Vec<SmoothnessSpectrumResult>,
+    /// Fitted power law: A_max ≈ C · ℓ^slope.
+    pub fitted_slope: f64,
+    pub fitted_prefactor: f64,
+    pub r_squared: f64,
+    /// Corrected ratio: A_max · √ℓ / √(log ℓ).
+    pub corrected_ratio_mean: f64,
+    pub corrected_ratio_std: f64,
+    /// Parity baseline slope for comparison.
+    pub parity_slope: f64,
+}
+
+/// Check if n is B-smooth (all prime factors ≤ B).
+fn is_b_smooth(mut n: u64, bound: u64) -> bool {
+    if n <= 1 {
+        return true;
+    }
+    let mut d = 2u64;
+    while d * d <= n && d <= bound {
+        while n % d == 0 {
+            n /= d;
+        }
+        d += if d == 2 { 1 } else { 2 };
+    }
+    // If n > 1 after trial division up to min(√n, B), then n has a prime factor.
+    // That factor is n itself, and it's > B only if n > bound.
+    n <= bound
+}
+
+/// Compute the Fourier spectrum of the centered B-smoothness indicator on (ℤ/ℓℤ)*.
+///
+/// s_B(a) = 1 if a is B-smooth, 0 otherwise.
+/// Centered: s̃_B(a) = s_B(a) − mean(s_B).
+///
+/// Also computes the parity baseline for comparison.
+pub fn smoothness_spectrum(ell: u64, bound: u64, top_k: usize) -> SmoothnessSpectrumResult {
+    let order = (ell - 1) as usize;
+
+    // Build smoothness indicator in dlog order.
+    let (f_smooth, _prim_g) = build_dlog_sequence(ell, |a| {
+        if is_b_smooth(a, bound) { 1.0 } else { 0.0 }
+    });
+
+    // DFT of centered smoothness indicator.
+    let (dc, amplitudes) = dft_on_cyclic_group(&f_smooth, top_k);
+
+    let a_max = amplitudes.first().map(|x| x.1).unwrap_or(0.0);
+    let ell_f = ell as f64;
+    let a_max_scaled = a_max * ell_f.sqrt();
+    let a_max_corrected = a_max * ell_f.sqrt() / ell_f.ln().sqrt();
+
+    // Parity baseline: use the existing function.
+    let parity_result = centered_parity_spectrum(ell, 1);
+    let parity_a_max = parity_result.a_max;
+
+    let ratio = if parity_a_max > 1e-15 { a_max / parity_a_max } else { 0.0 };
+
+    SmoothnessSpectrumResult {
+        ell,
+        order,
+        smoothness_bound: bound,
+        smooth_fraction: dc,
+        a_max,
+        a_max_scaled,
+        a_max_corrected,
+        parity_a_max,
+        ratio_to_parity: ratio,
+        top_amplitudes: amplitudes,
+    }
+}
+
+/// Run smoothness Fourier scaling across many primes for a fixed B.
+pub fn run_smoothness_scaling(
+    primes: &[u64],
+    bound: u64,
+    top_k: usize,
+) -> SmoothnessScalingAnalysis {
+    let results: Vec<SmoothnessSpectrumResult> = primes
+        .iter()
+        .map(|&ell| smoothness_spectrum(ell, bound, top_k))
+        .collect();
+
+    // Log-log fit for smoothness.
+    let (slope, intercept, r_sq) = if results.len() >= 2 {
+        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = results.iter().map(|r| r.a_max.ln()).collect();
+        log_log_fit(&xs, &ys)
+    } else {
+        (-0.5, 0.0, 0.0)
+    };
+
+    // Corrected ratio.
+    let ratios: Vec<f64> = results
+        .iter()
+        .map(|r| {
+            let ell_f = r.ell as f64;
+            r.a_max * ell_f.sqrt() / ell_f.ln().sqrt()
+        })
+        .collect();
+    let n = ratios.len() as f64;
+    let mean = if n > 0.0 { ratios.iter().sum::<f64>() / n } else { 0.0 };
+    let std_dev = if n > 1.0 {
+        (ratios.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt()
+    } else {
+        0.0
+    };
+
+    // Parity baseline slope.
+    let parity_slope = if results.len() >= 2 {
+        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = results.iter().map(|r| r.parity_a_max.ln()).collect();
+        log_log_fit(&xs, &ys).0
+    } else {
+        -0.5
+    };
+
+    SmoothnessScalingAnalysis {
+        smoothness_bound: bound,
+        results,
+        fitted_slope: slope,
+        fitted_prefactor: intercept.exp(),
+        r_squared: r_sq,
+        corrected_ratio_mean: mean,
+        corrected_ratio_std: std_dev,
+        parity_slope,
+    }
+}
+
 /// Run the Fourier scaling analysis across many primes ℓ.
 ///
 /// For each prime, computes the exact DFT of centered parity h̃ on (ℤ/ℓℤ)*
@@ -771,6 +994,127 @@ mod tests {
         for w in primes.windows(2) {
             assert!(w[0] < w[1], "primes not sorted: {} >= {}", w[0], w[1]);
         }
+    }
+
+    #[test]
+    fn test_is_b_smooth() {
+        // 1 is trivially smooth.
+        assert!(is_b_smooth(1, 2));
+        // 2 = 2 is 2-smooth.
+        assert!(is_b_smooth(2, 2));
+        // 12 = 2² · 3 is 3-smooth.
+        assert!(is_b_smooth(12, 3));
+        // 12 is NOT 2-smooth (has factor 3).
+        assert!(!is_b_smooth(12, 2));
+        // 30 = 2 · 3 · 5 is 5-smooth.
+        assert!(is_b_smooth(30, 5));
+        // 30 is NOT 3-smooth.
+        assert!(!is_b_smooth(30, 3));
+        // 17 (prime) is 17-smooth but not 16-smooth.
+        assert!(is_b_smooth(17, 17));
+        assert!(!is_b_smooth(17, 16));
+        // 100 = 2² · 5² is 5-smooth.
+        assert!(is_b_smooth(100, 5));
+        // 210 = 2 · 3 · 5 · 7 is 7-smooth.
+        assert!(is_b_smooth(210, 7));
+        assert!(!is_b_smooth(210, 5));
+    }
+
+    #[test]
+    fn test_dft_on_cyclic_group_constant() {
+        // A constant function should have all Fourier coefficients = 0
+        // (after centering, the function is identically zero).
+        let f = vec![1.0; 100];
+        let (dc, amps) = dft_on_cyclic_group(&f, 5);
+        assert!((dc - 1.0).abs() < 1e-10, "DC should be 1.0, got {dc}");
+        for &(_, amp) in &amps {
+            assert!(amp < 1e-10, "constant function should have zero Fourier coefficients");
+        }
+    }
+
+    #[test]
+    fn test_dft_on_cyclic_group_pure_cosine() {
+        // f(k) = cos(2π·3·k/n) — should have a single peak at r=3.
+        let n = 64;
+        let f: Vec<f64> = (0..n)
+            .map(|k| (std::f64::consts::TAU * 3.0 * k as f64 / n as f64).cos())
+            .collect();
+        let (dc, amps) = dft_on_cyclic_group(&f, 5);
+        assert!(dc.abs() < 1e-10, "cosine has zero mean");
+        // The top amplitude should be at r=3.
+        let (top_r, top_amp) = amps[0];
+        assert_eq!(top_r, 3, "peak should be at r=3, got r={top_r}");
+        assert!(top_amp > 0.4, "amplitude at r=3 should be large, got {top_amp}");
+        // All other amplitudes should be much smaller.
+        if amps.len() > 1 {
+            assert!(
+                amps[1].1 < top_amp * 0.01,
+                "second amplitude should be much smaller: {:.6} vs {:.6}",
+                amps[1].1,
+                top_amp,
+            );
+        }
+    }
+
+    #[test]
+    fn test_smoothness_spectrum_basic() {
+        // For ℓ = 131, B = 10: the smoothness spectrum should produce finite values.
+        let result = smoothness_spectrum(131, 10, 5);
+        assert_eq!(result.ell, 131);
+        assert_eq!(result.order, 130);
+        assert_eq!(result.smoothness_bound, 10);
+        // smooth_fraction should be between 0 and 1.
+        assert!(
+            result.smooth_fraction > 0.0 && result.smooth_fraction < 1.0,
+            "smooth_fraction should be in (0,1), got {}",
+            result.smooth_fraction,
+        );
+        // A_max should be positive and finite.
+        assert!(
+            result.a_max > 0.0 && result.a_max.is_finite(),
+            "a_max should be positive finite, got {}",
+            result.a_max,
+        );
+        // Parity baseline should also be positive.
+        assert!(result.parity_a_max > 0.0);
+        // ratio_to_parity should be positive.
+        assert!(result.ratio_to_parity > 0.0);
+    }
+
+    #[test]
+    fn test_smoothness_spectrum_large_b_approaches_constant() {
+        // When B ≥ ℓ, ALL elements in {1,…,ℓ-1} are B-smooth (since ℓ-1 < ℓ
+        // and we only consider elements up to ℓ-1).
+        // So smooth_fraction ≈ 1.0 and the DFT of a (nearly) constant function
+        // should have very small Fourier coefficients.
+        let result = smoothness_spectrum(131, 200, 5);
+        assert!(
+            result.smooth_fraction > 0.95,
+            "with B ≥ ℓ, almost all should be smooth, got {}",
+            result.smooth_fraction,
+        );
+        // A_max should be very small (constant function → flat spectrum).
+        assert!(
+            result.a_max < 0.05,
+            "constant-like function should have small A_max, got {}",
+            result.a_max,
+        );
+    }
+
+    #[test]
+    fn test_run_smoothness_scaling_smoke() {
+        let primes = vec![101, 251, 503];
+        let analysis = run_smoothness_scaling(&primes, 10, 5);
+        assert_eq!(analysis.results.len(), 3);
+        assert_eq!(analysis.smoothness_bound, 10);
+        // Slope should be negative (amplitudes decay with ℓ).
+        assert!(
+            analysis.fitted_slope < 0.0,
+            "slope should be negative, got {}",
+            analysis.fitted_slope,
+        );
+        // Parity slope should also be negative.
+        assert!(analysis.parity_slope < 0.0);
     }
 
     #[test]
