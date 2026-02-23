@@ -5,14 +5,75 @@
 //! migration and FunSearch-style island culling.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use rand::Rng;
+use rayon::prelude::*;
 
 use crate::{
     macros::{MacroKind, MacroParams},
     seed_fermat_like, seed_hart_like, seed_lehman_like, seed_pollard_rho, seed_trial_like,
     Individual, PrimitiveOp, Program, ProgramNode,
 };
+
+// ---------------------------------------------------------------------------
+// Fitness cache (hash program structure → cached score)
+// ---------------------------------------------------------------------------
+
+/// Simple hash of a program's string representation for fitness caching.
+fn program_hash(program: &Program) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let repr = format!("{}", program);
+    repr.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// LRU fitness cache to avoid re-evaluating structurally identical programs.
+pub struct FitnessCache {
+    cache: HashMap<u64, f64>,
+    max_size: usize,
+}
+
+impl FitnessCache {
+    /// Create a new fitness cache with the given maximum size.
+    pub fn new(max_size: usize) -> Self {
+        FitnessCache {
+            cache: HashMap::new(),
+            max_size,
+        }
+    }
+
+    /// Look up a cached fitness score for the given program.
+    pub fn get(&self, program: &Program) -> Option<f64> {
+        let hash = program_hash(program);
+        self.cache.get(&hash).copied()
+    }
+
+    /// Store a fitness score for the given program.
+    pub fn insert(&mut self, program: &Program, fitness: f64) {
+        let hash = program_hash(program);
+        self.cache.insert(hash, fitness);
+
+        // Simple eviction: if over capacity, clear half
+        if self.cache.len() > self.max_size {
+            let keys: Vec<u64> = self.cache.keys().take(self.max_size / 2).cloned().collect();
+            for key in keys {
+                self.cache.remove(&key);
+            }
+        }
+    }
+
+    /// Number of cached entries.
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
+
+    /// Cache hit rate estimation (not precise, just for reporting).
+    pub fn is_empty(&self) -> bool {
+        self.cache.is_empty()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Random program generation
@@ -599,6 +660,103 @@ impl Population {
         self.generation += 1;
     }
 
+    /// Evolve one generation with Rayon-parallel fitness evaluation.
+    ///
+    /// Creates offspring sequentially (RNG-dependent), but evaluates fitness
+    /// of all offspring in parallel using Rayon's par_iter.
+    pub fn evolve_generation_parallel(
+        &mut self,
+        rng: &mut impl Rng,
+        fitness_fn: &(dyn Fn(&Program) -> f64 + Sync),
+        cache: &mut FitnessCache,
+    ) {
+        let pop_size = self.individuals.len();
+        if pop_size == 0 {
+            return;
+        }
+
+        // Step 1: Evaluate fitness (check cache first, then parallel for uncached)
+        let programs: Vec<Program> = self.individuals.iter().map(|i| i.program.clone()).collect();
+        let scores: Vec<f64> = programs
+            .par_iter()
+            .map(|program| {
+                if let Some(cached) = cache.get(program) {
+                    cached
+                } else {
+                    fitness_fn(program)
+                }
+            })
+            .collect();
+
+        for (individual, &score) in self.individuals.iter_mut().zip(scores.iter()) {
+            individual.fitness = score;
+            cache.insert(&individual.program, score);
+        }
+
+        // Step 2: Apply covariant parsimony pressure
+        let c = parsimony_coefficient(&self.individuals);
+        if c > 0.0 {
+            for individual in &mut self.individuals {
+                let size = individual.program.root.node_count() as f64;
+                individual.fitness = (individual.fitness - c * size).max(0.0);
+            }
+        }
+
+        // Step 3 & 4: Create offspring (sequential RNG, parallel eval)
+        let num_offspring = pop_size / 4;
+        let tournament_size = 3;
+        let mut offspring_programs: Vec<Program> = Vec::with_capacity(num_offspring);
+
+        for _ in 0..num_offspring {
+            let parent_a = tournament_select(&self.individuals, tournament_size, rng);
+            let parent_b = tournament_select(&self.individuals, tournament_size, rng);
+
+            let mut child_program = crossover(&parent_a.program, &parent_b.program, rng);
+
+            if rng.gen_bool(0.95) {
+                child_program = mutate(&child_program, rng);
+            }
+
+            if child_program.root.node_count() > 200 {
+                child_program = random_program(rng, 3);
+            }
+
+            offspring_programs.push(child_program);
+        }
+
+        // Parallel fitness evaluation of offspring
+        let offspring_scores: Vec<f64> = offspring_programs
+            .par_iter()
+            .map(|program| {
+                if let Some(cached) = cache.get(program) {
+                    cached
+                } else {
+                    fitness_fn(program)
+                }
+            })
+            .collect();
+
+        let mut offspring: Vec<Individual> = offspring_programs
+            .into_iter()
+            .zip(offspring_scores.into_iter())
+            .map(|(program, fitness)| {
+                cache.insert(&program, fitness);
+                Individual { program, fitness }
+            })
+            .collect();
+
+        // Step 5: Sort and replace worst
+        self.individuals
+            .sort_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap_or(Ordering::Equal));
+
+        let replace_count = offspring.len().min(pop_size);
+        for (i, child) in offspring.drain(..replace_count).enumerate() {
+            self.individuals[i] = child;
+        }
+
+        self.generation += 1;
+    }
+
     /// Return a reference to the individual with the highest fitness.
     pub fn best(&self) -> Option<&Individual> {
         self.individuals
@@ -756,6 +914,31 @@ impl IslandModel {
         }
 
         self.islands[worst_idx] = new_island;
+    }
+
+    /// Evolve all islands with parallel fitness evaluation.
+    ///
+    /// Same migration/culling logic as `evolve_generation`, but uses Rayon
+    /// for parallel fitness evaluation within each island.
+    pub fn evolve_generation_parallel(
+        &mut self,
+        rng: &mut impl Rng,
+        fitness_fn: &(dyn Fn(&Program) -> f64 + Sync),
+        cache: &mut FitnessCache,
+    ) {
+        for island in &mut self.islands {
+            island.evolve_generation_parallel(rng, fitness_fn, cache);
+        }
+
+        self.generation += 1;
+
+        if self.generation % self.migration_interval == 0 && self.islands.len() > 1 {
+            self.migrate();
+        }
+
+        if self.generation % 50 == 0 && self.islands.len() > 2 {
+            self.cull_worst_island(rng);
+        }
     }
 
     /// Get the global best individual across all islands.
