@@ -518,22 +518,22 @@ fn parse_params_file(content: &str, n_bits: u32) -> Option<CadoParams> {
             "tasks.polyselect.incr" => {
                 if let Ok(v) = value.parse() { params.poly_incr = v; }
             }
-            "tasks.sieve.rlim" => {
+            "tasks.lim0" => {
                 if let Ok(v) = value.parse() { params.fb_rational_bound = v; }
             }
-            "tasks.sieve.alim" => {
+            "tasks.lim1" => {
                 if let Ok(v) = value.parse() { params.fb_algebraic_bound = v; }
             }
-            "tasks.sieve.lpbr" => {
+            "tasks.lpb0" => {
                 if let Ok(v) = value.parse() { params.lp_rational_bits = v; }
             }
-            "tasks.sieve.lpba" => {
+            "tasks.lpb1" => {
                 if let Ok(v) = value.parse() { params.lp_algebraic_bits = v; }
             }
-            "tasks.sieve.mfbr" => {
+            "tasks.sieve.mfb0" => {
                 if let Ok(v) = value.parse() { params.sieve_mfbr = v; }
             }
-            "tasks.sieve.mfba" => {
+            "tasks.sieve.mfb1" => {
                 if let Ok(v) = value.parse() { params.sieve_mfba = v; }
             }
             "tasks.sieve.qrange" => {

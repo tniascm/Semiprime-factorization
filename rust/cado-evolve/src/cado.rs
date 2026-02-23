@@ -116,6 +116,83 @@ impl CadoInstallation {
         })
     }
 
+    /// Get the number of worker threads for CADO-NFS based on available CPUs.
+    fn num_worker_threads(&self) -> usize {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+    }
+
+    /// Return common server/client arguments needed when using --parameters.
+    ///
+    /// CADO-NFS uses a client-server architecture. When run without --parameters,
+    /// it auto-detects and starts local clients. When --parameters is used, we
+    /// must explicitly configure the server whitelist and client setup.
+    fn server_client_args(&self) -> Vec<String> {
+        let nrclients = (self.num_worker_threads() / 2).max(2);
+        vec![
+            "server.whitelist=0.0.0.0/0".to_string(),
+            "slaves.hostnames=localhost".to_string(),
+            format!("slaves.nrclients={}", nrclients),
+        ]
+    }
+
+    /// Find the nearest available CADO-NFS parameter file for a number with
+    /// the given number of decimal digits.
+    ///
+    /// CADO-NFS only looks ±3 digits from the target, and has gaps (e.g., c30
+    /// then c60). This function finds the closest available file.
+    pub fn find_param_file(&self, num_digits: usize) -> Option<PathBuf> {
+        let params_dir = self.root_dir.join("parameters").join("factor");
+
+        // Known CADO-NFS parameter file digit counts
+        let available: Vec<usize> = {
+            let mut avail = Vec::new();
+            // Scan the directory for params.cN files
+            if let Ok(entries) = std::fs::read_dir(&params_dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if let Some(rest) = name.strip_prefix("params.c") {
+                        if let Ok(digits) = rest.parse::<usize>() {
+                            avail.push(digits);
+                        }
+                    }
+                }
+            }
+            avail.sort();
+            avail
+        };
+
+        if available.is_empty() {
+            return None;
+        }
+
+        // Find the nearest available digit count, strongly preferring
+        // files for LARGER numbers (using params for too-small numbers means
+        // insufficient sieving and factorization failure)
+        let nearest = available
+            .iter()
+            .min_by_key(|&&d| {
+                let diff = (d as i64 - num_digits as i64).unsigned_abs();
+                if d >= num_digits {
+                    // File for same or larger number: ideal
+                    diff * 2
+                } else {
+                    // File for smaller number: penalize heavily
+                    // (will likely fail due to insufficient relations)
+                    diff * 10 + 100
+                }
+            })
+            .copied()?;
+
+        let path = params_dir.join(format!("params.c{}", nearest));
+        if path.exists() {
+            Some(path)
+        } else {
+            None
+        }
+    }
+
     /// Run CADO-NFS to factor N with given parameters.
     ///
     /// Creates a temporary working directory, invokes cado-nfs.py, and parses
@@ -127,6 +204,7 @@ impl CadoInstallation {
         timeout: Duration,
     ) -> Result<CadoResult, CadoError> {
         let n_str = n.to_string();
+        let num_digits = n_str.len();
 
         // Create temporary working directory for this run
         let workdir = TempDir::new().map_err(CadoError::Io)?;
@@ -134,11 +212,29 @@ impl CadoInstallation {
         // Build command arguments
         let mut args = vec![
             self.cado_nfs_py.to_string_lossy().to_string(),
-            n_str.clone(),
         ];
 
-        // Add parameter arguments
+        // Add --parameters to specify the nearest parameter file
+        // This is needed because CADO-NFS only looks ±3 digits from target
+        let using_explicit_params = if let Some(param_file) = self.find_param_file(num_digits) {
+            args.push("--parameters".to_string());
+            args.push(param_file.to_string_lossy().to_string());
+            true
+        } else {
+            false
+        };
+
+        // Number to factor (must come after --parameters but before key=value args)
+        args.push(n_str.clone());
+
+        // Add parameter overrides
         args.extend(params.to_cado_args());
+
+        // When using --parameters, CADO-NFS doesn't auto-start local worker
+        // clients. We must explicitly configure server whitelist and clients.
+        if using_explicit_params {
+            args.extend(self.server_client_args());
+        }
 
         // Set working directory
         args.push(format!(
@@ -146,7 +242,7 @@ impl CadoInstallation {
             workdir.path().to_string_lossy()
         ));
 
-        log::info!("Running CADO-NFS on N={} ({} bits)", n_str, n.bits());
+        log::info!("Running CADO-NFS on N={} ({} bits, c{})", n_str, n.bits(), num_digits);
         log::debug!("Args: {:?}", args);
 
         let start = Instant::now();
@@ -192,6 +288,55 @@ impl CadoInstallation {
         Ok(result)
     }
 
+    /// Run CADO-NFS with its built-in default parameters (no overrides).
+    ///
+    /// Uses `--parameters` to specify the nearest available parameter file,
+    /// but does NOT pass any parameter overrides. This is the correct way
+    /// to run a baseline measurement.
+    pub fn run_default(
+        &self,
+        n: &BigUint,
+        timeout: Duration,
+    ) -> Result<CadoResult, CadoError> {
+        let n_str = n.to_string();
+        let num_digits = n_str.len();
+
+        let workdir = TempDir::new().map_err(CadoError::Io)?;
+
+        let mut args = vec![
+            self.cado_nfs_py.to_string_lossy().to_string(),
+        ];
+
+        // Add --parameters for the nearest parameter file.
+        // When using --parameters, we must also configure server/client
+        // because CADO-NFS doesn't auto-start local workers in that mode.
+        let using_explicit_params = if let Some(param_file) = self.find_param_file(num_digits) {
+            args.push("--parameters".to_string());
+            args.push(param_file.to_string_lossy().to_string());
+            true
+        } else {
+            false
+        };
+
+        args.push(n_str.clone());
+
+        if using_explicit_params {
+            args.extend(self.server_client_args());
+        }
+
+        args.push(format!(
+            "tasks.workdir={}",
+            workdir.path().to_string_lossy()
+        ));
+
+        log::info!(
+            "Running CADO-NFS (default params) on N={} ({} bits, c{}) with {}s timeout",
+            n_str, n.bits(), num_digits, timeout.as_secs()
+        );
+
+        self.spawn_and_wait(&args, &n_str, timeout, workdir)
+    }
+
     /// Run CADO-NFS with a timeout enforced via process kill.
     ///
     /// This spawns the process and monitors it, killing if it exceeds the
@@ -203,34 +348,78 @@ impl CadoInstallation {
         timeout: Duration,
     ) -> Result<CadoResult, CadoError> {
         let n_str = n.to_string();
+        let num_digits = n_str.len();
 
         let workdir = TempDir::new().map_err(CadoError::Io)?;
 
         let mut args = vec![
             self.cado_nfs_py.to_string_lossy().to_string(),
-            n_str.clone(),
         ];
+
+        // Add --parameters for the nearest parameter file.
+        // When using --parameters, we must also configure server/client.
+        let using_explicit_params = if let Some(param_file) = self.find_param_file(num_digits) {
+            args.push("--parameters".to_string());
+            args.push(param_file.to_string_lossy().to_string());
+            true
+        } else {
+            false
+        };
+
+        args.push(n_str.clone());
         args.extend(params.to_cado_args());
+
+        if using_explicit_params {
+            args.extend(self.server_client_args());
+        }
+
         args.push(format!(
             "tasks.workdir={}",
             workdir.path().to_string_lossy()
         ));
 
         log::info!(
-            "Running CADO-NFS on N={} ({} bits) with {}s timeout",
+            "Running CADO-NFS on N={} ({} bits, c{}) with {}s timeout",
             n_str,
             n.bits(),
+            num_digits,
             timeout.as_secs()
         );
 
+        self.spawn_and_wait(&args, &n_str, timeout, workdir)
+    }
+
+    /// Spawn CADO-NFS process, wait with timeout, parse output.
+    ///
+    /// Uses process group signalling on Unix to ensure all child processes
+    /// (server, clients, workers) are killed on timeout.
+    fn spawn_and_wait(
+        &self,
+        args: &[String],
+        n_str: &str,
+        timeout: Duration,
+        workdir: TempDir,
+    ) -> Result<CadoResult, CadoError> {
+        let _ = workdir; // keep alive for process duration
+
         let start = Instant::now();
 
-        let mut child = Command::new(&self.python)
-            .args(&args)
+        // Create a new process group so we can kill all CADO-NFS subprocesses.
+        let mut cmd = Command::new(&self.python);
+        cmd.args(args)
             .current_dir(&self.root_dir)
             .env("CADO_NFS_SOURCE_DIR", &self.root_dir)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // On Unix, start in a new process group for clean kill
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| CadoError::ExecutionFailed(e.to_string()))?;
 
@@ -245,8 +434,23 @@ impl CadoInstallation {
                 Ok(None) => {
                     // Still running
                     if start.elapsed() > timeout {
-                        log::warn!("CADO-NFS timed out, killing process");
-                        let _ = child.kill();
+                        log::warn!("CADO-NFS timed out, killing process group");
+                        // Kill the entire process group (server + clients)
+                        #[cfg(unix)]
+                        {
+                            let pid = child.id() as i32;
+                            unsafe {
+                                libc::kill(-pid, libc::SIGTERM);
+                            }
+                            std::thread::sleep(Duration::from_millis(500));
+                            unsafe {
+                                libc::kill(-pid, libc::SIGKILL);
+                            }
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = child.kill();
+                        }
                         let _ = child.wait();
                         return Err(CadoError::Timeout(timeout));
                     }
@@ -268,7 +472,7 @@ impl CadoInstallation {
         let combined_log = format!("{}\n{}", stdout, stderr);
 
         let mut result = parse_cado_output(&combined_log);
-        result.n = n_str;
+        result.n = n_str.to_string();
         result.total_time = elapsed;
 
         let log_lines: Vec<&str> = combined_log.lines().collect();
@@ -299,22 +503,38 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
         log_tail: String::new(),
     };
 
+    // CADO-NFS outputs factors on the last non-empty line as space-separated numbers
+    // e.g., "824640114685687 1030343599805129"
+    // Check the last few lines for this format
+    let lines: Vec<&str> = log.lines().collect();
+    for line in lines.iter().rev().take(5) {
+        let trimmed = line.trim();
+        if let Some(factors_str) = extract_factors_space_separated(trimmed) {
+            result.factors = factors_str;
+            result.success = true;
+            break;
+        }
+    }
+
     for line in log.lines() {
         let trimmed = line.trim();
 
-        // Look for factor output lines
-        // CADO-NFS outputs: "N = p1 * p2" or "N = p1 * p2 * p3" etc.
-        if let Some(factors_str) = extract_factors_from_line(trimmed) {
-            result.factors = factors_str;
-            if !result.factors.is_empty() {
-                result.success = true;
+        // Look for factor output lines (format: "N = p1 * p2")
+        if !result.success {
+            if let Some(factors_str) = extract_factors_from_line(trimmed) {
+                result.factors = factors_str;
+                if !result.factors.is_empty() {
+                    result.success = true;
+                }
             }
         }
 
         // Phase timing: "Total cpu/real time for <phase>: ..."
         // Example: "Total cpu/real time for polyselect: 12.3/4.5"
-        if trimmed.starts_with("Total cpu/real time for ") {
-            if let Some((phase, real_secs)) = parse_phase_timing(trimmed) {
+        // CADO-NFS wraps these in ANSI color codes, so strip them
+        let clean_line = strip_ansi(trimmed);
+        if clean_line.contains("Total cpu/real time for ") || clean_line.contains("Total cpu/elapsed time for ") {
+            if let Some((phase, real_secs)) = parse_phase_timing(&clean_line) {
                 result
                     .phase_times
                     .insert(phase, Duration::from_secs_f64(real_secs));
@@ -332,10 +552,11 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
 
         // Relation counts
         // "Sieving: found 12345 relations"
-        // "# rels found: 12345"
+        // "Total number of relations: 52609"
         // "found 12345 relations"
         if trimmed.contains("rels found")
             || trimmed.contains("relations found")
+            || trimmed.contains("number of relations")
             || (trimmed.contains("found") && trimmed.contains("relation"))
         {
             if let Some(count) = extract_number(trimmed) {
@@ -359,6 +580,37 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
     }
 
     result
+}
+
+/// Extract factors from CADO-NFS's space-separated output.
+///
+/// CADO-NFS outputs factors on the last line as: "p1 p2 [p3 ...]"
+/// where each token is a large integer.
+fn extract_factors_space_separated(line: &str) -> Option<Vec<String>> {
+    // Strip ANSI escape codes
+    let clean = strip_ansi(line);
+    let trimmed = clean.trim();
+
+    // Must be 2+ space-separated numbers, each at least 2 digits
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    if parts.len() < 2 {
+        return None;
+    }
+
+    let mut factors = Vec::new();
+    for part in &parts {
+        if part.len() >= 2 && part.chars().all(|c| c.is_ascii_digit()) {
+            factors.push(part.to_string());
+        } else {
+            return None;
+        }
+    }
+
+    if factors.len() >= 2 {
+        Some(factors)
+    } else {
+        None
+    }
 }
 
 /// Extract factors from a CADO-NFS output line.
@@ -398,25 +650,69 @@ fn extract_factors_from_line(line: &str) -> Option<Vec<String>> {
     }
 }
 
-/// Parse phase timing from a "Total cpu/real time for <phase>: cpu/real" line.
+/// Parse phase timing from CADO-NFS timing lines.
+///
+/// Handles formats:
+/// - "Total cpu/real time for polyselect: 12.34/5.67"
+/// - "Total cpu/elapsed time for entire Complete Factorization 2.68/13.47"
+/// - "Info:Lattice Sieving: Total time: 0.98s"
 fn parse_phase_timing(line: &str) -> Option<(String, f64)> {
-    // "Total cpu/real time for polyselect: 12.34/5.67"
-    let prefix = "Total cpu/real time for ";
-    let rest = line.strip_prefix(prefix)?;
+    // Try "Total cpu/real time for <phase>: cpu/real"
+    if let Some(rest) = line.strip_prefix("Total cpu/real time for ") {
+        let colon_pos = rest.find(':')?;
+        let phase = rest[..colon_pos].trim().to_string();
+        let timing = rest[colon_pos + 1..].trim();
 
-    let colon_pos = rest.find(':')?;
-    let phase = rest[..colon_pos].trim().to_string();
-    let timing = rest[colon_pos + 1..].trim();
+        let real_secs = extract_real_time(timing)?;
+        return Some((phase, real_secs));
+    }
 
-    // Format: "cpu_secs/real_secs" or just "real_secs"
-    let real_secs = if timing.contains('/') {
-        let parts: Vec<&str> = timing.split('/').collect();
-        parts.last()?.trim().trim_matches('s').parse::<f64>().ok()?
+    // Try "Total cpu/elapsed time for <phase> cpu/real"
+    if let Some(rest) = line.strip_prefix("Total cpu/elapsed time for ") {
+        // This format doesn't have a colon before the timing
+        // "entire Complete Factorization 2.68/13.47"
+        // Find the last space-separated token that contains '/'
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        for (i, part) in parts.iter().enumerate().rev() {
+            if part.contains('/') {
+                let phase = parts[..i].join(" ");
+                let real_secs = extract_real_time(part)?;
+                return Some((phase, real_secs));
+            }
+        }
+    }
+
+    // Try "Info:<phase>: Total time: <secs>s"
+    if line.contains("Total time:") {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() >= 3 {
+            // Look for a phase name in the Info: prefix
+            let phase = if parts.len() >= 4 {
+                parts[1].trim().to_string()
+            } else {
+                "unknown".to_string()
+            };
+
+            if let Some(secs) = extract_seconds(line) {
+                return Some((phase, secs));
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract real/wall-clock time from a timing string.
+///
+/// Handles "cpu/real" format and bare seconds.
+fn extract_real_time(timing: &str) -> Option<f64> {
+    let trimmed = timing.trim().trim_matches('s');
+    if trimmed.contains('/') {
+        let parts: Vec<&str> = trimmed.split('/').collect();
+        parts.last()?.parse::<f64>().ok()
     } else {
-        timing.trim_matches('s').parse::<f64>().ok()?
-    };
-
-    Some((phase, real_secs))
+        trimmed.parse::<f64>().ok()
+    }
 }
 
 /// Extract a number from a line containing digits.
@@ -455,6 +751,25 @@ fn extract_matrix_size(line: &str) -> Option<(u64, u64)> {
         }
     }
     None
+}
+
+/// Strip ANSI escape codes from a string.
+fn strip_ansi(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Skip until we find 'm' (end of ANSI sequence)
+            for c2 in chars.by_ref() {
+                if c2 == 'm' {
+                    break;
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 /// Find a suitable Python3 interpreter.
@@ -599,5 +914,57 @@ Total cpu/real time for sqrt: 0.8/0.3
         assert_eq!(factors.len(), 2);
         assert_eq!(factors[0], "1125899906842679");
         assert_eq!(factors[1], "1125899906842847");
+    }
+
+    #[test]
+    fn test_extract_factors_space_separated() {
+        let line = "824640114685687 1030343599805129";
+        let factors = extract_factors_space_separated(line);
+        assert!(factors.is_some());
+        let factors = factors.unwrap();
+        assert_eq!(factors.len(), 2);
+        assert_eq!(factors[0], "824640114685687");
+        assert_eq!(factors[1], "1030343599805129");
+    }
+
+    #[test]
+    fn test_extract_factors_space_separated_rejects_words() {
+        let line = "Info: Starting factorization";
+        assert!(extract_factors_space_separated(line).is_none());
+    }
+
+    #[test]
+    fn test_strip_ansi() {
+        let ansi = "\x1b[32;1mInfo\x1b[0m:Total cpu/real time for sqrt: 0.1/0.39";
+        let clean = strip_ansi(ansi);
+        assert_eq!(clean, "Info:Total cpu/real time for sqrt: 0.1/0.39");
+    }
+
+    #[test]
+    fn test_parse_phase_timing_elapsed() {
+        let line = "Total cpu/elapsed time for entire Complete Factorization 2.68/13.47";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert!(phase.contains("Complete Factorization"));
+        assert!((secs - 13.47).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_real_cado_output() {
+        // Actual CADO-NFS output from a 100-bit factorization
+        let log = "\x1b[32;1mInfo\x1b[0m:Lattice Sieving: Total number of relations: 52609\n\
+                   \x1b[32;1mInfo\x1b[0m:Lattice Sieving: Total time: 0.98s\n\
+                   \x1b[32;1mInfo\x1b[0m:Linear Algebra: Total cpu/real time for bwc: 0.38/1.19\n\
+                   \x1b[32;1mInfo\x1b[0m:Square Root: Total cpu/real time for sqrt: 0.1/0.39\n\
+                   \x1b[32;1mInfo\x1b[0m:Complete Factorization / Discrete logarithm: Total cpu/elapsed time for entire Complete Factorization 2.68/13.47\n\
+                   824640114685687 1030343599805129\n";
+
+        let result = parse_cado_output(log);
+        assert!(result.success);
+        assert_eq!(result.factors.len(), 2);
+        assert_eq!(result.factors[0], "824640114685687");
+        assert_eq!(result.factors[1], "1030343599805129");
+        assert_eq!(result.relations_found, Some(52609));
     }
 }

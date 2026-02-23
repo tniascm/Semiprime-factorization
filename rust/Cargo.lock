@@ -177,6 +177,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "factoring-core",
+ "libc",
  "log",
  "num-bigint",
  "num-integer",

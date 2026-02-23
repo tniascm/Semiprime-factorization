@@ -121,7 +121,8 @@ pub fn run_baseline(
 
     for (i, test) in test_semiprimes.iter().enumerate() {
         let start = Instant::now();
-        match install.run_with_kill_timeout(&test.n, &params, timeout) {
+        // Use run_default to let CADO-NFS use its own optimized parameters
+        match install.run_default(&test.n, timeout) {
             Ok(result) => {
                 let elapsed = start.elapsed().as_secs_f64();
                 if result.success {
@@ -256,17 +257,16 @@ pub fn compare_params(
     timeout: Duration,
     rng: &mut impl Rng,
 ) -> ComparisonResult {
-    let default_params = CadoParams::default_for_bits(n_bits);
     let test_semiprimes = generate_test_suite(n_bits, num_tests, rng);
 
     println!("  Comparing on {}-bit semiprimes ({} tests):", n_bits, num_tests);
 
-    // Run default
+    // Run default (using CADO-NFS built-in parameters)
     let mut default_times = Vec::new();
     let mut default_successes = 0;
     println!("    Default parameters:");
     for (i, test) in test_semiprimes.iter().enumerate() {
-        match install.run_with_kill_timeout(&test.n, &default_params, timeout) {
+        match install.run_default(&test.n, timeout) {
             Ok(result) => {
                 let t = result.total_time.as_secs_f64();
                 if result.success {

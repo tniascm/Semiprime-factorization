@@ -361,16 +361,20 @@ impl CadoParams {
 
     /// Convert parameters to CADO-NFS command-line arguments.
     pub fn to_cado_args(&self) -> Vec<String> {
+        // Parameter names must match CADO-NFS's actual naming convention:
+        //   tasks.lim0/lim1    = factor base bounds (rational/algebraic)
+        //   tasks.lpb0/lpb1    = large prime bits
+        //   tasks.sieve.mfb0/1 = cofactor bounds
         vec![
             format!("tasks.polyselect.degree={}", self.poly_degree),
             format!("tasks.polyselect.admax={}", self.poly_admax),
             format!("tasks.polyselect.incr={}", self.poly_incr),
-            format!("tasks.sieve.rlim={}", self.fb_rational_bound),
-            format!("tasks.sieve.alim={}", self.fb_algebraic_bound),
-            format!("tasks.sieve.lpbr={}", self.lp_rational_bits),
-            format!("tasks.sieve.lpba={}", self.lp_algebraic_bits),
-            format!("tasks.sieve.mfbr={}", self.sieve_mfbr),
-            format!("tasks.sieve.mfba={}", self.sieve_mfba),
+            format!("tasks.lim0={}", self.fb_rational_bound),
+            format!("tasks.lim1={}", self.fb_algebraic_bound),
+            format!("tasks.lpb0={}", self.lp_rational_bits),
+            format!("tasks.lpb1={}", self.lp_algebraic_bits),
+            format!("tasks.sieve.mfb0={}", self.sieve_mfbr),
+            format!("tasks.sieve.mfb1={}", self.sieve_mfba),
             format!("tasks.sieve.qrange={}", self.sieve_qrange),
         ]
     }
@@ -382,12 +386,12 @@ impl CadoParams {
              tasks.polyselect.degree = {}\n\
              tasks.polyselect.admax = {}\n\
              tasks.polyselect.incr = {}\n\
-             tasks.sieve.rlim = {}\n\
-             tasks.sieve.alim = {}\n\
-             tasks.sieve.lpbr = {}\n\
-             tasks.sieve.lpba = {}\n\
-             tasks.sieve.mfbr = {}\n\
-             tasks.sieve.mfba = {}\n\
+             tasks.lim0 = {}\n\
+             tasks.lim1 = {}\n\
+             tasks.lpb0 = {}\n\
+             tasks.lpb1 = {}\n\
+             tasks.sieve.mfb0 = {}\n\
+             tasks.sieve.mfb1 = {}\n\
              tasks.sieve.qrange = {}\n",
             self.poly_degree,
             self.poly_admax,
@@ -546,7 +550,13 @@ mod tests {
         let args = params.to_cado_args();
         assert_eq!(args.len(), 10);
         assert!(args[0].starts_with("tasks.polyselect.degree="));
-        assert!(args[3].starts_with("tasks.sieve.rlim="));
+        // CADO-NFS uses tasks.lim0/lim1 (not tasks.sieve.rlim/alim)
+        assert!(args[3].starts_with("tasks.lim0="));
+        assert!(args[4].starts_with("tasks.lim1="));
+        assert!(args[5].starts_with("tasks.lpb0="));
+        assert!(args[6].starts_with("tasks.lpb1="));
+        assert!(args[7].starts_with("tasks.sieve.mfb0="));
+        assert!(args[8].starts_with("tasks.sieve.mfb1="));
     }
 
     #[test]
@@ -558,7 +568,9 @@ mod tests {
 
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("tasks.polyselect.degree"));
-        assert!(content.contains("tasks.sieve.rlim"));
+        assert!(content.contains("tasks.lim0"));
+        assert!(content.contains("tasks.lpb0"));
+        assert!(content.contains("tasks.sieve.mfb0"));
     }
 
     #[test]
