@@ -589,6 +589,54 @@ The N-extractability barrier holds under permutation controls, across the
 full character space (not just single r*), and with quantified confidence
 intervals.  The closure is validated for the tested observable family.
 
+#### Statistical protocol notes
+
+**Multiple-testing correction.**  Two layers of multiple testing arise:
+
+1. *Within-block character scan:* each block scans over (ℓ−1)/2 characters
+   (65 for ℓ=131 up to 21,933 for ℓ=43867).  This is corrected by the
+   scan_null = √(2·ln(n_chars) / (n_primes − 2)), which is the expected
+   maximum amplitude under independent Gaussian noise.  The fix_excess and
+   scan_excess metrics already incorporate this correction.
+
+2. *Across-block testing:* 126 blocks are tested in the permutation null
+   (Test 1).  Under the global null, the expected number of false rejections
+   at α = 0.05 is 126 × 0.05 = 6.3.  We observe 2 rejections — well below
+   expectation.  Under Bonferroni correction (α_adj = 0.05/126 ≈ 0.0004),
+   all 126 blocks pass (zero rejections).
+
+**Threshold choices are descriptive, not pre-registered.**  The cutoffs
+|corr_Nk| < 0.15, fix_excess > 2.0, and p > 0.05 were chosen post-hoc as
+convenient reporting thresholds.  To demonstrate robustness to this choice,
+we report a sensitivity analysis:
+
+| Threshold              | Pass count | Pass rate |
+|------------------------|------------|-----------|
+| \|corr_Nk\| < 0.05    | 116/126    | 92.1%     |
+| \|corr_Nk\| < 0.10    | 124/126    | 98.4%     |
+| \|corr_Nk\| < 0.15    | 125/126    | 99.2%     |
+| \|corr_Nk\| < 0.20    | 126/126    | 100%      |
+| \|corr_all\| < 0.05   | 119/126    | 94.4%     |
+| \|corr_all\| < 0.10   | 124/126    | 98.4%     |
+| \|corr_all\| < 0.15   | 125/126    | 99.2%     |
+| perm p > 0.01          | 126/126    | 100%      |
+| perm p > 0.025         | 126/126    | 100%      |
+| perm p > 0.05          | 124/126    | 98.4%     |
+| fix_excess CI_lo > 1.0 | 93/126     | 73.8%     |
+| fix_excess CI_lo > 2.0 | 66/126     | 52.4%     |
+
+The barrier conclusion (corr_Nk ≈ 0) is stable: even at the strict
+threshold |corr_Nk| < 0.05, 92% of blocks pass.  The bootstrap CIs for
+corr_Nk have median width 0.028, with 118/126 blocks having
+|corr_Nk_mean| < 0.05 — the correlations are tightly concentrated at zero,
+not just below an arbitrary cutoff.
+
+**Bootstrap method.**  Percentile bootstrap (2.5th/97.5th quantiles).
+For fix_excess: resample the prime set with replacement (n_primes draws),
+recompute g(p), s_B(g(p)), and Pearson amplitude of χ_{r*} on the
+resampled set.  For corr_Nk: resample pairs with replacement (n_pairs
+draws), recompute the product correlation.  500 resamples per block.
+
 ## Conclusions
 
 1. **Algebraic identity confirmed** (by unit test): `g(p)·g(q) mod ℓ = σ_{k−1}(N) mod ℓ`
