@@ -130,6 +130,77 @@ pub fn enumerate_balanced_semiprimes(n_bits: u32) -> Vec<(u64, u64)> {
     pairs
 }
 
+/// Sample `count` distinct odd primes in `[lo, hi)` using a seeded RNG.
+///
+/// Used for bit sizes > 24 where full enumeration is infeasible.
+/// The RNG is deterministic (seeded), so results are reproducible.
+fn sample_primes_in_range(lo: u64, hi: u64, count: usize, seed: u64) -> Vec<u64> {
+    use rand::Rng;
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut primes = std::collections::BTreeSet::new();
+    let max_attempts = count * 200;
+    let mut attempts = 0;
+    while primes.len() < count && attempts < max_attempts {
+        let candidate = rng.gen_range(lo..hi) | 1; // ensure odd
+        if candidate >= lo && candidate < hi && is_prime_u64(candidate) {
+            primes.insert(candidate);
+        }
+        attempts += 1;
+    }
+    primes.into_iter().collect()
+}
+
+/// Generate primes and balanced-semiprime pairs for a given bit size.
+///
+/// For `n_bits ≤ 24`: enumerates all balanced semiprimes exactly.
+/// For `n_bits > 24`: samples `target_primes` random primes in the half-bit
+/// range and forms pairs, capped at `max_pairs` for runtime.
+fn generate_primes_and_pairs(
+    n_bits: u32,
+    target_primes: usize,
+    max_pairs: usize,
+    seed: u64,
+) -> (Vec<u64>, Vec<(u64, u64)>) {
+    if n_bits <= 24 {
+        let pairs = enumerate_balanced_semiprimes(n_bits);
+        let mut primes: Vec<u64> = pairs.iter().flat_map(|&(p, q)| [p, q]).collect();
+        primes.sort_unstable();
+        primes.dedup();
+        (primes, pairs)
+    } else {
+        assert!(n_bits <= 60, "n_bits must be ≤ 60 to avoid u64 overflow in p*q");
+        let half = n_bits / 2;
+        let lo = 1u64 << (half - 1);
+        let hi = 1u64 << (half + 1);
+        let primes = sample_primes_in_range(lo, hi, target_primes, seed);
+
+        let n_lo = 1u128 << (n_bits - 1);
+        let n_hi = 1u128 << n_bits;
+        let mut pairs = Vec::new();
+        for (i, &p) in primes.iter().enumerate() {
+            for &q in &primes[i + 1..] {
+                let n = p as u128 * q as u128;
+                if n < n_lo || n >= n_hi {
+                    continue;
+                }
+                let (small, big) = if p <= q { (p, q) } else { (q, p) };
+                if (small as f64) / (big as f64) < 0.3 {
+                    continue;
+                }
+                pairs.push((small, big));
+            }
+        }
+        // Cap pairs for runtime; shuffle for representative sampling.
+        if pairs.len() > max_pairs {
+            use rand::seq::SliceRandom;
+            let mut rng = StdRng::seed_from_u64(seed ^ 0xCAFE);
+            pairs.shuffle(&mut rng);
+            pairs.truncate(max_pairs);
+        }
+        (primes, pairs)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Core audit function
 // ---------------------------------------------------------------------------
@@ -818,11 +889,9 @@ pub fn run_prime_restricted_smoothness(
     let full = smoothness_spectrum(ell, bound, top_k);
     let full_r_star = full.top_amplitudes.first().map(|&(r, _)| r).unwrap_or(1);
 
-    // 2. Enumerate primes from balanced semiprimes.
-    let pairs = enumerate_balanced_semiprimes(n_bits);
-    let mut prime_set: Vec<u64> = pairs.iter().flat_map(|&(p, q)| [p, q]).collect();
-    prime_set.sort_unstable();
-    prime_set.dedup();
+    // 2. Generate primes and pairs (enumerate for n≤24, sample for n>24).
+    let seed = 0xE21b_5a3d ^ (n_bits as u64 * 0x10000 + ell);
+    let (prime_set, pairs) = generate_primes_and_pairs(n_bits, 500, 20_000, seed);
     let n_primes = prime_set.len();
 
     // 3. Compute g(p) and smoothness for each prime.
@@ -1502,6 +1571,49 @@ mod tests {
             "product test B should be near zero (barrier), got {:.4}",
             result.product_corr_nk,
         );
+    }
+
+    #[test]
+    fn test_sample_primes_in_range() {
+        let primes = sample_primes_in_range(1000, 2000, 50, 42);
+        assert_eq!(primes.len(), 50, "should sample exactly 50 primes");
+        for &p in &primes {
+            assert!(p >= 1000 && p < 2000, "prime {p} out of range");
+            assert!(is_prime_u64(p), "{p} is not prime");
+        }
+        // Should be sorted (BTreeSet output).
+        for w in primes.windows(2) {
+            assert!(w[0] < w[1], "not sorted: {} >= {}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn test_generate_primes_and_pairs_large() {
+        // Test that sampling works for n=28 bits.
+        let (primes, pairs) = generate_primes_and_pairs(28, 100, 5000, 0xBEEF);
+        assert!(primes.len() >= 80, "should sample many primes, got {}", primes.len());
+        assert!(!pairs.is_empty(), "should form some pairs");
+        // Verify pair properties.
+        for &(p, q) in pairs.iter().take(20) {
+            assert!(is_prime_u64(p) && is_prime_u64(q));
+            let n = p as u128 * q as u128;
+            assert!(n >= (1u128 << 27) && n < (1u128 << 28),
+                "product {n} not in 28-bit range");
+            assert!((p.min(q) as f64) / (p.max(q) as f64) >= 0.3);
+        }
+    }
+
+    #[test]
+    fn test_prime_restricted_smoothness_large_n() {
+        // Smoke test: 28-bit, channel 5 (k=22, ℓ=131), B=10.
+        // Uses sampling, should still produce valid results.
+        let ch = &CHANNELS[5]; // k=22, ℓ=131
+        let result = run_prime_restricted_smoothness(28, ch, 10, 5);
+        assert_eq!(result.ell, 131);
+        assert!(result.n_primes > 50, "should have many sampled primes");
+        assert!(result.n_valid > 50, "should have many valid primes");
+        assert!(result.fixed_r_amplitude.is_finite());
+        assert!(result.product_corr_nk.abs() <= 1.0 + 1e-9);
     }
 
     #[test]
