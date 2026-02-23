@@ -423,6 +423,12 @@ impl CadoInstallation {
             .spawn()
             .map_err(|e| CadoError::ExecutionFailed(e.to_string()))?;
 
+        // Take stdout/stderr handles before polling, so we can read them
+        // after the process exits. wait_with_output() can fail if try_wait()
+        // already consumed the exit status.
+        let child_stdout = child.stdout.take();
+        let child_stderr = child.stderr.take();
+
         // Poll for completion with timeout
         let poll_interval = Duration::from_millis(500);
         loop {
@@ -463,13 +469,31 @@ impl CadoInstallation {
         }
 
         let elapsed = start.elapsed();
-        let output = child
-            .wait_with_output()
-            .map_err(|e| CadoError::ExecutionFailed(e.to_string()))?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // Read stdout/stderr from the handles we took earlier
+        use std::io::Read;
+        let stdout = if let Some(mut out) = child_stdout {
+            let mut s = String::new();
+            let _ = out.read_to_string(&mut s);
+            s
+        } else {
+            String::new()
+        };
+        let stderr = if let Some(mut err) = child_stderr {
+            let mut s = String::new();
+            let _ = err.read_to_string(&mut s);
+            s
+        } else {
+            String::new()
+        };
         let combined_log = format!("{}\n{}", stdout, stderr);
+
+        log::debug!(
+            "CADO-NFS stdout ({} bytes), stderr ({} bytes)",
+            stdout.len(),
+            stderr.len()
+        );
+        log::debug!("CADO-NFS stdout: {:?}", stdout.trim());
 
         let mut result = parse_cado_output(&combined_log);
         result.n = n_str.to_string();
@@ -503,11 +527,20 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
         log_tail: String::new(),
     };
 
-    // CADO-NFS outputs factors on the last non-empty line as space-separated numbers
-    // e.g., "824640114685687 1030343599805129"
-    // Check the last few lines for this format
+    // CADO-NFS outputs factors on stdout as space-separated numbers.
+    // When combined with stderr, factors may be at the BEGINNING of the
+    // combined log (stdout first, then stderr) or at the END (if stderr
+    // comes first). Check both the first 5 and last 5 non-empty lines.
     let lines: Vec<&str> = log.lines().collect();
-    for line in lines.iter().rev().take(5) {
+    let check_lines: Vec<&str> = lines
+        .iter()
+        .rev()
+        .take(5)
+        .chain(lines.iter().take(5))
+        .copied()
+        .collect();
+
+    for line in &check_lines {
         let trimmed = line.trim();
         if let Some(factors_str) = extract_factors_space_separated(trimmed) {
             result.factors = factors_str;
