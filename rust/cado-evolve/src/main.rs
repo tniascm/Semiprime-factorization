@@ -221,7 +221,7 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
         IslandConfig::full(config.n_bits)
     };
 
-    let num_generations = config.num_generations.unwrap_or(if config.quick { 30 } else { 100 });
+    let num_generations = config.num_generations.unwrap_or(if config.quick { 10 } else { 50 });
 
     let mut model = ParamIslandModel::new(&island_config, &mut rng);
     let mut cache = FitnessCache::new(if config.quick { 1_000 } else { 10_000 });
@@ -247,8 +247,8 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
     println!();
 
     let start = Instant::now();
-    let report_interval = if config.quick { 5 } else { 10 };
-    let checkpoint_interval = if config.quick { 10 } else { 25 };
+    let report_interval = if config.quick { 1 } else { 5 };
+    let checkpoint_interval = if config.quick { 5 } else { 10 };
     let mut convergence_history = Vec::new();
 
     for gen in 0..num_generations {

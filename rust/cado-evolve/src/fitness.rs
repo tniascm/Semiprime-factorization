@@ -58,9 +58,9 @@ impl EvalConfig {
     /// Quick evaluation config (fewer tests, shorter timeout).
     pub fn quick(n_bits: u32) -> Self {
         EvalConfig {
-            num_tests: 3,
+            num_tests: 2,
             n_bits,
-            timeout: Duration::from_secs(300), // 5 minutes max
+            timeout: Duration::from_secs(120), // 2 minutes max per run
             baseline_time_secs: 60.0,          // will be updated after baseline measurement
             weights: FitnessWeights::default(),
         }

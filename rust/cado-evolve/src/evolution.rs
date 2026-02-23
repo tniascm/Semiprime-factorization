@@ -228,11 +228,11 @@ impl IslandConfig {
     /// Quick configuration for testing.
     pub fn quick(n_bits: u32) -> Self {
         IslandConfig {
-            num_islands: 5,
-            island_size: 20,
+            num_islands: 3,
+            island_size: 8,
             n_bits,
-            migration_interval: 5,
-            culling_interval: 15,
+            migration_interval: 3,
+            culling_interval: 10,
             tournament_size: 3,
             mutation_rate: 0.7,
         }
