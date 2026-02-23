@@ -1,0 +1,237 @@
+[
+  {
+    "ell": 131,
+    "order": 130,
+    "primitive_root": 2,
+    "eigenvectors": [
+      {
+        "eigenvector_idx": 0,
+        "eigenvalue": 64.99999999999999,
+        "best_char_r": 1,
+        "best_char_amp": 0.0,
+        "corr_re": 0.0,
+        "corr_im": 0.0
+      },
+      {
+        "eigenvector_idx": 1,
+        "eigenvalue": 15.00000000000002,
+        "best_char_r": 65,
+        "best_char_amp": 1.0000000000000002,
+        "corr_re": 1.0000000000000002,
+        "corr_im": 0.0
+      },
+      {
+        "eigenvector_idx": 2,
+        "eigenvalue": -12.847917461853672,
+        "best_char_r": 45,
+        "best_char_amp": 0.9999999999998862,
+        "corr_re": -0.06332990979448683,
+        "corr_im": -0.9979926465286177
+      },
+      {
+        "eigenvector_idx": 3,
+        "eigenvalue": 12.847917461850344,
+        "best_char_r": 45,
+        "best_char_amp": 0.9999999999999353,
+        "corr_re": -0.9979926465286777,
+        "corr_im": 0.06332990979431773
+      },
+      {
+        "eigenvector_idx": 4,
+        "eigenvalue": 5.076872591854434,
+        "best_char_r": 11,
+        "best_char_amp": 0.9999999960498586,
+        "corr_re": -0.3403182917200114,
+        "corr_im": 0.9403102958175511
+      }
+    ]
+  },
+  {
+    "ell": 283,
+    "order": 282,
+    "primitive_root": 3,
+    "eigenvectors": [
+      {
+        "eigenvector_idx": 0,
+        "eigenvalue": 141.00000000000006,
+        "best_char_r": 1,
+        "best_char_amp": 0.0,
+        "corr_re": 0.0,
+        "corr_im": 0.0
+      },
+      {
+        "eigenvector_idx": 1,
+        "eigenvalue": 20.173927305875896,
+        "best_char_r": 11,
+        "best_char_amp": 0.9175800054844525,
+        "corr_re": 0.9153830477794221,
+        "corr_im": -0.06345819334730582
+      },
+      {
+        "eigenvector_idx": 2,
+        "eigenvalue": -20.17216607652964,
+        "best_char_r": 11,
+        "best_char_amp": 0.9999999999934734,
+        "corr_re": -0.06915713291842283,
+        "corr_im": -0.9976057793304179
+      },
+      {
+        "eigenvector_idx": 3,
+        "eigenvalue": -18.710984278297097,
+        "best_char_r": 1,
+        "best_char_amp": 0.9976370377472029,
+        "corr_re": -0.6044604069380072,
+        "corr_im": -0.7936669802438254
+      },
+      {
+        "eigenvector_idx": 4,
+        "eigenvalue": 18.67824043214844,
+        "best_char_r": 5,
+        "best_char_amp": 0.9208243810729747,
+        "corr_re": -0.9205076773553287,
+        "corr_im": 0.024148637815103662
+      }
+    ]
+  },
+  {
+    "ell": 593,
+    "order": 592,
+    "primitive_root": 3,
+    "eigenvectors": [
+      {
+        "eigenvector_idx": 0,
+        "eigenvalue": 295.99999999999915,
+        "best_char_r": 1,
+        "best_char_amp": 0.0,
+        "corr_re": 0.0,
+        "corr_im": 0.0
+      },
+      {
+        "eigenvector_idx": 1,
+        "eigenvalue": 31.326098206186263,
+        "best_char_r": 1,
+        "best_char_amp": 0.9983300500784774,
+        "corr_re": 0.9815486831252926,
+        "corr_im": -0.1822774575878735
+      },
+      {
+        "eigenvector_idx": 2,
+        "eigenvalue": -30.725046308966437,
+        "best_char_r": 51,
+        "best_char_amp": 0.9817237970281202,
+        "corr_re": -0.45224925248947,
+        "corr_im": 0.8713508060901909
+      },
+      {
+        "eigenvector_idx": 3,
+        "eigenvalue": 23.922345442504287,
+        "best_char_r": 41,
+        "best_char_amp": 0.9754743773232464,
+        "corr_re": -0.8688625969950343,
+        "corr_im": -0.4434276134356314
+      },
+      {
+        "eigenvector_idx": 4,
+        "eigenvalue": -23.03594971375574,
+        "best_char_r": 1,
+        "best_char_amp": 0.7284242304335647,
+        "corr_re": -0.16169604752903463,
+        "corr_im": -0.7102508343509489
+      }
+    ]
+  },
+  {
+    "ell": 617,
+    "order": 616,
+    "primitive_root": 3,
+    "eigenvectors": [
+      {
+        "eigenvector_idx": 0,
+        "eigenvalue": 308.0000000000009,
+        "best_char_r": 1,
+        "best_char_amp": 0.0,
+        "corr_re": 0.0,
+        "corr_im": 0.0
+      },
+      {
+        "eigenvector_idx": 1,
+        "eigenvalue": 23.81291876162285,
+        "best_char_r": 27,
+        "best_char_amp": 0.8502571204416763,
+        "corr_re": 0.4528005092249741,
+        "corr_im": 0.7196588564781062
+      },
+      {
+        "eigenvector_idx": 2,
+        "eigenvalue": -16.102763515619085,
+        "best_char_r": 27,
+        "best_char_amp": 0.7182349645499505,
+        "corr_re": 0.3298354442110917,
+        "corr_im": -0.6380204103664243
+      },
+      {
+        "eigenvector_idx": 3,
+        "eigenvalue": -13.410430278292438,
+        "best_char_r": 31,
+        "best_char_amp": 0.9969702766851756,
+        "corr_re": 0.3080108099048517,
+        "corr_im": 0.9481978029796698
+      },
+      {
+        "eigenvector_idx": 4,
+        "eigenvalue": 6.212987273816803,
+        "best_char_r": 65,
+        "best_char_amp": 0.7113910618585876,
+        "corr_re": -0.5284305435876138,
+        "corr_im": -0.47627555416585027
+      }
+    ]
+  },
+  {
+    "ell": 691,
+    "order": 690,
+    "primitive_root": 3,
+    "eigenvectors": [
+      {
+        "eigenvector_idx": 0,
+        "eigenvalue": 344.9999999999991,
+        "best_char_r": 1,
+        "best_char_amp": 0.0,
+        "corr_re": 0.0,
+        "corr_im": 0.0
+      },
+      {
+        "eigenvector_idx": 1,
+        "eigenvalue": 31.21252569736768,
+        "best_char_r": 41,
+        "best_char_amp": 0.9615965398581806,
+        "corr_re": -0.9175226897987088,
+        "corr_im": 0.28778467501200944
+      },
+      {
+        "eigenvector_idx": 2,
+        "eigenvalue": -29.656807562446502,
+        "best_char_r": 11,
+        "best_char_amp": 0.999999999814799,
+        "corr_re": 0.15404429056967753,
+        "corr_im": 0.9880639433622112
+      },
+      {
+        "eigenvector_idx": 3,
+        "eigenvalue": -27.36401098147533,
+        "best_char_r": 41,
+        "best_char_amp": 0.9589975758965692,
+        "corr_re": 0.23515954285925442,
+        "corr_im": 0.9297184197259525
+      },
+      {
+        "eigenvector_idx": 4,
+        "eigenvalue": -17.851290268503515,
+        "best_char_r": 13,
+        "best_char_amp": 0.9164711775434324,
+        "corr_re": 0.5882226685492515,
+        "corr_im": 0.702789806039219
+      }
+    ]
+  }
+]

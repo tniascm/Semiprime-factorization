@@ -315,6 +315,100 @@ pub fn run_character_audit(
 }
 
 // ---------------------------------------------------------------------------
+// Full-group control experiment
+// ---------------------------------------------------------------------------
+
+/// Result of the full-group control: eigenstructure of H[a][b] = parity(ab mod ℓ)
+/// over all of (ℤ/ℓℤ)*, without prime restriction.
+///
+/// Over the full group, the characters χ_r are EXACT eigenvectors with
+/// eigenvalue (ℓ−1)·ĥ(r), so the character scan should return amp ≈ 1.
+/// If it doesn't, the pipeline is broken; if it does, the pipeline is
+/// validated and the prime-restriction drop is real.
+#[derive(Debug, Clone, Serialize)]
+pub struct FullGroupControlResult {
+    pub ell: u64,
+    pub order: usize,
+    pub primitive_root: u64,
+    /// Per-eigenvector results over the full group.
+    pub eigenvectors: Vec<FullGroupEigResult>,
+}
+
+/// Per-eigenvector result for the full-group control.
+#[derive(Debug, Clone, Serialize)]
+pub struct FullGroupEigResult {
+    pub eigenvector_idx: usize,
+    pub eigenvalue: f64,
+    pub best_char_r: usize,
+    pub best_char_amp: f64,
+    pub corr_re: f64,
+    pub corr_im: f64,
+}
+
+/// Build H[a][b] = parity(ab mod ℓ) for all a,b ∈ {1,…,ℓ−1} and extract
+/// eigenvectors, then run the character scan over the full group.
+///
+/// This validates that the character scan pipeline correctly finds characters
+/// when they truly are the eigenvectors (no prime restriction, no g() mapping).
+pub fn run_full_group_control(ell: u64, n_eigenvectors: usize, seed: u64) -> FullGroupControlResult {
+    use algebra::{best_character, build_dlog_table, pearson_corr, primitive_root};
+    use eigen::top_k_eigenvectors;
+
+    let order  = (ell - 1) as usize;
+    let prim_g = primitive_root(ell);
+    let dlog   = build_dlog_table(ell, prim_g);
+
+    // Build the full (ℓ-1) × (ℓ-1) parity matrix: H[a][b] = (ab mod ℓ) mod 2.
+    // Index 0 → group element 1, index i → group element (i+1).
+    let n = order;
+    let mut mat = vec![vec![0.0f64; n]; n];
+    for a in 1..=order {
+        for b in a..=order {
+            let prod = (a as u64) * (b as u64) % ell;
+            let val  = (prod % 2) as f64;
+            let ai   = a - 1;
+            let bi   = b - 1;
+            mat[ai][bi] = val;
+            mat[bi][ai] = val;
+        }
+    }
+
+    // Extract top eigenvectors.
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let eigenpairs = top_k_eigenvectors(&mat, n, n_eigenvectors, 150, &mut rng);
+
+    // Build dlog table for group elements 1..ℓ-1 (no g() mapping — identity).
+    // dlogs[i] = dlog_table[i+1]  (group element = index + 1).
+    let dlogs: Vec<u32> = (1..=order as u64).map(|a| dlog[a as usize]).collect();
+
+    let mut ev_results = Vec::with_capacity(eigenpairs.len());
+    for (idx, (eigenvalue, u)) in eigenpairs.iter().enumerate() {
+        let (best_r, best_amp, best_corr_re, _top) = best_character(u, &dlogs, order, 5);
+
+        // Also compute corr_im for reporting.
+        let u_valid: Vec<f64> = u.clone();
+        let im_vals: Vec<f64> = dlogs.iter().map(|&d| algebra::im_char(d, best_r, order)).collect();
+        let corr_im = pearson_corr(&u_valid, &im_vals);
+
+        ev_results.push(FullGroupEigResult {
+            eigenvector_idx: idx,
+            eigenvalue: *eigenvalue,
+            best_char_r: best_r,
+            best_char_amp: best_amp,
+            corr_re: best_corr_re,
+            corr_im,
+        });
+    }
+
+    FullGroupControlResult {
+        ell,
+        order,
+        primitive_root: prim_g,
+        eigenvectors: ev_results,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -385,5 +479,25 @@ mod tests {
             assert_eq!(gp * gq % ell, sigma % ell,
                 "identity failed at p={p}, q={q}");
         }
+    }
+
+    #[test]
+    fn test_full_group_control_small() {
+        // For ℓ = 131 (order = 130), the full group matrix is 130×130.
+        // The SECOND eigenvector (index 1) should match a non-trivial character
+        // with amp near 1.0 (top eigenvector is the constant mode / r=0).
+        let result = run_full_group_control(131, 3, 42);
+        assert_eq!(result.order, 130);
+        assert!(result.eigenvectors.len() >= 2);
+
+        // The second eigenvector (after sorting by |eigenvalue|) should have
+        // character amplitude near 1.0 — characters ARE exact eigenvectors
+        // over the full group.
+        let ev1 = &result.eigenvectors[1]; // 2nd-largest eigenvalue
+        assert!(
+            ev1.best_char_amp > 0.90,
+            "full-group control: 2nd eigenvector should match a character, got amp={:.3}",
+            ev1.best_char_amp,
+        );
     }
 }
