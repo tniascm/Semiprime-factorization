@@ -20,12 +20,12 @@
 use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
     run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
-    run_cross_channel_tests,
+    run_cross_channel_tests, run_sieve_enrichment,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
     PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
     PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
-    CrossChannelResult,
+    CrossChannelResult, SieveEnrichmentResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -44,8 +44,9 @@ fn main() {
         "restrict"  => run_restrict_mode(&opts),
         "stress"    => run_stress_mode(&opts),
         "crosschan" => run_crosschan_mode(&opts),
+        "sieve"     => run_sieve_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve");
             std::process::exit(1);
         }
     }
@@ -1414,6 +1415,217 @@ fn print_stress_summary(result: &StressTestResult) {
     println!(
         "  Summary: {n_nk_zero}/{n_total_boot} blocks with corr_Nk CI containing 0"
     );
+}
+
+// ---------------------------------------------------------------------------
+// E22: Sieve enrichment mode
+// ---------------------------------------------------------------------------
+
+fn run_sieve_mode(opts: &HashMap<String, String>) {
+    let bit_sizes = parse_bit_sizes(opts, &[20, 24, 28, 32, 40, 48, 56, 64]);
+    let seed = parse_u64(opts, "seed", 0xE220_5EED_0001);
+    let n_qs = parse_usize(opts, "qs", 10_000);
+    let n_pool = parse_usize(opts, "pool", 50_000);
+    let target_smooth = parse_usize(opts, "target", 50);
+    let n_bins = parse_usize(opts, "bins", 10);
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![30, 100]);
+
+    println!("E22 SIEVE ENRICHMENT: Eisenstein-scored QS polynomial smoothness");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Bounds B     : {:?}", bounds);
+    println!("QS values    : {n_qs}");
+    println!("Sieve pool   : {n_pool}");
+    println!("Sieve target : {target_smooth} smooth");
+    println!("Bins         : {n_bins}");
+    println!("Seed         : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let checkpoint_path = "data/E22_sieve_enrichment_checkpoint.json";
+    let result = run_sieve_enrichment(
+        &bit_sizes,
+        &bounds,
+        n_qs,
+        n_pool,
+        target_smooth,
+        n_bins,
+        seed,
+        Some(checkpoint_path),
+    );
+
+    println!();
+    print_sieve_summary(&result);
+    write_json(&result, "data/E22_sieve_enrichment.json");
+}
+
+fn print_sieve_summary(result: &SieveEnrichmentResult) {
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E22 SIEVE ENRICHMENT: Eisenstein-scored QS polynomial smoothness          │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Phase 1: Group-level enrichment ───
+    println!("PHASE 1: GROUP-LEVEL ENRICHMENT PROFILES");
+    println!("  Theoretical ceiling: enrichment of B-smooth elements in (ℤ/ℓℤ)* by character score.");
+    println!(
+        "  {:>6} {:>4} {:>4} {:>8} {:>5} {:>8} {:>8} {:>8}",
+        "ℓ", "k", "B", "smooth%", "r*", "Q4×", "D10×", "V20×"
+    );
+    println!("  {}", "─".repeat(60));
+    for g in &result.group_profiles {
+        println!(
+            "  {:>6} {:>4} {:>4} {:>7.3}% {:>5} {:>7.2}× {:>7.2}× {:>7.2}×",
+            g.ell,
+            g.weight,
+            g.smooth_bound,
+            g.smooth_fraction * 100.0,
+            g.full_r_star,
+            g.enrichment_top_quartile,
+            g.enrichment_top_decile,
+            g.enrichment_top_ventile,
+        );
+    }
+    println!();
+
+    // ─── Phase 2: QS polynomial enrichment ───
+    println!("PHASE 2: QS POLYNOMIAL ENRICHMENT (per-channel, top quartile)");
+    println!("  Does character score of Q(x) mod ℓ predict smoothness of full Q(x)?");
+    println!(
+        "  {:>4} {:>4} {:>8} {:>8} {:>10} {:>8}  {}",
+        "n", "B", "smooth%", "best_ℓ", "enrich_Q4", "overflow", "verdict"
+    );
+    println!("  {}", "─".repeat(62));
+    for b in &result.qs_blocks {
+        let best_ch = if !b.channels.is_empty() {
+            &b.channels[b.best_single_channel_idx]
+        } else {
+            continue;
+        };
+        let overflow = best_ch.overflow_ratio;
+        let verdict = if b.best_single_enrichment > 1.2 {
+            "★ signal"
+        } else if b.best_single_enrichment > 1.05 {
+            "~ weak"
+        } else {
+            "✓ noise"
+        };
+        println!(
+            "  {:>4} {:>4} {:>7.4}% {:>8} {:>9.3}× {:>7.1}×  {}",
+            b.n_bits,
+            b.smooth_bound,
+            b.overall_smooth_rate * 100.0,
+            best_ch.ell,
+            b.best_single_enrichment,
+            overflow,
+            verdict,
+        );
+    }
+
+    // Mean and statistics.
+    let qs_enrichments: Vec<f64> = result
+        .qs_blocks
+        .iter()
+        .map(|b| b.best_single_enrichment)
+        .collect();
+    if !qs_enrichments.is_empty() {
+        let mean = qs_enrichments.iter().sum::<f64>() / qs_enrichments.len() as f64;
+        let max = qs_enrichments
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let min = qs_enrichments
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
+        println!();
+        println!(
+            "  Summary: mean best_enrich={:.3}×, range [{:.3}×, {:.3}×]",
+            mean, min, max
+        );
+        let n_signal = qs_enrichments.iter().filter(|&&e| e > 1.2).count();
+        println!(
+            "  Blocks with enrichment > 1.2: {}/{} ({:.1}%)",
+            n_signal,
+            qs_enrichments.len(),
+            100.0 * n_signal as f64 / qs_enrichments.len() as f64
+        );
+    }
+    println!();
+
+    // ─── Phase 3: Joint scoring ───
+    println!("PHASE 3: JOINT MULTI-CHANNEL SCORING");
+    println!("  Joint score = amplitude-weighted average Re(χ_r*(Q(x) mod ℓ)) over 7 channels.");
+    println!(
+        "  {:>4} {:>4} {:>10} {:>10} {:>10} {:>10}",
+        "n", "B", "joint_Q4×", "joint_D10×", "corr", "best_1ch"
+    );
+    println!("  {}", "─".repeat(56));
+    for j in &result.joint_scoring {
+        println!(
+            "  {:>4} {:>4} {:>9.3}× {:>9.3}× {:>10.6} {:>9.3}×",
+            j.n_bits,
+            j.smooth_bound,
+            j.joint_enrichment_top_q,
+            j.joint_enrichment_top_d,
+            j.joint_pearson_corr,
+            j.best_single_enrichment,
+        );
+    }
+    println!();
+
+    // ─── Phase 4: Sieve speedup ───
+    println!("PHASE 4: DIRECT SIEVE SPEEDUP (random vs scored)");
+    println!("  Measures how many Q(x) must be tested to find target_smooth B-smooth values.");
+    println!(
+        "  {:>4} {:>4} {:>8} {:>8} {:>8} {:>9}  {}",
+        "n", "B", "random", "scored", "speedup", "smooth_r%", "verdict"
+    );
+    println!("  {}", "─".repeat(62));
+    for s in &result.sieve_speedup {
+        let verdict = if s.speedup_factor > 1.2 {
+            "★ FASTER"
+        } else if s.speedup_factor > 1.05 {
+            "~ marginal"
+        } else if s.speedup_factor > 0.95 {
+            "= same"
+        } else {
+            "✗ slower"
+        };
+        println!(
+            "  {:>4} {:>4} {:>8} {:>8} {:>7.3}× {:>8.4}%  {}",
+            s.n_bits,
+            s.smooth_bound,
+            s.random_tested,
+            s.scored_tested,
+            s.speedup_factor,
+            s.scored_smooth_rate * 100.0,
+            verdict,
+        );
+    }
+
+    // Speedup summary.
+    let speedups: Vec<f64> = result.sieve_speedup.iter().map(|s| s.speedup_factor).collect();
+    if !speedups.is_empty() {
+        let mean = speedups.iter().sum::<f64>() / speedups.len() as f64;
+        let max = speedups.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min = speedups.iter().cloned().fold(f64::INFINITY, f64::min);
+        println!();
+        println!(
+            "  Summary: mean speedup={:.3}×, range [{:.3}×, {:.3}×]",
+            mean, min, max
+        );
+        let n_faster = speedups.iter().filter(|&&s| s > 1.05).count();
+        println!(
+            "  Blocks with speedup > 1.05: {}/{} ({:.1}%)",
+            n_faster,
+            speedups.len(),
+            100.0 * n_faster as f64 / speedups.len() as f64
+        );
+    }
+    println!();
 }
 
 // ---------------------------------------------------------------------------
