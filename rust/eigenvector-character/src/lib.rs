@@ -2311,10 +2311,12 @@ struct ChannelData {
     #[allow(dead_code)]
     prim_g: u64,
     dlog: Vec<u32>,
+    #[allow(dead_code)]
     g_vals: Vec<u64>,
     dlogs_g: Vec<u32>,
     smooth_vals: Vec<f64>,
     scanned_r_star: usize,
+    #[allow(dead_code)]
     full_r_star: usize,
     channel_weight: u32,
 }
@@ -2795,7 +2797,6 @@ fn run_cross_channel_mi(
     let ch_j = 3;
 
     // Get N^{k-1} mod ℓ dlogs for each channel.
-    let prime_idx = |p: u64| -> usize { block.prime_set.partition_point(|&x| x < p) };
     let mut dlogs_i = Vec::with_capacity(n);
     let mut dlogs_j = Vec::with_capacity(n);
 
@@ -2884,7 +2885,10 @@ fn run_cross_channel_mi(
 // Test C4: Permutation null on strongest cross-channel feature
 // ---------------------------------------------------------------------------
 
-/// Take the strongest feature from C1, shuffle target, recompute correlation.
+/// Permutation null on the maximum |correlation| across ALL 84 cross-channel features.
+///
+/// Properly accounts for selection bias by computing max|corr| over all features
+/// for each permutation, matching the selection process in C1.
 fn run_cross_channel_perm(
     block: &CrossChannelBlock,
     features: &[Vec<f64>],
@@ -2897,34 +2901,60 @@ fn run_cross_channel_perm(
     use algebra::pearson_corr;
     use rand::seq::SliceRandom;
 
+    let n_channels = block.channels.len();
     let n = features.len();
     let target = &block.target_ref;
 
-    // Reconstruct the best cross-product feature.
+    // Precompute all 84 cross-product feature vectors.
+    let mut all_cross: Vec<Vec<f64>> = Vec::new();
+    for i in 0..n_channels {
+        for j in (i + 1)..n_channels {
+            let pairs = [
+                (2 * i, 2 * j),
+                (2 * i, 2 * j + 1),
+                (2 * i + 1, 2 * j),
+                (2 * i + 1, 2 * j + 1),
+            ];
+            for &(fi, fj) in &pairs {
+                let cross: Vec<f64> = features.iter().map(|f| f[fi] * f[fj]).collect();
+                all_cross.push(cross);
+            }
+        }
+    }
+
+    // Observed max |corr| across all 84 features.
+    let observed_max: f64 = all_cross
+        .iter()
+        .map(|cross| pearson_corr(cross, target).abs())
+        .fold(0.0f64, f64::max);
+
+    // Identify the specific observed correlation for the named best feature.
     let (fi, fj) = match best_type {
         "Re·Re" => (2 * best_i, 2 * best_j),
         "Re·Im" => (2 * best_i, 2 * best_j + 1),
         "Im·Re" => (2 * best_i + 1, 2 * best_j),
         "Im·Im" => (2 * best_i + 1, 2 * best_j + 1),
-        _ => (2 * best_i, 2 * best_j), // fallback
+        _ => (2 * best_i, 2 * best_j),
     };
+    let specific_cross: Vec<f64> = features.iter().map(|f| f[fi] * f[fj]).collect();
+    let observed_corr = pearson_corr(&specific_cross, target);
 
-    let cross_product: Vec<f64> = features.iter().map(|f| f[fi] * f[fj]).collect();
-    let observed_corr = pearson_corr(&cross_product, target);
-
-    // Permutation null.
+    // Permutation null: for each permutation, compute max|corr| over all 84 features.
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut null_corrs = Vec::with_capacity(n_permutations);
+    let mut null_max_corrs = Vec::with_capacity(n_permutations);
     let mut shuffled = target.clone();
 
     for _ in 0..n_permutations {
         shuffled.shuffle(&mut rng);
-        let c = pearson_corr(&cross_product, &shuffled);
-        null_corrs.push(c);
+        let perm_max: f64 = all_cross
+            .iter()
+            .map(|cross| pearson_corr(cross, &shuffled).abs())
+            .fold(0.0f64, f64::max);
+        null_max_corrs.push(perm_max);
     }
 
-    let null_mean: f64 = null_corrs.iter().sum::<f64>() / n_permutations as f64;
-    let null_var: f64 = null_corrs
+    let null_mean: f64 = null_max_corrs.iter().sum::<f64>() / n_permutations as f64;
+    let null_var: f64 = null_max_corrs
         .iter()
         .map(|&c| (c - null_mean).powi(2))
         .sum::<f64>()
@@ -2932,19 +2962,20 @@ fn run_cross_channel_perm(
     let null_std = null_var.sqrt();
 
     let z_score = if null_std > 1e-15 {
-        (observed_corr.abs() - null_mean.abs()) / null_std
+        (observed_max - null_mean) / null_std
     } else {
         0.0
     };
 
-    let empirical_p_value = null_corrs
+    // p-value: fraction of permutations with max|corr| ≥ observed max.
+    let empirical_p_value = null_max_corrs
         .iter()
-        .filter(|&&c| c.abs() >= observed_corr.abs())
+        .filter(|&&c| c >= observed_max)
         .count() as f64
         / n_permutations as f64;
 
     let feature_desc = format!(
-        "ch{}(k={},ℓ={})×ch{}(k={},ℓ={}) {}",
+        "max_84 (best: ch{}(k={},ℓ={})×ch{}(k={},ℓ={}) {})",
         best_i,
         block.channels[best_i].channel_weight,
         block.channels[best_i].ell,
