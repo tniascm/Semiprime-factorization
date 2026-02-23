@@ -8,4 +8,6 @@
 //! Target range: 100–200 bit semiprimes.
 
 pub mod cado;
+pub mod evolution;
+pub mod fitness;
 pub mod params;
