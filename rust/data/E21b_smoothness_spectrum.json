@@ -12,6 +12,10 @@
         "a_max_corrected": 0.8519442299892102,
         "parity_a_max": 0.22575735345175013,
         "ratio_to_parity": 0.8066777847851151,
+        "null_a_max": 0.1394092188162857,
+        "excess_ratio": 1.306322805103716,
+        "head_energy_fraction": 0.36935362685960654,
+        "parity_head_energy": 0.3295634057594586,
         "top_amplitudes": [
           [
             13,
@@ -65,6 +69,10 @@
         "a_max_corrected": 0.9747834564219204,
         "parity_a_max": 0.2115344644244259,
         "ratio_to_parity": 0.8999856980659272,
+        "null_a_max": 0.1262528643137814,
+        "excess_ratio": 1.507910285162836,
+        "head_energy_fraction": 0.35119816263960124,
+        "parity_head_energy": 0.28979976835019083,
         "top_amplitudes": [
           [
             9,
@@ -118,6 +126,10 @@
         "a_max_corrected": 1.0561668803161606,
         "parity_a_max": 0.20079163973763461,
         "ratio_to_parity": 0.9439547612820559,
+        "null_a_max": 0.11421796093813559,
+        "excess_ratio": 1.6594432504239147,
+        "head_energy_fraction": 0.3474691293694552,
+        "parity_head_energy": 0.2522786400035879,
         "top_amplitudes": [
           [
             21,
@@ -171,6 +183,10 @@
         "a_max_corrected": 1.1109928557557738,
         "parity_a_max": 0.17946399362071216,
         "ratio_to_parity": 1.026575554087607,
+        "null_a_max": 0.10347858916167363,
+        "excess_ratio": 1.7804006624221898,
+        "head_energy_fraction": 0.400042895929319,
+        "parity_head_energy": 0.22353095837060746,
         "top_amplitudes": [
           [
             69,
@@ -224,6 +240,10 @@
         "a_max_corrected": 0.9627196105695114,
         "parity_a_max": 0.16329120011069728,
         "ratio_to_parity": 0.8924588240084985,
+        "null_a_max": 0.09168770424369774,
+        "excess_ratio": 1.589424379460851,
+        "head_energy_fraction": 0.3832843350920842,
+        "parity_head_energy": 0.186303921090305,
         "top_amplitudes": [
           [
             29,
@@ -277,6 +297,10 @@
         "a_max_corrected": 0.975638234787264,
         "parity_a_max": 0.13931210572668995,
         "ratio_to_parity": 0.9565079542331455,
+        "null_a_max": 0.08030945717107095,
+        "excess_ratio": 1.6592458963419352,
+        "head_energy_fraction": 0.3022648536623603,
+        "parity_head_energy": 0.1589977661922665,
         "top_amplitudes": [
           [
             53,
@@ -330,6 +354,10 @@
         "a_max_corrected": 1.0717109176591657,
         "parity_a_max": 0.1351164017306037,
         "ratio_to_parity": 1.0061432286182992,
+        "null_a_max": 0.07238118710600579,
+        "excess_ratio": 1.878201479030961,
+        "head_energy_fraction": 0.30564085508779987,
+        "parity_head_energy": 0.1404268252683053,
         "top_amplitudes": [
           [
             59,
@@ -383,6 +411,10 @@
         "a_max_corrected": 1.0015640432964943,
         "parity_a_max": 0.12010914699778091,
         "ratio_to_parity": 0.9653534736219456,
+        "null_a_max": 0.06385081978264404,
+        "excess_ratio": 1.8159168928884084,
+        "head_energy_fraction": 0.29132284838877764,
+        "parity_head_energy": 0.11779507929333011,
         "top_amplitudes": [
           [
             65,
@@ -436,6 +468,10 @@
         "a_max_corrected": 1.1922737984665905,
         "parity_a_max": 0.10804750431343504,
         "ratio_to_parity": 1.170365185018247,
+        "null_a_max": 0.0560078717099013,
+        "excess_ratio": 2.2578082957970715,
+        "head_energy_fraction": 0.2733908394242251,
+        "parity_head_energy": 0.09965665004192092,
         "top_amplitudes": [
           [
             35,
@@ -489,6 +525,10 @@
         "a_max_corrected": 1.0091380345374112,
         "parity_a_max": 0.0968869865781432,
         "ratio_to_parity": 1.0070009813756857,
+        "null_a_max": 0.04891838498879827,
+        "excess_ratio": 1.9944503603106354,
+        "head_energy_fraction": 0.253150750689956,
+        "parity_head_energy": 0.08479318626937626,
         "top_amplitudes": [
           [
             67,
@@ -542,6 +582,10 @@
         "a_max_corrected": 1.1185929663784473,
         "parity_a_max": 0.09519457428683711,
         "ratio_to_parity": 1.0420791327651784,
+        "null_a_max": 0.0427538698384567,
+        "excess_ratio": 2.3202643361080697,
+        "head_energy_fraction": 0.253564657949082,
+        "parity_head_energy": 0.07036563454259921,
         "top_amplitudes": [
           [
             7,
@@ -595,6 +639,10 @@
         "a_max_corrected": 1.0793564603653054,
         "parity_a_max": 0.0880526631820699,
         "ratio_to_parity": 0.9925133048639527,
+        "null_a_max": 0.03732463086395971,
+        "excess_ratio": 2.3414415016035677,
+        "head_energy_fraction": 0.24477363318096435,
+        "parity_head_energy": 0.06072161779050113,
         "top_amplitudes": [
           [
             1,
@@ -648,6 +696,10 @@
         "a_max_corrected": 1.6242837384485598,
         "parity_a_max": 0.07514071897745153,
         "ratio_to_parity": 1.5953880343006213,
+        "null_a_max": 0.03223635844305124,
+        "excess_ratio": 3.718739018153969,
+        "head_energy_fraction": 0.3053593064759552,
+        "parity_head_energy": 0.05126684723444093,
         "top_amplitudes": [
           [
             659,
@@ -701,6 +753,10 @@
         "a_max_corrected": 0.990088228841533,
         "parity_a_max": 0.06896335812369367,
         "ratio_to_parity": 0.9653064897655339,
+        "null_a_max": 0.02784485492857393,
+        "excess_ratio": 2.390774788505446,
+        "head_energy_fraction": 0.21783476889373207,
+        "parity_head_energy": 0.04136763301422296,
         "top_amplitudes": [
           [
             5,
@@ -754,6 +810,10 @@
         "a_max_corrected": 1.0333157818539223,
         "parity_a_max": 0.06574480065405153,
         "ratio_to_parity": 0.9632967909405201,
+        "null_a_max": 0.024038946688202924,
+        "excess_ratio": 2.6345478573797916,
+        "head_energy_fraction": 0.20620460949520739,
+        "parity_head_energy": 0.03513038442482697,
         "top_amplitudes": [
           [
             36,
@@ -807,6 +867,10 @@
         "a_max_corrected": 0.9474396138659397,
         "parity_a_max": 0.056674443072736766,
         "ratio_to_parity": 0.9347227936990522,
+        "null_a_max": 0.020707990427832227,
+        "excess_ratio": 2.5581861236079377,
+        "head_energy_fraction": 0.17772931349604726,
+        "parity_head_energy": 0.028818123284505108,
         "top_amplitudes": [
           [
             189,
@@ -860,6 +924,10 @@
         "a_max_corrected": 1.2047498167399855,
         "parity_a_max": 0.05244704250809753,
         "ratio_to_parity": 1.168285703255657,
+        "null_a_max": 0.017710061487212377,
+        "excess_ratio": 3.459792050100706,
+        "head_energy_fraction": 0.1851209207517401,
+        "parity_head_energy": 0.024848393375194705,
         "top_amplitudes": [
           [
             55,
@@ -913,6 +981,10 @@
         "a_max_corrected": 0.8726911460002134,
         "parity_a_max": 0.05124324272478313,
         "ratio_to_parity": 0.7889013464402723,
+        "null_a_max": 0.015197434580498631,
+        "excess_ratio": 2.6600452179884115,
+        "head_energy_fraction": 0.1679938374850003,
+        "parity_head_energy": 0.020334884352169905,
         "top_amplitudes": [
           [
             643,
@@ -966,6 +1038,10 @@
         "a_max_corrected": 1.2966724684106334,
         "parity_a_max": 0.045351159960794175,
         "ratio_to_parity": 1.2069557240119735,
+        "null_a_max": 0.013012832915477054,
+        "excess_ratio": 4.206374004861069,
+        "head_energy_fraction": 0.20880720583126117,
+        "parity_head_energy": 0.01679544323111856,
         "top_amplitudes": [
           [
             2375,
@@ -1019,6 +1095,10 @@
         "a_max_corrected": 0.9099961668777894,
         "parity_a_max": 0.040017359856042115,
         "ratio_to_parity": 0.872550225265136,
+        "null_a_max": 0.011090467051254453,
+        "excess_ratio": 3.148393678601303,
+        "head_energy_fraction": 0.16350809445791262,
+        "parity_head_energy": 0.01423381521106092,
         "top_amplitudes": [
           [
             539,
@@ -1072,6 +1152,10 @@
         "a_max_corrected": 0.8442446788176717,
         "parity_a_max": 0.036344265730936354,
         "ratio_to_parity": 0.8110330867957263,
+        "null_a_max": 0.009489983886352154,
+        "excess_ratio": 3.1060539592144507,
+        "head_energy_fraction": 0.13880636105956828,
+        "parity_head_energy": 0.011374493026207827,
         "top_amplitudes": [
           [
             192,
@@ -1125,6 +1209,10 @@
         "a_max_corrected": 0.8534683130876138,
         "parity_a_max": 0.03511313095862993,
         "ratio_to_parity": 0.7719945316890353,
+        "null_a_max": 0.008066991843689315,
+        "excess_ratio": 3.3602544313651173,
+        "head_energy_fraction": 0.13375588642445546,
+        "parity_head_energy": 0.009729268028972868,
         "top_amplitudes": [
           [
             115,
@@ -1178,6 +1266,10 @@
         "a_max_corrected": 0.9628794905039244,
         "parity_a_max": 0.029358933984964145,
         "ratio_to_parity": 0.9463853316475586,
+        "null_a_max": 0.006842243737826314,
+        "excess_ratio": 4.060782623479873,
+        "head_energy_fraction": 0.1273277282007751,
+        "parity_head_energy": 0.007936486955060575,
         "top_amplitudes": [
           [
             197,
@@ -1231,6 +1323,10 @@
         "a_max_corrected": 0.8696867895037748,
         "parity_a_max": 0.029008514937220377,
         "ratio_to_parity": 0.7864484581272708,
+        "null_a_max": 0.005819241501217557,
+        "excess_ratio": 3.9203909719446375,
+        "head_energy_fraction": 0.11073830366212083,
+        "parity_head_energy": 0.006760721466098739,
         "top_amplitudes": [
           [
             46,
@@ -1284,6 +1380,10 @@
         "a_max_corrected": 0.7449930491987944,
         "parity_a_max": 0.02493806767070135,
         "ratio_to_parity": 0.7121179549547245,
+        "null_a_max": 0.0049386162025265405,
+        "excess_ratio": 3.5959153378019435,
+        "head_energy_fraction": 0.10103484420860717,
+        "parity_head_energy": 0.005407352924663842,
         "top_amplitudes": [
           [
             556,
@@ -1337,6 +1437,10 @@
         "a_max_corrected": 0.8209434759858676,
         "parity_a_max": 0.022388160887089847,
         "ratio_to_parity": 0.7940763377462287,
+        "null_a_max": 0.00418358306633782,
+        "excess_ratio": 4.249445636478278,
+        "head_energy_fraction": 0.08909336567658489,
+        "parity_head_energy": 0.004479380191888785,
         "top_amplitudes": [
           [
             273,
@@ -1390,6 +1494,10 @@
         "a_max_corrected": 0.7449841249188939,
         "parity_a_max": 0.020064351021686418,
         "ratio_to_parity": 0.7301873464139144,
+        "null_a_max": 0.003540969318105569,
+        "excess_ratio": 4.137492848393476,
+        "head_energy_fraction": 0.08592615462824824,
+        "parity_head_energy": 0.003747374670449216,
         "top_amplitudes": [
           [
             1255,
@@ -1443,6 +1551,10 @@
         "a_max_corrected": 0.7227576504433462,
         "parity_a_max": 0.018033470782851276,
         "ratio_to_parity": 0.7155459015646285,
+        "null_a_max": 0.0029886581032601382,
+        "excess_ratio": 4.317581892548629,
+        "head_energy_fraction": 0.07392455963712785,
+        "parity_head_energy": 0.002980261133343759,
         "top_amplitudes": [
           [
             755,
@@ -1496,6 +1608,10 @@
         "a_max_corrected": 0.6959045729988143,
         "parity_a_max": 0.016527938289893813,
         "ratio_to_parity": 0.6823252000757474,
+        "null_a_max": 0.002523840798103094,
+        "excess_ratio": 4.468359814520575,
+        "head_energy_fraction": 0.06772018039897537,
+        "parity_head_energy": 0.002538875774426455,
         "top_amplitudes": [
           [
             58,
@@ -1549,6 +1665,10 @@
         "a_max_corrected": 0.7060469088312569,
         "parity_a_max": 0.014761678850724914,
         "ratio_to_parity": 0.7034597061781024,
+        "null_a_max": 0.0021283814482504133,
+        "excess_ratio": 4.878940415291904,
+        "head_energy_fraction": 0.06813562317829479,
+        "parity_head_energy": 0.0020253032113321376,
         "top_amplitudes": [
           [
             374,
@@ -1613,6 +1733,10 @@
         "a_max_corrected": 0.44599231732582817,
         "parity_a_max": 0.22575735345175013,
         "ratio_to_parity": 0.42229535914121474,
+        "null_a_max": 0.11393020816276335,
+        "excess_ratio": 0.8367954749848024,
+        "head_energy_fraction": 0.2561175559383201,
+        "parity_head_energy": 0.3295634057594586,
         "top_amplitudes": [
           [
             1,
@@ -1666,6 +1790,10 @@
         "a_max_corrected": 0.5124329511831767,
         "parity_a_max": 0.2115344644244259,
         "ratio_to_parity": 0.47311259156511426,
+        "null_a_max": 0.11162529613899783,
+        "excess_ratio": 0.8965675535100722,
+        "head_energy_fraction": 0.24250925872236948,
+        "parity_head_energy": 0.28979976835019083,
         "top_amplitudes": [
           [
             7,
@@ -1719,6 +1847,10 @@
         "a_max_corrected": 0.5670498312937319,
         "parity_a_max": 0.20079163973763461,
         "ratio_to_parity": 0.5068037997685303,
+        "null_a_max": 0.1070718026225429,
+        "excess_ratio": 0.9504086368987877,
+        "head_energy_fraction": 0.24303344079922967,
+        "parity_head_energy": 0.2522786400035879,
         "top_amplitudes": [
           [
             11,
@@ -1772,6 +1904,10 @@
         "a_max_corrected": 0.8886841829543708,
         "parity_a_max": 0.17946399362071216,
         "ratio_to_parity": 0.8211587075460222,
+        "null_a_max": 0.10265404543039457,
+        "excess_ratio": 1.4355831807189319,
+        "head_energy_fraction": 0.2581790160577802,
+        "parity_head_energy": 0.22353095837060746,
         "top_amplitudes": [
           [
             95,
@@ -1825,6 +1961,10 @@
         "a_max_corrected": 0.8327087866934921,
         "parity_a_max": 0.16329120011069728,
         "ratio_to_parity": 0.7719363938939512,
+        "null_a_max": 0.09674101825875889,
+        "excess_ratio": 1.3029676804818484,
+        "head_energy_fraction": 0.23849711524729808,
+        "parity_head_energy": 0.186303921090305,
         "top_amplitudes": [
           [
             119,
@@ -1878,6 +2018,10 @@
         "a_max_corrected": 0.7608134709733536,
         "parity_a_max": 0.13931210572668995,
         "ratio_to_parity": 0.7458954669118928,
+        "null_a_max": 0.08913126062704597,
+        "excess_ratio": 1.1658341575835094,
+        "head_energy_fraction": 0.1879542068309958,
+        "parity_head_energy": 0.1589977661922665,
         "top_amplitudes": [
           [
             53,
@@ -1931,6 +2075,10 @@
         "a_max_corrected": 0.7669450365775439,
         "parity_a_max": 0.1351164017306037,
         "ratio_to_parity": 0.7200230421841407,
+        "null_a_max": 0.08369209035380837,
+        "excess_ratio": 1.162438675049975,
+        "head_energy_fraction": 0.20265672731953896,
+        "parity_head_energy": 0.1404268252683053,
         "top_amplitudes": [
           [
             89,
@@ -1984,6 +2132,10 @@
         "a_max_corrected": 0.7390858751801159,
         "parity_a_max": 0.12010914699778091,
         "ratio_to_parity": 0.7123649472895749,
+        "null_a_max": 0.0770673269595569,
+        "excess_ratio": 1.110218163074096,
+        "head_energy_fraction": 0.20502849736400378,
+        "parity_head_energy": 0.11779507929333011,
         "top_amplitudes": [
           [
             177,
@@ -2037,6 +2189,10 @@
         "a_max_corrected": 0.769375978686331,
         "parity_a_max": 0.10804750431343504,
         "ratio_to_parity": 0.7552383192534402,
+        "null_a_max": 0.07081483987690963,
+        "excess_ratio": 1.152323661241732,
+        "head_energy_fraction": 0.1686632605909178,
+        "parity_head_energy": 0.09965665004192092,
         "top_amplitudes": [
           [
             69,
@@ -2090,6 +2246,10 @@
         "a_max_corrected": 0.8847598989452141,
         "parity_a_max": 0.0968869865781432,
         "ratio_to_parity": 0.8828862415517779,
+        "null_a_max": 0.06444762701076653,
+        "excess_ratio": 1.3272821886981838,
+        "head_energy_fraction": 0.1574955652215411,
+        "parity_head_energy": 0.08479318626937626,
         "top_amplitudes": [
           [
             13,
@@ -2143,6 +2303,10 @@
         "a_max_corrected": 0.8642136750572499,
         "parity_a_max": 0.09519457428683711,
         "ratio_to_parity": 0.8050998567809505,
+        "null_a_max": 0.058788945668899834,
+        "excess_ratio": 1.3036658040492863,
+        "head_energy_fraction": 0.16090787944864296,
+        "parity_head_energy": 0.07036563454259921,
         "top_amplitudes": [
           [
             7,
@@ -2196,6 +2360,10 @@
         "a_max_corrected": 1.0207943541096645,
         "parity_a_max": 0.0880526631820699,
         "ratio_to_parity": 0.9386630044730065,
+        "null_a_max": 0.05312994303801913,
+        "excess_ratio": 1.555653415912508,
+        "head_energy_fraction": 0.14484510771347908,
+        "parity_head_energy": 0.06072161779050113,
         "top_amplitudes": [
           [
             71,
@@ -2249,6 +2417,10 @@
         "a_max_corrected": 1.1437197117450937,
         "parity_a_max": 0.07514071897745153,
         "ratio_to_parity": 1.1233731518205827,
+        "null_a_max": 0.04773502728848614,
+        "excess_ratio": 1.7683255065012744,
+        "head_energy_fraction": 0.16336081956581408,
+        "parity_head_energy": 0.05126684723444093,
         "top_amplitudes": [
           [
             217,
@@ -2302,6 +2474,10 @@
         "a_max_corrected": 0.9989338444793919,
         "parity_a_max": 0.06896335812369367,
         "ratio_to_parity": 0.9739307011564596,
+        "null_a_max": 0.04275635646721755,
+        "excess_ratio": 1.570889974757569,
+        "head_energy_fraction": 0.13053160678925305,
+        "parity_head_energy": 0.04136763301422296,
         "top_amplitudes": [
           [
             15,
@@ -2355,6 +2531,10 @@
         "a_max_corrected": 1.4702074089605024,
         "parity_a_max": 0.06574480065405153,
         "ratio_to_parity": 1.3705840014633983,
+        "null_a_max": 0.038192768329879175,
+        "excess_ratio": 2.359315019470558,
+        "head_energy_fraction": 0.1143877794902908,
+        "parity_head_energy": 0.03513038442482697,
         "top_amplitudes": [
           [
             65,
@@ -2408,6 +2588,10 @@
         "a_max_corrected": 1.5005856593513307,
         "parity_a_max": 0.056674443072736766,
         "ratio_to_parity": 1.4804443461787515,
+        "null_a_max": 0.03405360708089438,
+        "excess_ratio": 2.4638611299105597,
+        "head_energy_fraction": 0.11403681668419828,
+        "parity_head_energy": 0.028818123284505108,
         "top_amplitudes": [
           [
             285,
@@ -2461,6 +2645,10 @@
         "a_max_corrected": 1.2501876252746125,
         "parity_a_max": 0.05244704250809753,
         "ratio_to_parity": 1.2123482474956861,
+        "null_a_max": 0.03017443624589806,
+        "excess_ratio": 2.1072168358958976,
+        "head_energy_fraction": 0.11693229453807909,
+        "parity_head_energy": 0.024848393375194705,
         "top_amplitudes": [
           [
             103,
@@ -2514,6 +2702,10 @@
         "a_max_corrected": 1.3537489148114623,
         "parity_a_max": 0.05124324272478313,
         "ratio_to_parity": 1.2237712580580704,
+        "null_a_max": 0.026721047585555897,
+        "excess_ratio": 2.346839412470524,
+        "head_energy_fraction": 0.10864402726372631,
+        "parity_head_energy": 0.020334884352169905,
         "top_amplitudes": [
           [
             55,
@@ -2567,6 +2759,10 @@
         "a_max_corrected": 1.5061349440769662,
         "parity_a_max": 0.045351159960794175,
         "ratio_to_parity": 1.4019254948139077,
+        "null_a_max": 0.023640936122311905,
+        "excess_ratio": 2.6893582825773277,
+        "head_energy_fraction": 0.10828597783591903,
+        "parity_head_energy": 0.01679544323111856,
         "top_amplitudes": [
           [
             2375,
@@ -2620,6 +2816,10 @@
         "a_max_corrected": 1.5814988125367775,
         "parity_a_max": 0.040017359856042115,
         "ratio_to_parity": 1.5164208327053679,
+        "null_a_max": 0.02080158634471831,
+        "excess_ratio": 2.9172370390385005,
+        "head_energy_fraction": 0.10996317292931404,
+        "parity_head_energy": 0.01423381521106092,
         "top_amplitudes": [
           [
             475,
@@ -2673,6 +2873,10 @@
         "a_max_corrected": 1.4585966040732505,
         "parity_a_max": 0.036344265730936354,
         "ratio_to_parity": 1.4012171303797745,
+        "null_a_max": 0.018290777011325345,
+        "excess_ratio": 2.7842561145286475,
+        "head_energy_fraction": 0.08050806701747357,
+        "parity_head_energy": 0.011374493026207827,
         "top_amplitudes": [
           [
             483,
@@ -2726,6 +2930,10 @@
         "a_max_corrected": 1.5448834832524105,
         "parity_a_max": 0.03511313095862993,
         "ratio_to_parity": 1.3974058355522547,
+        "null_a_max": 0.016045056984915512,
+        "excess_ratio": 3.058094100396763,
+        "head_energy_fraction": 0.08807581116993354,
+        "parity_head_energy": 0.009729268028972868,
         "top_amplitudes": [
           [
             255,
@@ -2779,6 +2987,10 @@
         "a_max_corrected": 1.6799892573323973,
         "parity_a_max": 0.029358933984964145,
         "ratio_to_parity": 1.6512109834562692,
+        "null_a_max": 0.014025503387138512,
+        "excess_ratio": 3.4564031621848823,
+        "head_energy_fraction": 0.07634251958880237,
+        "parity_head_energy": 0.007936486955060575,
         "top_amplitudes": [
           [
             131,
@@ -2832,6 +3044,10 @@
         "a_max_corrected": 1.5685228907400075,
         "parity_a_max": 0.029008514937220377,
         "ratio_to_parity": 1.4183984669511354,
+        "null_a_max": 0.012255290356308731,
+        "excess_ratio": 3.357377256614871,
+        "head_energy_fraction": 0.07344614481634049,
+        "parity_head_energy": 0.006760721466098739,
         "top_amplitudes": [
           [
             393,
@@ -2885,6 +3101,10 @@
         "a_max_corrected": 1.5299183552252347,
         "parity_a_max": 0.02493806767070135,
         "ratio_to_parity": 1.4624060339118303,
+        "null_a_max": 0.010681477783971912,
+        "excess_ratio": 3.4142823093691788,
+        "head_energy_fraction": 0.068860805482172,
+        "parity_head_energy": 0.005407352924663842,
         "top_amplitudes": [
           [
             2955,
@@ -2938,6 +3158,10 @@
         "a_max_corrected": 1.3513681176520476,
         "parity_a_max": 0.022388160887089847,
         "ratio_to_parity": 1.3071416939192846,
+        "null_a_max": 0.009296642557303494,
+        "excess_ratio": 3.1478566982977894,
+        "head_energy_fraction": 0.05989743885605965,
+        "parity_head_energy": 0.004479380191888785,
         "top_amplitudes": [
           [
             3509,
@@ -2991,6 +3215,10 @@
         "a_max_corrected": 1.5501994071494367,
         "parity_a_max": 0.020064351021686418,
         "ratio_to_parity": 1.5194095466693385,
+        "null_a_max": 0.008076788347197656,
+        "excess_ratio": 3.7745159560424204,
+        "head_energy_fraction": 0.06835883123864839,
+        "parity_head_energy": 0.003747374670449216,
         "top_amplitudes": [
           [
             31,
@@ -3044,6 +3272,10 @@
         "a_max_corrected": 1.5923341270537803,
         "parity_a_max": 0.018033470782851276,
         "ratio_to_parity": 1.5764456562111961,
+        "null_a_max": 0.007001879789863491,
+        "excess_ratio": 4.060164917882953,
+        "head_energy_fraction": 0.06129087930966122,
+        "parity_head_energy": 0.002980261133343759,
         "top_amplitudes": [
           [
             1081,
@@ -3097,6 +3329,10 @@
         "a_max_corrected": 1.7034015121833237,
         "parity_a_max": 0.016527938289893813,
         "ratio_to_parity": 1.6701625807706786,
+        "null_a_max": 0.006065062350073829,
+        "excess_ratio": 4.551370204583559,
+        "head_energy_fraction": 0.05418844743564963,
+        "parity_head_energy": 0.002538875774426455,
         "top_amplitudes": [
           [
             1055,
@@ -3150,6 +3386,10 @@
         "a_max_corrected": 2.0105647133043947,
         "parity_a_max": 0.014761678850724914,
         "ratio_to_parity": 2.0031973014574813,
+        "null_a_max": 0.005246847460618137,
+        "excess_ratio": 5.635870960744565,
+        "head_energy_fraction": 0.056451502417165685,
+        "parity_head_energy": 0.0020253032113321376,
         "top_amplitudes": [
           [
             227,
@@ -3214,6 +3454,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.22575735345175013,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.3295634057594586,
         "top_amplitudes": [
           [
             1,
@@ -3267,6 +3511,10 @@
         "a_max_corrected": 0.18222330480973645,
         "parity_a_max": 0.2115344644244259,
         "ratio_to_parity": 0.16824082015615027,
+        "null_a_max": 0.050061216104880936,
+        "excess_ratio": 0.7109042599264289,
+        "head_energy_fraction": 0.20481218160284653,
+        "parity_head_energy": 0.28979976835019083,
         "top_amplitudes": [
           [
             37,
@@ -3320,6 +3568,10 @@
         "a_max_corrected": 0.2221087111683433,
         "parity_a_max": 0.20079163973763461,
         "ratio_to_parity": 0.19851084079328193,
+        "null_a_max": 0.060504504936325185,
+        "excess_ratio": 0.6587826356157689,
+        "head_energy_fraction": 0.17198238801670718,
+        "parity_head_energy": 0.2522786400035879,
         "top_amplitudes": [
           [
             27,
@@ -3373,6 +3625,10 @@
         "a_max_corrected": 0.2940899003192581,
         "parity_a_max": 0.17946399362071216,
         "ratio_to_parity": 0.27174387378615006,
+        "null_a_max": 0.062491759335891135,
+        "excess_ratio": 0.7803947488419644,
+        "head_energy_fraction": 0.17577240560341334,
+        "parity_head_energy": 0.22353095837060746,
         "top_amplitudes": [
           [
             3,
@@ -3426,6 +3682,10 @@
         "a_max_corrected": 0.35134156192488597,
         "parity_a_max": 0.16329120011069728,
         "ratio_to_parity": 0.32570010389141535,
+        "null_a_max": 0.06745120433049953,
+        "excess_ratio": 0.7884805226014284,
+        "head_energy_fraction": 0.13599401638567776,
+        "parity_head_energy": 0.186303921090305,
         "top_amplitudes": [
           [
             65,
@@ -3479,6 +3739,10 @@
         "a_max_corrected": 0.35103315764531035,
         "parity_a_max": 0.13931210572668995,
         "ratio_to_parity": 0.3441501117066514,
+        "null_a_max": 0.06649674033562245,
+        "excess_ratio": 0.7210019093559286,
+        "head_energy_fraction": 0.10945633231083336,
+        "parity_head_energy": 0.1589977661922665,
         "top_amplitudes": [
           [
             13,
@@ -3532,6 +3796,10 @@
         "a_max_corrected": 0.38963201166922373,
         "parity_a_max": 0.1351164017306037,
         "ratio_to_parity": 0.36579417428179156,
+        "null_a_max": 0.0659923484522329,
+        "excess_ratio": 0.7489473213511725,
+        "head_energy_fraction": 0.11845060843319595,
+        "parity_head_energy": 0.1404268252683053,
         "top_amplitudes": [
           [
             93,
@@ -3585,6 +3853,10 @@
         "a_max_corrected": 0.48898372401752765,
         "parity_a_max": 0.12010914699778091,
         "ratio_to_parity": 0.4713049951067142,
+        "null_a_max": 0.064304770924309,
+        "excess_ratio": 0.8803085700233998,
+        "head_energy_fraction": 0.10881009961806043,
+        "parity_head_energy": 0.11779507929333011,
         "top_amplitudes": [
           [
             59,
@@ -3638,6 +3910,10 @@
         "a_max_corrected": 0.49879998695382066,
         "parity_a_max": 0.10804750431343504,
         "ratio_to_parity": 0.48963429353988774,
+        "null_a_max": 0.06155389470301665,
+        "excess_ratio": 0.8594706102433518,
+        "head_energy_fraction": 0.11101168247527274,
+        "parity_head_energy": 0.09965665004192092,
         "top_amplitudes": [
           [
             5,
@@ -3691,6 +3967,10 @@
         "a_max_corrected": 0.7824919141322624,
         "parity_a_max": 0.0968869865781432,
         "ratio_to_parity": 0.7808348298069376,
+        "null_a_max": 0.05844402846532451,
+        "excess_ratio": 1.2944476221405083,
+        "head_energy_fraction": 0.12795560301595954,
+        "parity_head_energy": 0.08479318626937626,
         "top_amplitudes": [
           [
             23,
@@ -3744,6 +4024,10 @@
         "a_max_corrected": 0.6123077319034456,
         "parity_a_max": 0.09519457428683711,
         "ratio_to_parity": 0.5704247473620179,
+        "null_a_max": 0.055145028417555794,
+        "excess_ratio": 0.9847005713123669,
+        "head_energy_fraction": 0.08986018274074181,
+        "parity_head_energy": 0.07036563454259921,
         "top_amplitudes": [
           [
             31,
@@ -3797,6 +4081,10 @@
         "a_max_corrected": 0.70239225218759,
         "parity_a_max": 0.0880526631820699,
         "ratio_to_parity": 0.6458789854221069,
+        "null_a_max": 0.051662095137443624,
+        "excess_ratio": 1.1008334952047003,
+        "head_energy_fraction": 0.09648857639328731,
+        "parity_head_energy": 0.06072161779050113,
         "top_amplitudes": [
           [
             9,
@@ -3850,6 +4138,10 @@
         "a_max_corrected": 0.904664360654894,
         "parity_a_max": 0.07514071897745153,
         "ratio_to_parity": 0.8885705507497129,
+        "null_a_max": 0.04804138489372862,
+        "excess_ratio": 1.389798195726857,
+        "head_energy_fraction": 0.09404617557477542,
+        "parity_head_energy": 0.05126684723444093,
         "top_amplitudes": [
           [
             659,
@@ -3903,6 +4195,10 @@
         "a_max_corrected": 0.8958880117992792,
         "parity_a_max": 0.06896335812369367,
         "ratio_to_parity": 0.8734640880488649,
+        "null_a_max": 0.044432707992513386,
+        "excess_ratio": 1.3556908735440771,
+        "head_energy_fraction": 0.07701542297284046,
+        "parity_head_energy": 0.04136763301422296,
         "top_amplitudes": [
           [
             5,
@@ -3956,6 +4252,10 @@
         "a_max_corrected": 0.8369712587185874,
         "parity_a_max": 0.06574480065405153,
         "ratio_to_parity": 0.7802568602857565,
+        "null_a_max": 0.04094224402014192,
+        "excess_ratio": 1.2529316105196078,
+        "head_energy_fraction": 0.07538423918468369,
+        "parity_head_energy": 0.03513038442482697,
         "top_amplitudes": [
           [
             215,
@@ -4009,6 +4309,10 @@
         "a_max_corrected": 0.8014890716789134,
         "parity_a_max": 0.056674443072736766,
         "ratio_to_parity": 0.7907312436958958,
+        "null_a_max": 0.03762612033196733,
+        "excess_ratio": 1.191041023132087,
+        "head_energy_fraction": 0.0628117949563734,
+        "parity_head_energy": 0.028818123284505108,
         "top_amplitudes": [
           [
             317,
@@ -4062,6 +4366,10 @@
         "a_max_corrected": 0.8754713742086739,
         "parity_a_max": 0.05244704250809753,
         "ratio_to_parity": 0.8489735178920742,
+        "null_a_max": 0.03437292977277932,
+        "excess_ratio": 1.2953842013314776,
+        "head_energy_fraction": 0.05613596050293296,
+        "parity_head_energy": 0.024848393375194705,
         "top_amplitudes": [
           [
             103,
@@ -4115,6 +4423,10 @@
         "a_max_corrected": 1.2441827458343353,
         "parity_a_max": 0.05124324272478313,
         "ratio_to_parity": 1.1247248787903048,
+        "null_a_max": 0.03133989532533081,
+        "excess_ratio": 1.8390153944091232,
+        "head_energy_fraction": 0.056614179927808726,
+        "parity_head_energy": 0.020334884352169905,
         "top_amplitudes": [
           [
             289,
@@ -4168,6 +4480,10 @@
         "a_max_corrected": 1.3365700828232683,
         "parity_a_max": 0.045351159960794175,
         "ratio_to_parity": 1.244092823212342,
+        "null_a_max": 0.028507348007175647,
+        "excess_ratio": 1.9791757766235245,
+        "head_energy_fraction": 0.0630160728142013,
+        "parity_head_energy": 0.01679544323111856,
         "top_amplitudes": [
           [
             2375,
@@ -4221,6 +4537,10 @@
         "a_max_corrected": 1.1847659063818388,
         "parity_a_max": 0.040017359856042115,
         "ratio_to_parity": 1.1360133109645936,
+        "null_a_max": 0.025797371259945485,
+        "excess_ratio": 1.7622048777003987,
+        "head_energy_fraction": 0.048360072028696556,
+        "parity_head_energy": 0.01423381521106092,
         "top_amplitudes": [
           [
             339,
@@ -4274,6 +4594,10 @@
         "a_max_corrected": 1.0365846207221572,
         "parity_a_max": 0.036344265730936354,
         "ratio_to_parity": 0.9958066017622268,
+        "null_a_max": 0.023303809617142096,
+        "excess_ratio": 1.5530447744666023,
+        "head_energy_fraction": 0.04009815478184896,
+        "parity_head_energy": 0.011374493026207827,
         "top_amplitudes": [
           [
             1517,
@@ -4327,6 +4651,10 @@
         "a_max_corrected": 1.4165217034128317,
         "parity_a_max": 0.03511313095862993,
         "ratio_to_parity": 1.281297726329629,
+        "null_a_max": 0.020994811866148006,
+        "excess_ratio": 2.1429282219075008,
+        "head_energy_fraction": 0.04791087611692624,
+        "parity_head_energy": 0.009729268028972868,
         "top_amplitudes": [
           [
             89,
@@ -4380,6 +4708,10 @@
         "a_max_corrected": 1.4259201519295763,
         "parity_a_max": 0.029358933984964145,
         "ratio_to_parity": 1.401494090585066,
+        "null_a_max": 0.018839931995831293,
+        "excess_ratio": 2.183997930295542,
+        "head_energy_fraction": 0.04218353070125397,
+        "parity_head_energy": 0.007936486955060575,
         "top_amplitudes": [
           [
             281,
@@ -4433,6 +4765,10 @@
         "a_max_corrected": 1.6408572594429864,
         "parity_a_max": 0.029008514937220377,
         "ratio_to_parity": 1.483809662593794,
+        "null_a_max": 0.016881345389382813,
+        "excess_ratio": 2.54974433426468,
+        "head_energy_fraction": 0.041506368077759405,
+        "parity_head_energy": 0.006760721466098739,
         "top_amplitudes": [
           [
             631,
@@ -4486,6 +4822,10 @@
         "a_max_corrected": 1.6042245136534907,
         "parity_a_max": 0.02493806767070135,
         "ratio_to_parity": 1.5334332060946831,
+        "null_a_max": 0.015093193683408149,
+        "excess_ratio": 2.533649396159785,
+        "head_energy_fraction": 0.03731917440483076,
+        "parity_head_energy": 0.005407352924663842,
         "top_amplitudes": [
           [
             1841,
@@ -4539,6 +4879,10 @@
         "a_max_corrected": 1.5848187631002186,
         "parity_a_max": 0.022388160887089847,
         "ratio_to_parity": 1.532952165656523,
+        "null_a_max": 0.013463749370630714,
+        "excess_ratio": 2.5490655516653686,
+        "head_energy_fraction": 0.03580518372352519,
+        "parity_head_energy": 0.004479380191888785,
         "top_amplitudes": [
           [
             493,
@@ -4592,6 +4936,10 @@
         "a_max_corrected": 1.57757713753076,
         "parity_a_max": 0.020064351021686418,
         "ratio_to_parity": 1.5462435041045393,
+        "null_a_max": 0.011985684576079467,
+        "excess_ratio": 2.588452268573216,
+        "head_energy_fraction": 0.030534626142880085,
+        "parity_head_energy": 0.003747374670449216,
         "top_amplitudes": [
           [
             1453,
@@ -4645,6 +4993,10 @@
         "a_max_corrected": 1.5682015509581126,
         "parity_a_max": 0.018033470782851276,
         "ratio_to_parity": 1.552553877398673,
+        "null_a_max": 0.010647871913386397,
+        "excess_ratio": 2.6294394987671392,
+        "head_energy_fraction": 0.03035496958509425,
+        "parity_head_energy": 0.002980261133343759,
         "top_amplitudes": [
           [
             2787,
@@ -4698,6 +5050,10 @@
         "a_max_corrected": 1.7579384992349592,
         "parity_a_max": 0.016527938289893813,
         "ratio_to_parity": 1.7236353729398415,
+        "null_a_max": 0.009442398631612827,
+        "excess_ratio": 3.017044735100517,
+        "head_energy_fraction": 0.03016972877875096,
+        "parity_head_energy": 0.002538875774426455,
         "top_amplitudes": [
           [
             37,
@@ -4751,6 +5107,10 @@
         "a_max_corrected": 1.9621184143583057,
         "parity_a_max": 0.014761678850724914,
         "ratio_to_parity": 1.9549285266837968,
+        "null_a_max": 0.008361851002022124,
+        "excess_ratio": 3.451152989935884,
+        "head_energy_fraction": 0.025631611286951277,
+        "parity_head_energy": 0.0020253032113321376,
         "top_amplitudes": [
           [
             147,
@@ -4815,6 +5175,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.22575735345175013,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.3295634057594586,
         "top_amplitudes": [
           [
             1,
@@ -4868,6 +5232,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.2115344644244259,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.28979976835019083,
         "top_amplitudes": [
           [
             1,
@@ -4921,6 +5289,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.20079163973763461,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.2522786400035879,
         "top_amplitudes": [
           [
             1,
@@ -4974,6 +5346,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.17946399362071216,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.22353095837060746,
         "top_amplitudes": [
           [
             1,
@@ -5027,6 +5403,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.16329120011069728,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.186303921090305,
         "top_amplitudes": [
           [
             1,
@@ -5080,6 +5460,10 @@
         "a_max_corrected": 0.0,
         "parity_a_max": 0.13931210572668995,
         "ratio_to_parity": 0.0,
+        "null_a_max": 0.0,
+        "excess_ratio": 0.0,
+        "head_energy_fraction": 0.0,
+        "parity_head_energy": 0.1589977661922665,
         "top_amplitudes": [
           [
             1,
@@ -5133,6 +5517,10 @@
         "a_max_corrected": 0.18210529219645957,
         "parity_a_max": 0.1351164017306037,
         "ratio_to_parity": 0.17096401988627966,
+        "null_a_max": 0.02750526368233184,
+        "excess_ratio": 0.8398408195327328,
+        "head_energy_fraction": 0.12000987596477632,
+        "parity_head_energy": 0.1404268252683053,
         "top_amplitudes": [
           [
             59,
@@ -5186,6 +5574,10 @@
         "a_max_corrected": 0.2607331913260508,
         "parity_a_max": 0.12010914699778091,
         "ratio_to_parity": 0.2513066374734337,
+        "null_a_max": 0.0351277325855454,
+        "excess_ratio": 0.8592705432469357,
+        "head_energy_fraction": 0.09196076443491004,
+        "parity_head_energy": 0.11779507929333011,
         "top_amplitudes": [
           [
             65,
@@ -5239,6 +5631,10 @@
         "a_max_corrected": 0.23123064352226724,
         "parity_a_max": 0.10804750431343504,
         "ratio_to_parity": 0.22698166749607554,
+        "null_a_max": 0.03642100848185445,
+        "excess_ratio": 0.673369676462187,
+        "head_energy_fraction": 0.06356531505373572,
+        "parity_head_energy": 0.09965665004192092,
         "top_amplitudes": [
           [
             73,
@@ -5292,6 +5688,10 @@
         "a_max_corrected": 0.277106731589767,
         "parity_a_max": 0.0968869865781432,
         "ratio_to_parity": 0.27651990223975564,
+        "null_a_max": 0.03905661859717691,
+        "excess_ratio": 0.6859574898997834,
+        "head_energy_fraction": 0.06438092349142371,
+        "parity_head_energy": 0.08479318626937626,
         "top_amplitudes": [
           [
             213,
@@ -5345,6 +5745,10 @@
         "a_max_corrected": 0.3032740353502105,
         "parity_a_max": 0.09519457428683711,
         "ratio_to_parity": 0.28252952883401283,
+        "null_a_max": 0.03911419804704386,
+        "excess_ratio": 0.6876090924443021,
+        "head_energy_fraction": 0.04997731621825812,
+        "parity_head_energy": 0.07036563454259921,
         "top_amplitudes": [
           [
             71,
@@ -5398,6 +5802,10 @@
         "a_max_corrected": 0.34661415014701813,
         "parity_a_max": 0.0880526631820699,
         "ratio_to_parity": 0.31872617463057096,
+        "null_a_max": 0.03908459484166799,
+        "excess_ratio": 0.7180498765752986,
+        "head_energy_fraction": 0.04813049662211346,
+        "parity_head_energy": 0.06072161779050113,
         "top_amplitudes": [
           [
             3,
@@ -5451,6 +5859,10 @@
         "a_max_corrected": 0.44477964530630554,
         "parity_a_max": 0.07514071897745153,
         "ratio_to_parity": 0.4368670985402633,
+        "null_a_max": 0.03811320387766906,
+        "excess_ratio": 0.8612896461622833,
+        "head_energy_fraction": 0.04790070790780814,
+        "parity_head_energy": 0.05126684723444093,
         "top_amplitudes": [
           [
             221,
@@ -5504,6 +5916,10 @@
         "a_max_corrected": 0.5218322082513918,
         "parity_a_max": 0.06896335812369367,
         "ratio_to_parity": 0.508770837305219,
+        "null_a_max": 0.03653934826100879,
+        "excess_ratio": 0.960240046027647,
+        "head_energy_fraction": 0.04784388736137408,
+        "parity_head_energy": 0.04136763301422296,
         "top_amplitudes": [
           [
             133,
@@ -5557,6 +5973,10 @@
         "a_max_corrected": 0.5952055212565991,
         "parity_a_max": 0.06574480065405153,
         "ratio_to_parity": 0.5548735233172081,
+        "null_a_max": 0.03486267294595815,
+        "excess_ratio": 1.0463927776062971,
+        "head_energy_fraction": 0.05063981122871263,
+        "parity_head_energy": 0.03513038442482697,
         "top_amplitudes": [
           [
             115,
@@ -5610,6 +6030,10 @@
         "a_max_corrected": 0.562303553457556,
         "parity_a_max": 0.056674443072736766,
         "ratio_to_parity": 0.5547561456187137,
+        "null_a_max": 0.03301006016919222,
+        "excess_ratio": 0.9524519323191537,
+        "head_energy_fraction": 0.03906378581226526,
+        "parity_head_energy": 0.028818123284505108,
         "top_amplitudes": [
           [
             157,
@@ -5663,6 +6087,10 @@
         "a_max_corrected": 0.5959625824755544,
         "parity_a_max": 0.05244704250809753,
         "ratio_to_parity": 0.5779246073392676,
+        "null_a_max": 0.031002184104869303,
+        "excess_ratio": 0.9776871314959221,
+        "head_energy_fraction": 0.03645240248120842,
+        "parity_head_energy": 0.024848393375194705,
         "top_amplitudes": [
           [
             165,
@@ -5716,6 +6144,10 @@
         "a_max_corrected": 0.7760119714541583,
         "parity_a_max": 0.05124324272478313,
         "ratio_to_parity": 0.7015046410632497,
+        "null_a_max": 0.02897982985129265,
+        "excess_ratio": 1.2404273171728968,
+        "head_energy_fraction": 0.04012835824321452,
+        "parity_head_energy": 0.020334884352169905,
         "top_amplitudes": [
           [
             29,
@@ -5769,6 +6201,10 @@
         "a_max_corrected": 0.8877219206811259,
         "parity_a_max": 0.045351159960794175,
         "ratio_to_parity": 0.8263004572081973,
+        "null_a_max": 0.02699629172134933,
+        "excess_ratio": 1.388104877415116,
+        "head_energy_fraction": 0.032762435125361866,
+        "parity_head_energy": 0.01679544323111856,
         "top_amplitudes": [
           [
             2375,
@@ -5822,6 +6258,10 @@
         "a_max_corrected": 0.9995322842387382,
         "parity_a_max": 0.040017359856042115,
         "ratio_to_parity": 0.9584019708177669,
+        "null_a_max": 0.024980764140428078,
+        "excess_ratio": 1.5352899670064828,
+        "head_energy_fraction": 0.032429256452994146,
+        "parity_head_energy": 0.01423381521106092,
         "top_amplitudes": [
           [
             25,
@@ -5875,6 +6315,10 @@
         "a_max_corrected": 1.048581597599747,
         "parity_a_max": 0.036344265730936354,
         "ratio_to_parity": 1.0073316316894216,
+        "null_a_max": 0.023068157509905148,
+        "excess_ratio": 1.5870677354954728,
+        "head_energy_fraction": 0.028986871915631474,
+        "parity_head_energy": 0.011374493026207827,
         "top_amplitudes": [
           [
             753,
@@ -5928,6 +6372,10 @@
         "a_max_corrected": 0.8923234458023953,
         "parity_a_max": 0.03511313095862993,
         "ratio_to_parity": 0.8071404762119736,
+        "null_a_max": 0.021225387369414234,
+        "excess_ratio": 1.3352514491246292,
+        "head_energy_fraction": 0.023959504261580836,
+        "parity_head_energy": 0.009729268028972868,
         "top_amplitudes": [
           [
             243,
@@ -5981,6 +6429,10 @@
         "a_max_corrected": 0.8464385392501884,
         "parity_a_max": 0.029358933984964145,
         "ratio_to_parity": 0.831939017901742,
+        "null_a_max": 0.019452086949632585,
+        "excess_ratio": 1.2556412465838012,
+        "head_energy_fraction": 0.02129900548779157,
+        "parity_head_energy": 0.007936486955060575,
         "top_amplitudes": [
           [
             573,
@@ -6034,6 +6486,10 @@
         "a_max_corrected": 1.0152190477204688,
         "parity_a_max": 0.029008514937220377,
         "ratio_to_parity": 0.9180517220420922,
+        "null_a_max": 0.017792846980535848,
+        "excess_ratio": 1.4967428833132637,
+        "head_energy_fraction": 0.022634904202671474,
+        "parity_head_energy": 0.006760721466098739,
         "top_amplitudes": [
           [
             459,
@@ -6087,6 +6543,10 @@
         "a_max_corrected": 1.0733351263890274,
         "parity_a_max": 0.02493806767070135,
         "ratio_to_parity": 1.0259709349063573,
+        "null_a_max": 0.01623149860883289,
+        "excess_ratio": 1.5763013150827718,
+        "head_energy_fraction": 0.017238324702828947,
+        "parity_head_energy": 0.005407352924663842,
         "top_amplitudes": [
           [
             8579,
@@ -6140,6 +6600,10 @@
         "a_max_corrected": 1.0759404428814372,
         "parity_a_max": 0.022388160887089847,
         "ratio_to_parity": 1.0407279812904622,
+        "null_a_max": 0.014770767837091152,
+        "excess_ratio": 1.577439016157174,
+        "head_energy_fraction": 0.017267875500539896,
+        "parity_head_energy": 0.004479380191888785,
         "top_amplitudes": [
           [
             479,
@@ -6193,6 +6657,10 @@
         "a_max_corrected": 1.1020802565531658,
         "parity_a_max": 0.020064351021686418,
         "ratio_to_parity": 1.0801908807859928,
+        "null_a_max": 0.013409683986386853,
+        "excess_ratio": 1.6162445755259378,
+        "head_energy_fraction": 0.01451516401962691,
+        "parity_head_energy": 0.003747374670449216,
         "top_amplitudes": [
           [
             6207,
@@ -6246,6 +6714,10 @@
         "a_max_corrected": 1.062944574545692,
         "parity_a_max": 0.018033470782851276,
         "ratio_to_parity": 1.0523384061586585,
+        "null_a_max": 0.012146885707675128,
+        "excess_ratio": 1.5623192938370571,
+        "head_energy_fraction": 0.012503446853197346,
+        "parity_head_energy": 0.002980261133343759,
         "top_amplitudes": [
           [
             951,
@@ -6299,6 +6771,10 @@
         "a_max_corrected": 1.5766860913805683,
         "parity_a_max": 0.016527938289893813,
         "ratio_to_parity": 1.545919792022587,
+        "null_a_max": 0.010981056544684805,
+        "excess_ratio": 2.3268131640795766,
+        "head_energy_fraction": 0.013167068755595942,
+        "parity_head_energy": 0.002538875774426455,
         "top_amplitudes": [
           [
             1335,
@@ -6352,6 +6828,10 @@
         "a_max_corrected": 1.2246198518029487,
         "parity_a_max": 0.014761678850724914,
         "ratio_to_parity": 1.2201324166338963,
+        "null_a_max": 0.009908161143716562,
+        "excess_ratio": 1.817814893042045,
+        "head_energy_fraction": 0.010862381042135306,
+        "parity_head_energy": 0.0020253032113321376,
         "top_amplitudes": [
           [
             3275,

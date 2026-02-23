@@ -174,11 +174,12 @@ fn run_smooth_mode(opts: &HashMap<String, String>) {
             eprint!("  ℓ={ell:6} B={b:3} … ");
             let result = smoothness_spectrum(ell, b, top_k);
             eprintln!(
-                "smooth={:.3}  A_max={:.5}  A·√ℓ={:.3}  ratio={:.2}",
+                "p={:.3}  A={:.5}  null={:.5}  excess={:.2}  headE={:.3}",
                 result.smooth_fraction,
                 result.a_max,
-                result.a_max_scaled,
-                result.ratio_to_parity,
+                result.null_a_max,
+                result.excess_ratio,
+                result.head_energy_fraction,
             );
             results.push(result);
         }
@@ -516,43 +517,37 @@ fn print_scaling_summary(analysis: &FourierScalingAnalysis) {
 }
 
 fn print_smooth_summary(analyses: &[SmoothnessScalingAnalysis]) {
-    println!("┌───────────────────────────────────────────────────────────────────────┐");
-    println!("│ E21b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness on (ℤ/ℓℤ)*   │");
-    println!("│ Comparing decay rate of max Fourier amplitude to parity baseline     │");
-    println!("└───────────────────────────────────────────────────────────────────────┘");
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E21b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness on (ℤ/ℓℤ)*       │");
+    println!("│ Density-normalized: comparing to random subset of same density           │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
 
-    // Summary table per B.
+    // ─── Table A: Raw slope comparison (as before) ───
+    println!("Table A: Raw power-law slope comparison");
     println!(
-        "{:>5}  {:>7}  {:>8}  {:>8}  {:>9}  {:>9}  {:>6}  verdict",
-        "B", "slope", "par_slp", "Δslope", "corr_mean", "corr_std", "R²"
+        "{:>5}  {:>7}  {:>8}  {:>8}  {:>6}  verdict",
+        "B", "slope", "par_slp", "Δslope", "R²"
     );
-    println!("{}", "─".repeat(80));
+    println!("{}", "─".repeat(55));
 
     for a in analyses {
         let delta = a.fitted_slope - a.parity_slope;
-        let _cv = if a.corrected_ratio_mean > 0.0 {
-            a.corrected_ratio_std / a.corrected_ratio_mean
-        } else {
-            f64::INFINITY
-        };
         let verdict = if delta > 0.10 {
-            "⚠ SLOWER decay — possible bias"
+            "⚠ SLOWER decay"
         } else if delta > 0.03 {
             "~ slightly slower"
         } else if delta < -0.10 {
-            "✓ faster decay than parity"
+            "✓ faster"
         } else {
-            "✓ same as parity"
+            "✓ same"
         };
         println!(
-            "{:>5}  {:>+7.4}  {:>+8.4}  {:>+8.4}  {:>9.4}  {:>9.4}  {:>6.4}  {}",
+            "{:>5}  {:>+7.4}  {:>+8.4}  {:>+8.4}  {:>6.4}  {}",
             a.smoothness_bound,
             a.fitted_slope,
             a.parity_slope,
             delta,
-            a.corrected_ratio_mean,
-            a.corrected_ratio_std,
             a.r_squared,
             verdict,
         );
@@ -560,68 +555,142 @@ fn print_smooth_summary(analyses: &[SmoothnessScalingAnalysis]) {
 
     println!();
 
-    // Detailed per-ℓ table for the most interesting B (the one with largest delta).
+    // ─── Table B: Density-normalized excess ratio ───
+    // This is the key test: does A_max exceed what a random subset of the
+    // same density would produce?
+    println!("Table B: Density-normalized excess ratio  (A_max / null_A_max)");
+    println!("  null_A_max = √(p(1−p)·2·ln(n/2)/n)  = expected max for random subset of density p");
+    println!("  excess > 1.0 = genuine multiplicative structure beyond density");
+    println!();
+
+    for a in analyses {
+        let valid: Vec<&_> = a.results.iter().filter(|r| r.a_max > 1e-15).collect();
+        if valid.is_empty() { continue; }
+
+        // Compute mean and trend of excess ratio.
+        let excess_vals: Vec<f64> = valid.iter().map(|r| r.excess_ratio).collect();
+        let n_v = excess_vals.len() as f64;
+        let excess_mean = excess_vals.iter().sum::<f64>() / n_v;
+        let excess_std = if n_v > 1.0 {
+            (excess_vals.iter().map(|x| (x - excess_mean).powi(2)).sum::<f64>() / (n_v - 1.0)).sqrt()
+        } else { 0.0 };
+
+        // First and last excess to show trend.
+        let first_excess = valid.first().map(|r| r.excess_ratio).unwrap_or(0.0);
+        let last_excess = valid.last().map(|r| r.excess_ratio).unwrap_or(0.0);
+
+        let verdict = if excess_mean > 2.0 {
+            "⚠ STRONG multiplicative bias"
+        } else if excess_mean > 1.3 {
+            "⚠ moderate bias"
+        } else if excess_mean > 1.05 {
+            "~ marginal"
+        } else {
+            "✓ consistent with random"
+        };
+
+        println!(
+            "  B={:>3}:  excess_mean={:.2} ± {:.2}   first_ℓ={:.2}  last_ℓ={:.2}   {}",
+            a.smoothness_bound, excess_mean, excess_std, first_excess, last_excess, verdict,
+        );
+    }
+
+    println!();
+
+    // ─── Table C: Head energy fraction ───
+    println!("Table C: Head energy fraction  (Σ top-k |ĥ(r)|² / Var(s̃))");
+    println!("  By Parseval: Σ_{{r≠0}} |ĥ(r)|² = p(1−p) for {{0,1}} indicator.");
+    println!("  High head energy = spectral concentration in few modes.");
+    println!();
+
+    for a in analyses {
+        let valid: Vec<&_> = a.results.iter().filter(|r| r.a_max > 1e-15).collect();
+        if valid.is_empty() { continue; }
+
+        let head_vals: Vec<f64> = valid.iter().map(|r| r.head_energy_fraction).collect();
+        let parity_vals: Vec<f64> = valid.iter().map(|r| r.parity_head_energy).collect();
+        let n_v = head_vals.len() as f64;
+
+        let head_mean = head_vals.iter().sum::<f64>() / n_v;
+        let par_mean = parity_vals.iter().sum::<f64>() / n_v;
+        let first_head = valid.first().map(|r| r.head_energy_fraction).unwrap_or(0.0);
+        let last_head = valid.last().map(|r| r.head_energy_fraction).unwrap_or(0.0);
+
+        println!(
+            "  B={:>3}:  head_mean={:.4}  par_head={:.4}  ratio={:.2}x   first={:.4}  last={:.4}",
+            a.smoothness_bound, head_mean, par_mean, head_mean / par_mean.max(1e-15),
+            first_head, last_head,
+        );
+    }
+
+    println!();
+
+    // ─── Table D: Detailed per-ℓ for most interesting B ───
+    // Pick the B with highest mean excess ratio.
     let best_analysis = analyses
         .iter()
         .max_by(|a, b| {
-            let da = a.fitted_slope - a.parity_slope;
-            let db = b.fitted_slope - b.parity_slope;
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            let mean_a: f64 = a.results.iter().filter(|r| r.a_max > 1e-15)
+                .map(|r| r.excess_ratio).sum::<f64>()
+                / a.results.iter().filter(|r| r.a_max > 1e-15).count().max(1) as f64;
+            let mean_b: f64 = b.results.iter().filter(|r| r.a_max > 1e-15)
+                .map(|r| r.excess_ratio).sum::<f64>()
+                / b.results.iter().filter(|r| r.a_max > 1e-15).count().max(1) as f64;
+            mean_a.partial_cmp(&mean_b).unwrap_or(std::cmp::Ordering::Equal)
         });
 
     if let Some(best) = best_analysis {
         println!(
-            "Detailed results for B = {} (largest Δslope = {:+.4}):",
+            "Detailed density-corrected results for B = {}:",
             best.smoothness_bound,
-            best.fitted_slope - best.parity_slope,
         );
         println!(
-            "{:>7}  {:>6}  {:>7}  {:>9}  {:>9}  {:>9}  {:>6}",
-            "ℓ", "smooth%", "A_max", "A·√ℓ", "A·√ℓ/√lgℓ", "par_A·√ℓ", "ratio"
+            "{:>7}  {:>6}  {:>9}  {:>9}  {:>7}  {:>6}  {:>7}",
+            "ℓ", "dens_p", "A_max", "null_Amax", "excess", "headE%", "parHE%"
         );
         println!("{}", "─".repeat(72));
 
         for r in &best.results {
-            let ell_f = r.ell as f64;
-            let par_scaled = r.parity_a_max * ell_f.sqrt();
+            if r.a_max < 1e-15 { continue; }
             println!(
-                "{:>7}  {:>5.1}%  {:>9.6}  {:>9.3}  {:>9.3}  {:>9.3}  {:>6.2}",
+                "{:>7}  {:>5.1}%  {:>9.6}  {:>9.6}  {:>7.2}  {:>5.2}%  {:>5.2}%",
                 r.ell,
                 r.smooth_fraction * 100.0,
                 r.a_max,
-                r.a_max_scaled,
-                r.a_max_corrected,
-                par_scaled,
-                r.ratio_to_parity,
+                r.null_a_max,
+                r.excess_ratio,
+                r.head_energy_fraction * 100.0,
+                r.parity_head_energy * 100.0,
             );
         }
     }
 
     println!();
-    println!("Interpretation:");
-    println!("  Δslope > 0  : smoothness indicator has SLOWER Fourier decay than parity");
-    println!("              → residual multiplicative bias that GNFS exploits.");
-    println!("  Δslope ≈ 0  : same decay rate → no special structure in smoothness.");
-    println!("  Δslope < 0  : faster decay → smoothness is LESS structured than parity.");
-    println!();
 
-    // Final verdict.
-    let max_delta = analyses
-        .iter()
-        .map(|a| a.fitted_slope - a.parity_slope)
+    // ─── Final verdict ───
+    let max_excess_mean: f64 = analyses.iter()
+        .map(|a| {
+            let valid: Vec<f64> = a.results.iter().filter(|r| r.a_max > 1e-15)
+                .map(|r| r.excess_ratio).collect();
+            if valid.is_empty() { 0.0 } else { valid.iter().sum::<f64>() / valid.len() as f64 }
+        })
         .fold(f64::NEG_INFINITY, f64::max);
-    if max_delta > 0.10 {
-        println!("  ⚠ POSITIVE Δslope detected (max = {:+.4}).", max_delta);
-        println!("    The B-smoothness indicator has a slower Fourier decay than");
-        println!("    parity — there IS residual multiplicative bias.");
-        println!("    This warrants further investigation for GNFS improvement.");
-    } else if max_delta > 0.03 {
-        println!("  ~ Marginal positive Δslope (max = {:+.4}).", max_delta);
-        println!("    Suggestive but not conclusive.  Needs larger ℓ range.");
+
+    println!("Final assessment:");
+    if max_excess_mean > 2.0 {
+        println!("  ⚠ STRONG density-corrected bias (max mean excess = {:.2}×).", max_excess_mean);
+        println!("    The smoothness indicator has genuine multiplicative structure");
+        println!("    beyond what density alone explains.  Warrants product test.");
+    } else if max_excess_mean > 1.3 {
+        println!("  ⚠ Moderate density-corrected bias (max mean excess = {:.2}×).", max_excess_mean);
+        println!("    Some multiplicative structure survives density normalization.");
+    } else if max_excess_mean > 1.05 {
+        println!("  ~ Marginal excess (max mean = {:.2}×).", max_excess_mean);
+        println!("    Barely above random-subset baseline. Likely max-statistics artifact.");
     } else {
-        println!("  ✓ No significant Δslope detected (max = {:+.4}).", max_delta);
-        println!("    Smoothness Fourier spectrum decays at the same rate as parity.");
-        println!("    No exploitable multiplicative bias found in the Fourier domain.");
+        println!("  ✓ No density-corrected excess (max mean = {:.2}×).", max_excess_mean);
+        println!("    After accounting for density, smoothness Fourier spectrum is");
+        println!("    consistent with a random subset — no exploitable structure.");
     }
 }
 
