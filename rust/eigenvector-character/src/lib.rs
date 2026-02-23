@@ -1285,6 +1285,801 @@ fn next_prime(n: u64) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// E21b Step 3: Stress tests
+// ---------------------------------------------------------------------------
+
+/// Full (untruncated) DFT of the smoothness indicator on (ℤ/ℓℤ)*.
+/// Returns all coefficients for r = 1..order/2 (not just top-k).
+/// Needed for the DFT-weighted multi-character N-score test.
+#[derive(Debug, Clone)]
+pub struct FullSmoothnessSpectrum {
+    pub ell: u64,
+    pub order: usize,
+    pub smooth_fraction: f64,
+    /// (r, re_coeff, im_coeff, amplitude) for r = 1..order/2.
+    pub coefficients: Vec<(usize, f64, f64, f64)>,
+}
+
+/// Compute the full (untruncated) DFT of the B-smoothness indicator on (ℤ/ℓℤ)*.
+pub fn smoothness_spectrum_full(ell: u64, bound: u64) -> FullSmoothnessSpectrum {
+    let order = (ell - 1) as usize;
+    let (f_smooth, _prim_g) = build_dlog_sequence(ell, |a| {
+        if is_b_smooth(a, bound) {
+            1.0
+        } else {
+            0.0
+        }
+    });
+
+    let n = order;
+    let n_f = n as f64;
+    let half = n / 2;
+
+    let dc: f64 = f_smooth.iter().sum::<f64>() / n_f;
+    let centered: Vec<f64> = f_smooth.iter().map(|&x| x - dc).collect();
+
+    let mut coefficients = Vec::with_capacity(half);
+    for r in 1..=half {
+        let mut re_sum = 0.0f64;
+        let mut im_sum = 0.0f64;
+        let phase_step = std::f64::consts::TAU * (r as f64) / n_f;
+        for k in 0..n {
+            let phase = phase_step * (k as f64);
+            re_sum += centered[k] * phase.cos();
+            im_sum -= centered[k] * phase.sin();
+        }
+        let re_coeff = re_sum / n_f;
+        let im_coeff = im_sum / n_f;
+        let amp = (re_coeff * re_coeff + im_coeff * im_coeff).sqrt();
+        coefficients.push((r, re_coeff, im_coeff, amp));
+    }
+
+    FullSmoothnessSpectrum {
+        ell,
+        order,
+        smooth_fraction: dc,
+        coefficients,
+    }
+}
+
+/// Intermediate data for a single (n_bits, channel, B) block.
+/// Shared across all stress tests.
+struct BlockData {
+    ell: u64,
+    k1: u64,
+    order: usize,
+    #[allow(dead_code)]
+    bound: u64,
+    #[allow(dead_code)]
+    prim_g: u64,
+    dlog: Vec<u32>,
+    prime_set: Vec<u64>,
+    pairs: Vec<(u64, u64)>,
+    #[allow(dead_code)]
+    g_vals: Vec<u64>,
+    #[allow(dead_code)]
+    dlogs_g: Vec<u32>,
+    smooth_vals: Vec<f64>,
+    valid_mask: Vec<bool>,
+    n_valid: usize,
+    valid_smooth: Vec<f64>,
+    valid_dlogs: Vec<u32>,
+    full_r_star: usize,
+    scanned_r_star: usize,
+    #[allow(dead_code)]
+    fixed_r_amplitude: f64,
+    fixed_r_null: f64,
+    fixed_r_excess: f64,
+    channel_weight: u32,
+}
+
+/// Prepare block data for stress tests (shared setup extracted from
+/// `run_prime_restricted_smoothness`).
+fn prepare_block(n_bits: u32, ch: &Channel, bound: u64, top_k: usize) -> BlockData {
+    use algebra::{best_character, build_dlog_table, im_char, pearson_corr, primitive_root, re_char};
+
+    let ell = ch.ell;
+    let k1 = (ch.weight - 1) as u64;
+    let order = (ell - 1) as usize;
+
+    // 1. Full-group smoothness spectrum → find r*.
+    let full = smoothness_spectrum(ell, bound, top_k);
+    let full_r_star = full.top_amplitudes.first().map(|&(r, _)| r).unwrap_or(1);
+
+    // 2. Generate primes and pairs.
+    let seed = 0xE21b_5a3d ^ (n_bits as u64 * 0x10000 + ell);
+    let (prime_set, pairs) = generate_primes_and_pairs(n_bits, 500, 20_000, seed);
+
+    // 3. Compute g(p) and smoothness for each prime.
+    let prim_g = primitive_root(ell);
+    let dlog = build_dlog_table(ell, prim_g);
+
+    let g_vals: Vec<u64> = prime_set
+        .iter()
+        .map(|&p| (1 + mod_pow(p, k1, ell)) % ell)
+        .collect();
+
+    let dlogs_g: Vec<u32> = g_vals
+        .iter()
+        .map(|&gp| if gp == 0 { u32::MAX } else { dlog[gp as usize] })
+        .collect();
+
+    let smooth_vals: Vec<f64> = g_vals
+        .iter()
+        .zip(dlogs_g.iter())
+        .map(|(&gp, &d)| {
+            if d != u32::MAX && gp > 0 && is_b_smooth(gp, bound) {
+                1.0
+            } else {
+                0.0
+            }
+        })
+        .collect();
+
+    let valid_mask: Vec<bool> = dlogs_g.iter().map(|&d| d != u32::MAX).collect();
+    let n_valid = valid_mask.iter().filter(|&&m| m).count();
+
+    let (valid_smooth, valid_dlogs): (Vec<f64>, Vec<u32>) = smooth_vals
+        .iter()
+        .zip(dlogs_g.iter())
+        .filter(|(_, &d)| d != u32::MAX)
+        .map(|(&s, &d)| (s, d))
+        .unzip();
+
+    // 4. Fixed-r* test.
+    let fixed_r_amplitude = if valid_smooth.len() >= 2 {
+        let re_vals: Vec<f64> = valid_dlogs
+            .iter()
+            .map(|&d| re_char(d, full_r_star, order))
+            .collect();
+        let im_vals: Vec<f64> = valid_dlogs
+            .iter()
+            .map(|&d| im_char(d, full_r_star, order))
+            .collect();
+        let cr = pearson_corr(&valid_smooth, &re_vals);
+        let ci = pearson_corr(&valid_smooth, &im_vals);
+        (cr * cr + ci * ci).sqrt()
+    } else {
+        0.0
+    };
+
+    let fixed_r_null = if n_valid > 2 {
+        (2.0 / (n_valid - 2) as f64).sqrt()
+    } else {
+        1.0
+    };
+    let fixed_r_excess = if fixed_r_null > 1e-15 {
+        fixed_r_amplitude / fixed_r_null
+    } else {
+        0.0
+    };
+
+    // 5. Full character scan on the restricted set.
+    let (scanned_r_star, _scanned_amplitude, _, _) =
+        best_character(&valid_smooth, &valid_dlogs, order, top_k);
+
+    BlockData {
+        ell,
+        k1,
+        order,
+        bound,
+        prim_g,
+        dlog,
+        prime_set,
+        pairs,
+        g_vals,
+        dlogs_g,
+        smooth_vals,
+        valid_mask,
+        n_valid,
+        valid_smooth,
+        valid_dlogs,
+        full_r_star,
+        scanned_r_star,
+        fixed_r_amplitude,
+        fixed_r_null,
+        fixed_r_excess,
+        channel_weight: ch.weight,
+    }
+}
+
+// ─── Stress test result types ───
+
+/// Test 1: Permutation null controls for the product correlation.
+#[derive(Debug, Clone, Serialize)]
+pub struct PermutationNullResult {
+    pub ell: u64,
+    pub order: usize,
+    pub smoothness_bound: u64,
+    pub n_bits: u32,
+    pub channel_weight: u32,
+    pub observed_corr_nk: f64,
+    pub n_permutations: usize,
+    pub null_mean: f64,
+    pub null_std: f64,
+    pub z_score: f64,
+    pub empirical_p_value: f64,
+    pub n_pairs: usize,
+    pub scanned_r_star: usize,
+}
+
+/// Test 2: One entry in the cross-n transfer test.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossNTransferEntry {
+    pub n_bits: u32,
+    pub local_r_star: usize,
+    pub source_r_star: usize,
+    pub local_fix_excess: f64,
+    pub transfer_fix_excess: f64,
+    pub consistency_ratio: f64,
+    pub n_valid: usize,
+}
+
+/// Test 2: Cross-n transfer of r* for one (channel, B) combination.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossNTransferResult {
+    pub ell: u64,
+    pub order: usize,
+    pub smoothness_bound: u64,
+    pub channel_weight: u32,
+    pub source_n_bits: u32,
+    pub source_r_star: usize,
+    pub entries: Vec<CrossNTransferEntry>,
+}
+
+/// Test 3: Multi-character N-score (can ANY linear combination extract from N?).
+#[derive(Debug, Clone, Serialize)]
+pub struct MultiCharacterScoreResult {
+    pub ell: u64,
+    pub order: usize,
+    pub smoothness_bound: u64,
+    pub n_bits: u32,
+    pub channel_weight: u32,
+    /// 3a: DFT-weighted score using all r (algebraically ≡ 3c).
+    pub corr_dft_weighted_all: f64,
+    /// 3b: DFT-weighted score using top-10 r only.
+    pub corr_dft_weighted_top10: f64,
+    /// 3c: Direct smoothness: corr(product, s_B(N^{k-1} mod ℓ)).
+    pub corr_direct_smoothness: f64,
+    /// 3d: Held-out R² from train/test split with learned weights.
+    pub train_test_r_squared: f64,
+    pub n_chars_all: usize,
+    pub n_pairs: usize,
+    pub n_train: usize,
+    pub n_test: usize,
+}
+
+/// Test 4: Bootstrap confidence intervals.
+#[derive(Debug, Clone, Serialize)]
+pub struct BootstrapCIResult {
+    pub ell: u64,
+    pub order: usize,
+    pub smoothness_bound: u64,
+    pub n_bits: u32,
+    pub channel_weight: u32,
+    pub fix_excess_mean: f64,
+    pub fix_excess_std: f64,
+    pub fix_excess_ci_lo: f64,
+    pub fix_excess_ci_hi: f64,
+    pub corr_nk_mean: f64,
+    pub corr_nk_std: f64,
+    pub corr_nk_ci_lo: f64,
+    pub corr_nk_ci_hi: f64,
+    pub n_bootstrap: usize,
+    pub n_pairs: usize,
+}
+
+/// Top-level stress test result.
+#[derive(Debug, Clone, Serialize)]
+pub struct StressTestResult {
+    pub permutation_null: Vec<PermutationNullResult>,
+    pub cross_n_transfer: Vec<CrossNTransferResult>,
+    pub multi_character_score: Vec<MultiCharacterScoreResult>,
+    pub bootstrap_ci: Vec<BootstrapCIResult>,
+}
+
+// ─── Stress test implementations ───
+
+/// Test 1: Permutation null for the product correlation.
+///
+/// Randomly re-pairs primes to generate a null distribution for corr_Nk,
+/// verifying that the observed correlation is consistent with random pairing.
+pub fn run_permutation_null(
+    n_bits: u32,
+    ch: &Channel,
+    bound: u64,
+    top_k: usize,
+    n_permutations: usize,
+    seed: u64,
+) -> PermutationNullResult {
+    use algebra::{pearson_corr, re_char};
+    use rand::seq::SliceRandom;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    let blk = prepare_block(n_bits, ch, bound, top_k);
+
+    // Build original product test vectors.
+    let mut actual = Vec::new();
+    let mut pred_nk = Vec::new();
+
+    for &(p, q) in &blk.pairs {
+        let pi = blk.prime_set.partition_point(|&x| x < p);
+        let qi = blk.prime_set.partition_point(|&x| x < q);
+        if !blk.valid_mask[pi] || !blk.valid_mask[qi] {
+            continue;
+        }
+        let prod = blk.smooth_vals[pi] * blk.smooth_vals[qi];
+        let n_val = p * q;
+        let nk_val = mod_pow(n_val, blk.k1, blk.ell);
+        let dlog_nk = blk.dlog[nk_val as usize];
+        if dlog_nk == u32::MAX {
+            continue;
+        }
+        actual.push(prod);
+        pred_nk.push(re_char(dlog_nk, blk.scanned_r_star, blk.order));
+    }
+
+    let n_pairs = actual.len();
+    let observed_corr_nk = if n_pairs >= 2 {
+        pearson_corr(&actual, &pred_nk)
+    } else {
+        0.0
+    };
+
+    // Collect p and q indices from valid pairs for permutation.
+    let mut p_indices = Vec::new();
+    let mut q_indices = Vec::new();
+    for &(p, q) in &blk.pairs {
+        let pi = blk.prime_set.partition_point(|&x| x < p);
+        let qi = blk.prime_set.partition_point(|&x| x < q);
+        if !blk.valid_mask[pi] || !blk.valid_mask[qi] {
+            continue;
+        }
+        let n_val = p * q;
+        let nk_val = mod_pow(n_val, blk.k1, blk.ell);
+        if blk.dlog[nk_val as usize] == u32::MAX {
+            continue;
+        }
+        p_indices.push(pi);
+        q_indices.push(qi);
+    }
+
+    // Run permutations.
+    let mut rng = StdRng::seed_from_u64(seed ^ 0xAE12_0011);
+    let mut perm_corrs = Vec::with_capacity(n_permutations);
+
+    for _ in 0..n_permutations {
+        let mut q_perm = q_indices.clone();
+        q_perm.shuffle(&mut rng);
+
+        let mut actual_perm = Vec::with_capacity(n_pairs);
+        let mut pred_perm = Vec::with_capacity(n_pairs);
+
+        for (i, &pi) in p_indices.iter().enumerate() {
+            let qi = q_perm[i];
+            let prod = blk.smooth_vals[pi] * blk.smooth_vals[qi];
+            // Compute N_perm = p * q_shuffled
+            let p_val = blk.prime_set[pi];
+            let q_val = blk.prime_set[qi];
+            let n_val = p_val * q_val;
+            let nk_val = mod_pow(n_val, blk.k1, blk.ell);
+            let dlog_nk = blk.dlog[nk_val as usize];
+            if dlog_nk == u32::MAX {
+                continue;
+            }
+            actual_perm.push(prod);
+            pred_perm.push(re_char(dlog_nk, blk.scanned_r_star, blk.order));
+        }
+
+        let corr = if actual_perm.len() >= 2 {
+            pearson_corr(&actual_perm, &pred_perm)
+        } else {
+            0.0
+        };
+        perm_corrs.push(corr);
+    }
+
+    // Aggregate.
+    let n_p = perm_corrs.len() as f64;
+    let null_mean = perm_corrs.iter().sum::<f64>() / n_p;
+    let null_std = if n_p > 1.0 {
+        (perm_corrs
+            .iter()
+            .map(|&c| (c - null_mean).powi(2))
+            .sum::<f64>()
+            / (n_p - 1.0))
+            .sqrt()
+    } else {
+        0.0
+    };
+    let z_score = if null_std > 1e-15 {
+        (observed_corr_nk - null_mean) / null_std
+    } else {
+        0.0
+    };
+    let empirical_p_value = perm_corrs
+        .iter()
+        .filter(|&&c| c.abs() >= observed_corr_nk.abs())
+        .count() as f64
+        / n_p;
+
+    PermutationNullResult {
+        ell: blk.ell,
+        order: blk.order,
+        smoothness_bound: bound,
+        n_bits,
+        channel_weight: blk.channel_weight,
+        observed_corr_nk,
+        n_permutations,
+        null_mean,
+        null_std,
+        z_score,
+        empirical_p_value,
+        n_pairs,
+        scanned_r_star: blk.scanned_r_star,
+    }
+}
+
+/// Test 2: Cross-n transfer of r*.
+///
+/// Tests whether the scanned r* from one bit size (source) retains its
+/// signal at other bit sizes, confirming the character is stable.
+pub fn run_cross_n_transfer(
+    ch: &Channel,
+    bound: u64,
+    top_k: usize,
+    bit_sizes: &[u32],
+    source_n_bits: u32,
+) -> CrossNTransferResult {
+    use algebra::{im_char, pearson_corr, re_char};
+
+    // Get source r* from the source bit size's restricted scan.
+    let source_blk = prepare_block(source_n_bits, ch, bound, top_k);
+    let source_r_star = source_blk.scanned_r_star;
+
+    let mut entries = Vec::with_capacity(bit_sizes.len());
+
+    for &n_bits in bit_sizes {
+        let blk = prepare_block(n_bits, ch, bound, top_k);
+
+        // Compute transfer amplitude: Pearson amplitude of χ_{source_r_star}
+        // against s_B(g(p)) on the TARGET prime set.
+        let transfer_fix_amplitude = if blk.valid_smooth.len() >= 2 {
+            let re_vals: Vec<f64> = blk
+                .valid_dlogs
+                .iter()
+                .map(|&d| re_char(d, source_r_star, blk.order))
+                .collect();
+            let im_vals: Vec<f64> = blk
+                .valid_dlogs
+                .iter()
+                .map(|&d| im_char(d, source_r_star, blk.order))
+                .collect();
+            let cr = pearson_corr(&blk.valid_smooth, &re_vals);
+            let ci = pearson_corr(&blk.valid_smooth, &im_vals);
+            (cr * cr + ci * ci).sqrt()
+        } else {
+            0.0
+        };
+
+        let transfer_fix_excess = if blk.fixed_r_null > 1e-15 {
+            transfer_fix_amplitude / blk.fixed_r_null
+        } else {
+            0.0
+        };
+
+        let local_fix_excess = blk.fixed_r_excess;
+        let consistency_ratio = if local_fix_excess > 1e-15 {
+            transfer_fix_excess / local_fix_excess
+        } else {
+            0.0
+        };
+
+        entries.push(CrossNTransferEntry {
+            n_bits,
+            local_r_star: blk.scanned_r_star,
+            source_r_star,
+            local_fix_excess,
+            transfer_fix_excess,
+            consistency_ratio,
+            n_valid: blk.n_valid,
+        });
+    }
+
+    CrossNTransferResult {
+        ell: ch.ell,
+        order: (ch.ell - 1) as usize,
+        smoothness_bound: bound,
+        channel_weight: ch.weight,
+        source_n_bits,
+        source_r_star,
+        entries,
+    }
+}
+
+/// Test 3: Multi-character N-score.
+///
+/// Tests whether ANY linear combination of characters can extract the
+/// smoothness product from N alone. This is the key test.
+pub fn run_multi_character_score(
+    n_bits: u32,
+    ch: &Channel,
+    bound: u64,
+    top_k: usize,
+    _seed: u64,
+) -> MultiCharacterScoreResult {
+    use algebra::{im_char, pearson_corr, re_char};
+
+    let blk = prepare_block(n_bits, ch, bound, top_k);
+    let full_dft = smoothness_spectrum_full(blk.ell, bound);
+    let n_chars_all = full_dft.coefficients.len();
+
+    // Build pair-level data.
+    let mut actual = Vec::new();
+    let mut nk_dlogs: Vec<u32> = Vec::new();
+    let mut nk_vals_raw: Vec<u64> = Vec::new();
+
+    for &(p, q) in &blk.pairs {
+        let pi = blk.prime_set.partition_point(|&x| x < p);
+        let qi = blk.prime_set.partition_point(|&x| x < q);
+        if !blk.valid_mask[pi] || !blk.valid_mask[qi] {
+            continue;
+        }
+        let n_val = p * q;
+        let nk_val = mod_pow(n_val, blk.k1, blk.ell);
+        let dlog_nk = blk.dlog[nk_val as usize];
+        if dlog_nk == u32::MAX {
+            continue;
+        }
+        actual.push(blk.smooth_vals[pi] * blk.smooth_vals[qi]);
+        nk_dlogs.push(dlog_nk);
+        nk_vals_raw.push(nk_val);
+    }
+
+    let n_pairs = actual.len();
+
+    // 3a: DFT-weighted score using all r.
+    // Mathematical identity: Σ_r ŝ_B(r)·χ_r(x) = s̃_B(x).
+    // So score_all[i] = s_B(N^{k-1} mod ℓ) - smooth_fraction.
+    let score_all: Vec<f64> = nk_vals_raw
+        .iter()
+        .map(|&nk| is_b_smooth(nk, bound) as u64 as f64 - full_dft.smooth_fraction)
+        .collect();
+    let corr_dft_weighted_all = if n_pairs >= 2 {
+        pearson_corr(&actual, &score_all)
+    } else {
+        0.0
+    };
+
+    // 3b: DFT-weighted score using top-10 r only.
+    let mut sorted_coeffs = full_dft.coefficients.clone();
+    sorted_coeffs.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    let top10: Vec<_> = sorted_coeffs.iter().take(10).cloned().collect();
+
+    let score_top10: Vec<f64> = nk_dlogs
+        .iter()
+        .map(|&d| {
+            top10
+                .iter()
+                .map(|&(r, re_c, im_c, _)| {
+                    re_c * re_char(d, r, blk.order) + im_c * im_char(d, r, blk.order)
+                })
+                .sum::<f64>()
+        })
+        .collect();
+    let corr_dft_weighted_top10 = if n_pairs >= 2 {
+        pearson_corr(&actual, &score_top10)
+    } else {
+        0.0
+    };
+
+    // 3c: Direct smoothness: s_B(N^{k-1} mod ℓ) as 0/1.
+    let pred_direct: Vec<f64> = nk_vals_raw
+        .iter()
+        .map(|&nk| is_b_smooth(nk, bound) as u64 as f64)
+        .collect();
+    let corr_direct_smoothness = if n_pairs >= 2 {
+        pearson_corr(&actual, &pred_direct)
+    } else {
+        0.0
+    };
+
+    // 3d: Train/test split with learned character weights.
+    let (n_train, n_test, train_test_r_squared) = if n_pairs >= 20 {
+        let n_train = n_pairs / 2;
+        let n_test = n_pairs - n_train;
+
+        let actual_train = &actual[..n_train];
+        let actual_test = &actual[n_train..];
+        let nk_dlogs_train = &nk_dlogs[..n_train];
+        let nk_dlogs_test = &nk_dlogs[n_train..];
+
+        // Learn weights: w_r = corr(actual_train, Re(χ_r(nk))) for top characters.
+        let max_chars = (blk.order / 2).min(500);
+        let mut weights: Vec<(usize, f64)> = Vec::with_capacity(max_chars);
+
+        for r in 1..=max_chars {
+            let re_vals: Vec<f64> = nk_dlogs_train
+                .iter()
+                .map(|&d| re_char(d, r, blk.order))
+                .collect();
+            let w = pearson_corr(actual_train, &re_vals);
+            if w.is_finite() {
+                weights.push((r, w));
+            }
+        }
+
+        // Evaluate on test set.
+        let score_test: Vec<f64> = nk_dlogs_test
+            .iter()
+            .map(|&d| {
+                weights
+                    .iter()
+                    .map(|&(r, w)| w * re_char(d, r, blk.order))
+                    .sum::<f64>()
+            })
+            .collect();
+
+        // R² = 1 - SS_res / SS_tot
+        let mean_test = actual_test.iter().sum::<f64>() / n_test as f64;
+        let ss_tot: f64 = actual_test.iter().map(|&y| (y - mean_test).powi(2)).sum();
+        let ss_res: f64 = actual_test
+            .iter()
+            .zip(score_test.iter())
+            .map(|(&y, &yhat)| (y - yhat).powi(2))
+            .sum();
+        let r_sq = if ss_tot > 1e-15 {
+            1.0 - ss_res / ss_tot
+        } else {
+            0.0
+        };
+
+        (n_train, n_test, r_sq)
+    } else {
+        (0, 0, 0.0)
+    };
+
+    MultiCharacterScoreResult {
+        ell: blk.ell,
+        order: blk.order,
+        smoothness_bound: bound,
+        n_bits,
+        channel_weight: blk.channel_weight,
+        corr_dft_weighted_all,
+        corr_dft_weighted_top10,
+        corr_direct_smoothness,
+        train_test_r_squared,
+        n_chars_all,
+        n_pairs,
+        n_train,
+        n_test,
+    }
+}
+
+/// Test 4: Bootstrap confidence intervals for fix_excess and corr_Nk.
+pub fn run_bootstrap_ci(
+    n_bits: u32,
+    ch: &Channel,
+    bound: u64,
+    top_k: usize,
+    n_bootstrap: usize,
+    seed: u64,
+) -> BootstrapCIResult {
+    use algebra::{im_char, pearson_corr, re_char};
+    use rand::rngs::StdRng;
+    use rand::Rng;
+    use rand::SeedableRng;
+
+    let blk = prepare_block(n_bits, ch, bound, top_k);
+
+    // Build pair-level data for corr_Nk bootstrap.
+    let mut pair_actual = Vec::new();
+    let mut pair_pred_nk = Vec::new();
+
+    for &(p, q) in &blk.pairs {
+        let pi = blk.prime_set.partition_point(|&x| x < p);
+        let qi = blk.prime_set.partition_point(|&x| x < q);
+        if !blk.valid_mask[pi] || !blk.valid_mask[qi] {
+            continue;
+        }
+        let n_val = p * q;
+        let nk_val = mod_pow(n_val, blk.k1, blk.ell);
+        let dlog_nk = blk.dlog[nk_val as usize];
+        if dlog_nk == u32::MAX {
+            continue;
+        }
+        pair_actual.push(blk.smooth_vals[pi] * blk.smooth_vals[qi]);
+        pair_pred_nk.push(re_char(dlog_nk, blk.scanned_r_star, blk.order));
+    }
+
+    let n_pairs = pair_actual.len();
+    let n_valid = blk.n_valid;
+
+    let mut rng = StdRng::seed_from_u64(seed ^ 0xB007_C1);
+
+    let mut fix_samples = Vec::with_capacity(n_bootstrap);
+    let mut corr_samples = Vec::with_capacity(n_bootstrap);
+
+    for _ in 0..n_bootstrap {
+        // Bootstrap fix_excess: resample primes with replacement.
+        if n_valid >= 2 {
+            let mut re_boot = Vec::with_capacity(n_valid);
+            let mut im_boot = Vec::with_capacity(n_valid);
+            let mut smooth_boot = Vec::with_capacity(n_valid);
+            for _ in 0..n_valid {
+                let idx = rng.gen_range(0..n_valid);
+                smooth_boot.push(blk.valid_smooth[idx]);
+                re_boot.push(re_char(blk.valid_dlogs[idx], blk.full_r_star, blk.order));
+                im_boot.push(im_char(blk.valid_dlogs[idx], blk.full_r_star, blk.order));
+            }
+            let cr = pearson_corr(&smooth_boot, &re_boot);
+            let ci = pearson_corr(&smooth_boot, &im_boot);
+            let amp = (cr * cr + ci * ci).sqrt();
+            let null = (2.0 / (n_valid - 2) as f64).sqrt();
+            fix_samples.push(if null > 1e-15 { amp / null } else { 0.0 });
+        } else {
+            fix_samples.push(0.0);
+        }
+
+        // Bootstrap corr_Nk: resample pairs with replacement.
+        if n_pairs >= 2 {
+            let mut a_boot = Vec::with_capacity(n_pairs);
+            let mut p_boot = Vec::with_capacity(n_pairs);
+            for _ in 0..n_pairs {
+                let idx = rng.gen_range(0..n_pairs);
+                a_boot.push(pair_actual[idx]);
+                p_boot.push(pair_pred_nk[idx]);
+            }
+            corr_samples.push(pearson_corr(&a_boot, &p_boot));
+        } else {
+            corr_samples.push(0.0);
+        }
+    }
+
+    // Aggregate.
+    let fix_mean = fix_samples.iter().sum::<f64>() / n_bootstrap as f64;
+    let fix_std = (fix_samples
+        .iter()
+        .map(|&x| (x - fix_mean).powi(2))
+        .sum::<f64>()
+        / (n_bootstrap - 1).max(1) as f64)
+        .sqrt();
+    fix_samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let fix_ci_lo = fix_samples[(0.025 * n_bootstrap as f64) as usize];
+    let fix_ci_hi = fix_samples[(0.975 * n_bootstrap as f64).min(n_bootstrap as f64 - 1.0) as usize];
+
+    let corr_mean = corr_samples.iter().sum::<f64>() / n_bootstrap as f64;
+    let corr_std = (corr_samples
+        .iter()
+        .map(|&x| (x - corr_mean).powi(2))
+        .sum::<f64>()
+        / (n_bootstrap - 1).max(1) as f64)
+        .sqrt();
+    corr_samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let corr_ci_lo = corr_samples[(0.025 * n_bootstrap as f64) as usize];
+    let corr_ci_hi = corr_samples[(0.975 * n_bootstrap as f64).min(n_bootstrap as f64 - 1.0) as usize];
+
+    BootstrapCIResult {
+        ell: blk.ell,
+        order: blk.order,
+        smoothness_bound: bound,
+        n_bits,
+        channel_weight: blk.channel_weight,
+        fix_excess_mean: fix_mean,
+        fix_excess_std: fix_std,
+        fix_excess_ci_lo: fix_ci_lo,
+        fix_excess_ci_hi: fix_ci_hi,
+        corr_nk_mean: corr_mean,
+        corr_nk_std: corr_std,
+        corr_nk_ci_lo: corr_ci_lo,
+        corr_nk_ci_hi: corr_ci_hi,
+        n_bootstrap,
+        n_pairs,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1614,6 +2409,94 @@ mod tests {
         assert!(result.n_valid > 50, "should have many valid primes");
         assert!(result.fixed_r_amplitude.is_finite());
         assert!(result.product_corr_nk.abs() <= 1.0 + 1e-9);
+    }
+
+    // ─── Stress test unit tests ───
+
+    #[test]
+    fn test_smoothness_spectrum_full_matches_truncated() {
+        let ell = 131u64;
+        let bound = 10u64;
+        let truncated = smoothness_spectrum(ell, bound, 5);
+        let full = smoothness_spectrum_full(ell, bound);
+        assert_eq!(full.order, truncated.order);
+        assert!(
+            (full.smooth_fraction - truncated.smooth_fraction).abs() < 1e-10,
+            "smooth fractions differ: {} vs {}",
+            full.smooth_fraction,
+            truncated.smooth_fraction,
+        );
+        let full_a_max = full
+            .coefficients
+            .iter()
+            .map(|&(_, _, _, amp)| amp)
+            .fold(0.0f64, f64::max);
+        assert!(
+            (full_a_max - truncated.a_max).abs() < 1e-10,
+            "full a_max {} != truncated a_max {}",
+            full_a_max,
+            truncated.a_max,
+        );
+    }
+
+    #[test]
+    fn test_permutation_null_smoke() {
+        let ch = &CHANNELS[5]; // k=22, ℓ=131
+        let result = run_permutation_null(14, ch, 10, 5, 50, 0xBEEF);
+        assert!(result.null_std >= 0.0);
+        assert!(
+            result.empirical_p_value >= 0.0 && result.empirical_p_value <= 1.0,
+            "p-value out of range: {}",
+            result.empirical_p_value,
+        );
+        assert!(result.z_score.is_finite());
+        assert!(
+            result.z_score.abs() < 5.0,
+            "z_score should be moderate (barrier holds), got {}",
+            result.z_score,
+        );
+    }
+
+    #[test]
+    fn test_cross_n_transfer_smoke() {
+        let ch = &CHANNELS[5]; // k=22, ℓ=131
+        let result = run_cross_n_transfer(ch, 10, 5, &[14, 16, 18, 20], 20);
+        assert_eq!(result.source_n_bits, 20);
+        assert!(!result.entries.is_empty());
+        for entry in &result.entries {
+            assert!(entry.consistency_ratio.is_finite());
+            assert!(entry.local_fix_excess >= 0.0);
+            assert!(entry.transfer_fix_excess >= 0.0);
+        }
+    }
+
+    #[test]
+    fn test_multi_character_score_smoke() {
+        let ch = &CHANNELS[5]; // k=22, ℓ=131
+        let result = run_multi_character_score(14, ch, 10, 5, 0xCAFE);
+        assert!(result.corr_dft_weighted_all.abs() <= 1.0 + 1e-9);
+        assert!(result.corr_dft_weighted_top10.abs() <= 1.0 + 1e-9);
+        assert!(result.corr_direct_smoothness.abs() <= 1.0 + 1e-9);
+        assert!(result.train_test_r_squared.is_finite());
+        // Verify 3a ≈ 3c (algebraic identity: DFT-weighted all = direct smoothness).
+        assert!(
+            (result.corr_dft_weighted_all - result.corr_direct_smoothness).abs() < 0.01,
+            "DFT-weighted all should equal direct smoothness: {} vs {}",
+            result.corr_dft_weighted_all,
+            result.corr_direct_smoothness,
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_ci_smoke() {
+        let ch = &CHANNELS[5]; // k=22, ℓ=131
+        let result = run_bootstrap_ci(14, ch, 10, 5, 100, 0xF00D);
+        assert!(result.fix_excess_ci_lo <= result.fix_excess_ci_hi);
+        assert!(result.corr_nk_ci_lo <= result.corr_nk_ci_hi);
+        assert!(result.fix_excess_mean.is_finite());
+        assert!(result.corr_nk_mean.is_finite());
+        assert!(result.fix_excess_std >= 0.0);
+        assert!(result.corr_nk_std >= 0.0);
     }
 
     #[test]
