@@ -1,0 +1,246 @@
+/// E21: Eigenvector Multiplicative Character Audit — CLI
+///
+/// Usage:
+///   eigenvector-character [--bits=14,16,18,20] [--channels=0,1,...,6]
+///                         [--eigenvectors=3] [--seed=N]
+///
+/// Runs the character audit for each (n_bits, channel) pair and outputs:
+///   - A human-readable summary to stdout
+///   - Results JSON to data/E21_character_audit.json
+
+use eigenvector_character::{run_character_audit, CharacterAuditResult};
+use eisenstein_hunt::CHANNELS;
+use std::collections::HashMap;
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let opts = parse_args(&args);
+
+    let seed         = parse_u64(&opts, "seed", 0x4e32_e21_cafe_0001);
+    let n_eigenvecs  = parse_usize(&opts, "eigenvectors", 3);
+    let bit_sizes    = parse_bit_sizes(&opts, &[14, 16, 18, 20]);
+    let channel_ids  = parse_channel_ids(&opts, 7);
+
+    println!("E21 CHARACTER AUDIT: eigenvector multiplicative character structure");
+    println!("Bit sizes  : {:?}", bit_sizes);
+    println!("Channels   : {:?}", channel_ids);
+    println!("Eigenvectors per block: {n_eigenvecs}");
+    println!("Seed       : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let mut all_results: Vec<CharacterAuditResult> = Vec::new();
+
+    for &n_bits in &bit_sizes {
+        for &ch_idx in &channel_ids {
+            let ch = &CHANNELS[ch_idx];
+            eprint!("  n={n_bits:2}, k={:2}, ℓ={:6} … ", ch.weight, ch.ell);
+
+            let result = run_character_audit(
+                n_bits,
+                ch,
+                n_eigenvecs,
+                seed ^ (n_bits as u64 * 0x1000 + ch_idx as u64),
+            );
+            eprint!("done  ({} primes, {} pairs)\n", result.n_primes, result.n_valid_pairs);
+            all_results.push(result);
+        }
+    }
+
+    println!();
+    print_summary(&all_results);
+    write_json(&all_results, "data/E21_character_audit.json");
+}
+
+// ---------------------------------------------------------------------------
+// Summary printer
+// ---------------------------------------------------------------------------
+
+fn print_summary(results: &[CharacterAuditResult]) {
+    println!(
+        "┌─────────────────────────────────────────────────────────────────────────┐"
+    );
+    println!(
+        "│ E21 RESULTS: Dominant eigenvector vs. multiplicative character χ_{{r*}}   │"
+    );
+    println!(
+        "└─────────────────────────────────────────────────────────────────────────┘"
+    );
+    println!();
+
+    // -----------------------------------------------------------------------
+    // Table 1: top eigenvector character fit (corr_re_best and best_char_amp)
+    // -----------------------------------------------------------------------
+    println!("Table 1: Eigenvector-character fit (top eigenvector, u₁)");
+    println!(
+        "{:>4}  {:>3}  {:>6}  {:>6}  {:>5}  {:>5}  {:>5}  {:>6}",
+        "bits", "k", "ℓ", "r*", "|corr|", "amp", "λ₁", "#pairs"
+    );
+    println!("{}", "─".repeat(52));
+
+    for r in results {
+        let Some(ev) = r.eigenvectors.first() else { continue };
+        println!(
+            "{:>4}  {:>3}  {:>6}  {:>6}  {:>5.3}  {:>5.3}  {:>+6.2}  {:>6}",
+            r.n_bits,
+            r.channel_weight,
+            r.channel_ell,
+            ev.best_char_r,
+            ev.corr_re_best.abs(),
+            ev.best_char_amp,
+            ev.eigenvalue,
+            ev.n_pairs_used,
+        );
+    }
+
+    println!();
+
+    // -----------------------------------------------------------------------
+    // Table 2: product tests
+    // -----------------------------------------------------------------------
+    println!("Table 2: Product test  u1(p)*u1(q)  vs  Re(chi_{{r*}}(.))");
+    println!(
+        "  corr_sigma = correlation with Re(chi_{{r*}}(sigma_{{k-1}}(N) mod ell))  [needs p,q]"
+    );
+    println!(
+        "  corr_Nk    = correlation with Re(chi_{{r*}}(N^{{k-1}} mod ell))         [from N only]"
+    );
+    println!(
+        "  If |corr_Nk| < 0.1: barrier intact.  If |corr_Nk| > 0.5: corridor open."
+    );
+    println!();
+    println!(
+        "{:>4}  {:>3}  {:>6}  {:>8}  {:>8}  verdict",
+        "bits", "k", "ℓ", "corr_σ", "corr_Nk"
+    );
+    println!("{}", "─".repeat(52));
+
+    for r in results {
+        let Some(ev) = r.eigenvectors.first() else { continue };
+        let verdict = if ev.product_corr_nk.abs() > 0.5 {
+            "⚠ CORRIDOR?"
+        } else if ev.product_corr_nk.abs() > 0.2 {
+            "~ weak signal"
+        } else {
+            "✓ barrier"
+        };
+        println!(
+            "{:>4}  {:>3}  {:>6}  {:>+8.4}  {:>+8.4}  {}",
+            r.n_bits,
+            r.channel_weight,
+            r.channel_ell,
+            ev.product_corr_sigma,
+            ev.product_corr_nk,
+            verdict,
+        );
+    }
+
+    println!();
+
+    // -----------------------------------------------------------------------
+    // Key findings summary
+    // -----------------------------------------------------------------------
+    let n_high_corr = results
+        .iter()
+        .filter_map(|r| r.eigenvectors.first())
+        .filter(|ev| ev.corr_re_best.abs() > 0.8)
+        .count();
+    let n_barrier = results
+        .iter()
+        .filter_map(|r| r.eigenvectors.first())
+        .filter(|ev| ev.product_corr_nk.abs() < 0.2)
+        .count();
+    let n_total = results
+        .iter()
+        .filter(|r| !r.eigenvectors.is_empty())
+        .count();
+
+    println!("Key findings:");
+    println!(
+        "  Eigenvector ~ character (|corr| > 0.8): {n_high_corr} / {n_total} blocks"
+    );
+    println!(
+        "  Barrier intact (|corr_Nk| < 0.2):       {n_barrier} / {n_total} blocks"
+    );
+    if n_barrier < n_total {
+        let n_open = n_total - n_barrier;
+        println!("  ⚠ WARNING: {n_open} block(s) show elevated corr_Nk — inspect JSON.");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Argument parsing
+// ---------------------------------------------------------------------------
+
+fn parse_args(args: &[String]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for arg in args {
+        if let Some(kv) = arg.strip_prefix("--") {
+            if let Some((k, v)) = kv.split_once('=') {
+                map.insert(k.to_string(), v.to_string());
+            } else {
+                map.insert(kv.to_string(), "true".to_string());
+            }
+        }
+    }
+    map
+}
+
+fn parse_u64(opts: &HashMap<String, String>, key: &str, default: u64) -> u64 {
+    opts.get(key)
+        .and_then(|v| {
+            if let Some(hex) = v.strip_prefix("0x") {
+                u64::from_str_radix(hex, 16).ok()
+            } else {
+                v.parse().ok()
+            }
+        })
+        .unwrap_or(default)
+}
+
+fn parse_usize(opts: &HashMap<String, String>, key: &str, default: usize) -> usize {
+    opts.get(key)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn parse_bit_sizes(opts: &HashMap<String, String>, default: &[u32]) -> Vec<u32> {
+    opts.get("bits")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| default.to_vec())
+}
+
+fn parse_channel_ids(opts: &HashMap<String, String>, n_channels: usize) -> Vec<usize> {
+    opts.get("channels")
+        .map(|v| {
+            v.split(',')
+                .filter_map(|s| s.trim().parse::<usize>().ok())
+                .filter(|&id| id < n_channels)
+                .collect()
+        })
+        .unwrap_or_else(|| (0..n_channels).collect())
+}
+
+// ---------------------------------------------------------------------------
+// JSON output
+// ---------------------------------------------------------------------------
+
+fn write_json<T: serde::Serialize>(value: &T, path: &str) {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("Warning: could not create directory {parent:?}: {e}");
+                return;
+            }
+        }
+    }
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(path, &json) {
+                eprintln!("Warning: could not write {path}: {e}");
+            } else {
+                println!("\nResults written to {path}");
+            }
+        }
+        Err(e) => eprintln!("Warning: could not serialize results: {e}"),
+    }
+}
