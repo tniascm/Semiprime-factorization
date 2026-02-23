@@ -781,6 +781,11 @@ pub struct PrimeRestrictedResult {
     pub product_corr_sigma: f64,
     /// corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ)))      [from N only]
     pub product_corr_nk: f64,
+    /// corr using σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1} mod ℓ    [N-only approx]
+    /// This exploits p ≈ q ≈ √N for balanced semiprimes.
+    pub product_corr_approx: f64,
+    /// Mean |σ_approx − σ_true| / ℓ — measures approximation quality.
+    pub sigma_approx_error_mean: f64,
     /// Number of pairs used in product tests.
     pub n_pairs: usize,
 }
@@ -918,6 +923,8 @@ pub fn run_prime_restricted_smoothness(
     let mut actual: Vec<f64> = Vec::new();
     let mut pred_sigma: Vec<f64> = Vec::new();
     let mut pred_nk: Vec<f64> = Vec::new();
+    let mut pred_approx: Vec<f64> = Vec::new();
+    let mut sigma_errors: Vec<f64> = Vec::new();
 
     for &(p, q) in &pairs {
         let pi = prime_set.partition_point(|&x| x < p);
@@ -947,9 +954,33 @@ pub fn run_prime_restricted_smoothness(
         }
         let re_nk = re_char(dlog_nk, scanned_r_star, order);
 
+        // σ-approximation: σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1}  mod ℓ
+        // This exploits p ≈ q ≈ √N for balanced semiprimes.
+        let sqrt_n = (n_val as f64).sqrt() as u64;
+        let sqrt_k1 = mod_pow(sqrt_n, k1, ell);
+        let sigma_approx = (1 + 2 * sqrt_k1 + nk_val) % ell;
+
+        // Measure approximation error: |σ_approx − σ_true| / ℓ
+        let err = if sigma_approx >= sigma_val {
+            sigma_approx - sigma_val
+        } else {
+            sigma_val - sigma_approx
+        };
+        let err_wrapped = err.min(ell - err); // circular distance
+        sigma_errors.push(err_wrapped as f64 / ell as f64);
+
+        let dlog_approx = dlog[sigma_approx as usize];
+        let re_approx = if dlog_approx != u32::MAX {
+            re_char(dlog_approx, scanned_r_star, order)
+        } else {
+            // σ_approx = 0 mod ℓ — skip this pair for approx but keep others
+            0.0
+        };
+
         actual.push(prod);
         pred_sigma.push(re_sigma);
         pred_nk.push(re_nk);
+        pred_approx.push(re_approx);
     }
 
     let n_pairs = actual.len();
@@ -960,6 +991,16 @@ pub fn run_prime_restricted_smoothness(
     };
     let product_corr_nk = if n_pairs >= 2 {
         pearson_corr(&actual, &pred_nk)
+    } else {
+        0.0
+    };
+    let product_corr_approx = if n_pairs >= 2 {
+        pearson_corr(&actual, &pred_approx)
+    } else {
+        0.0
+    };
+    let sigma_approx_error_mean = if !sigma_errors.is_empty() {
+        sigma_errors.iter().sum::<f64>() / sigma_errors.len() as f64
     } else {
         0.0
     };
@@ -985,6 +1026,8 @@ pub fn run_prime_restricted_smoothness(
         scanned_excess,
         product_corr_sigma,
         product_corr_nk,
+        product_corr_approx,
+        sigma_approx_error_mean,
         n_pairs,
     }
 }
