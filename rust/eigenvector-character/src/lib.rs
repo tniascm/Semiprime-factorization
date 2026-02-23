@@ -3101,6 +3101,993 @@ pub fn run_cross_channel_tests(
     CrossChannelResult { blocks }
 }
 
+// ===========================================================================
+// E22: Eisenstein-Scored Sieve Enrichment
+// ===========================================================================
+//
+// Tests whether the found Eisenstein smoothness bias (2-6× fix_excess at group
+// level, confirmed in E21b) can accelerate a quadratic sieve.
+//
+// Key insight: For QS polynomial Q(x) = (x + ⌊√N⌋)² − N, the residue
+// Q(x) mod ℓ IS computable from public information (no factorisation needed).
+// The group-level enrichment tells us which cosets in (ℤ/ℓℤ)* are smooth-rich.
+// The question is whether scoring Q(x) via its character position predicts
+// smoothness of the FULL Q(x) when Q(x) >> ℓ.
+//
+// Phase 1: Group-level enrichment profile (exact computation on (ℤ/ℓℤ)*)
+// Phase 2: QS polynomial enrichment (does char score predict smoothness of Q(x)?)
+// Phase 3: Joint multi-channel scoring (CRT across channels)
+// Phase 4: Direct sieve speedup measurement (T_random vs T_scored)
+
+/// Integer square root via Newton's method.
+pub fn isqrt(n: u128) -> u128 {
+    if n < 2 {
+        return n;
+    }
+    // Initial guess: 2^(ceil(bits/2))
+    let bits = 128 - n.leading_zeros();
+    let mut x = 1u128 << ((bits + 1) / 2);
+    loop {
+        let x1 = (x + n / x) / 2;
+        if x1 >= x {
+            return x;
+        }
+        x = x1;
+    }
+}
+
+/// Check if n is B-smooth using trial division up to bound.
+/// Works for u128 values (needed for QS polynomial values).
+fn is_b_smooth_u128(mut n: u128, bound: u64) -> bool {
+    if n <= 1 {
+        return true;
+    }
+    let mut d = 2u64;
+    while (d as u128) * (d as u128) <= n && d <= bound {
+        while n % (d as u128) == 0 {
+            n /= d as u128;
+        }
+        d += if d == 2 { 1 } else { 2 };
+    }
+    // After trial division, if n > 1 and n > bound, it has a large factor.
+    n == 1 || n <= bound as u128
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: Group-level enrichment profile
+// ---------------------------------------------------------------------------
+
+/// Per-channel group-level enrichment result.
+///
+/// Measures the smoothness enrichment at the best character frequency r*
+/// on the FULL group (ℤ/ℓℤ)*.  This is the theoretical ceiling — the maximum
+/// enrichment achievable IF Q(x) mod ℓ were uniformly distributed in the
+/// smooth-rich coset.
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupEnrichmentResult {
+    pub ell: u64,
+    pub weight: u32,
+    pub order: usize,
+    pub smooth_bound: u64,
+    /// Fraction of (ℤ/ℓℤ)* that is B-smooth.
+    pub smooth_fraction: f64,
+    /// Best character index from full-group DFT.
+    pub full_r_star: usize,
+    /// Amplitude of best character (Fourier coefficient magnitude).
+    pub full_amplitude: f64,
+    /// Enrichment ratio: P(smooth | top quartile) / P(smooth | overall).
+    pub enrichment_top_quartile: f64,
+    /// Enrichment ratio: P(smooth | top decile) / P(smooth | overall).
+    pub enrichment_top_decile: f64,
+    /// Enrichment ratio: P(smooth | top ventile) / P(smooth | overall).
+    pub enrichment_top_ventile: f64,
+    /// Number of quantile bins used.
+    pub n_bins: usize,
+    /// Enrichment per bin: (bin_idx, fraction_smooth, relative_enrichment).
+    pub bin_enrichments: Vec<(usize, f64, f64)>,
+}
+
+/// Compute group-level enrichment profile for one channel at one smoothness bound.
+///
+/// Partitions (ℤ/ℓℤ)* into quantile bins by Re(χ_{r*}(a)) and measures
+/// the smoothness rate in each bin.
+pub fn compute_group_enrichment(
+    ell: u64,
+    weight: u32,
+    smooth_bound: u64,
+    n_bins: usize,
+) -> GroupEnrichmentResult {
+    use algebra::{build_dlog_table, primitive_root, re_char};
+
+    let order = (ell - 1) as usize;
+    let prim_g = primitive_root(ell);
+    let dlog = build_dlog_table(ell, prim_g);
+
+    // Full-group smoothness spectrum to find r*.
+    let spectrum = smoothness_spectrum_full(ell, smooth_bound);
+    let full_r_star = spectrum
+        .coefficients
+        .iter()
+        .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap())
+        .map(|&(r, _, _, _)| r)
+        .unwrap_or(1);
+    let full_amplitude = spectrum
+        .coefficients
+        .iter()
+        .find(|&&(r, _, _, _)| r == full_r_star)
+        .map(|&(_, _, _, amp)| amp)
+        .unwrap_or(0.0);
+
+    // For each a in 1..ell, compute Re(χ_{r*}(a)) and whether a is B-smooth.
+    let mut scored_elements: Vec<(f64, bool)> = Vec::with_capacity(order);
+    for a in 1..ell {
+        let d = dlog[a as usize];
+        let re_val = re_char(d, full_r_star, order);
+        let smooth = is_b_smooth(a, smooth_bound);
+        scored_elements.push((re_val, smooth));
+    }
+
+    let overall_smooth: f64 =
+        scored_elements.iter().filter(|(_, s)| *s).count() as f64 / order as f64;
+
+    // Sort by score descending, then partition into quantile bins.
+    scored_elements.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let bin_size = order / n_bins;
+    let mut bin_enrichments = Vec::with_capacity(n_bins);
+    for bin_idx in 0..n_bins {
+        let start = bin_idx * bin_size;
+        let end = if bin_idx == n_bins - 1 {
+            order
+        } else {
+            (bin_idx + 1) * bin_size
+        };
+        let bin_slice = &scored_elements[start..end];
+        let n_smooth = bin_slice.iter().filter(|(_, s)| *s).count();
+        let frac = n_smooth as f64 / bin_slice.len() as f64;
+        let enrichment = if overall_smooth > 1e-15 {
+            frac / overall_smooth
+        } else {
+            0.0
+        };
+        bin_enrichments.push((bin_idx, frac, enrichment));
+    }
+
+    // Compute specific quantile enrichments.
+    let top_quartile_n = order / 4;
+    let top_decile_n = order / 10;
+    let top_ventile_n = order / 20;
+
+    let enrichment_at = |top_n: usize| -> f64 {
+        let n_smooth = scored_elements[..top_n].iter().filter(|(_, s)| *s).count();
+        let frac = n_smooth as f64 / top_n as f64;
+        if overall_smooth > 1e-15 {
+            frac / overall_smooth
+        } else {
+            0.0
+        }
+    };
+
+    GroupEnrichmentResult {
+        ell,
+        weight,
+        order,
+        smooth_bound,
+        smooth_fraction: overall_smooth,
+        full_r_star,
+        full_amplitude,
+        enrichment_top_quartile: enrichment_at(top_quartile_n),
+        enrichment_top_decile: enrichment_at(top_decile_n),
+        enrichment_top_ventile: enrichment_at(top_ventile_n),
+        n_bins,
+        bin_enrichments,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: QS polynomial enrichment
+// ---------------------------------------------------------------------------
+
+/// Per-block QS polynomial enrichment result for one channel.
+#[derive(Debug, Clone, Serialize)]
+pub struct QSChannelEnrichmentResult {
+    pub ell: u64,
+    pub weight: u32,
+    pub full_r_star: usize,
+    /// Number of QS polynomial values tested.
+    pub n_tested: usize,
+    /// Number of Q(x) values that are B-smooth.
+    pub n_smooth: usize,
+    /// Overall smoothness rate.
+    pub smooth_rate: f64,
+    /// Smoothness rate in top-quartile by character score.
+    pub smooth_rate_top_q: f64,
+    /// Enrichment: smooth_rate_top_q / smooth_rate.
+    pub enrichment_top_q: f64,
+    /// Smoothness rate in bottom-quartile by character score.
+    pub smooth_rate_bot_q: f64,
+    /// Enrichment in bottom quartile.
+    pub enrichment_bot_q: f64,
+    /// Pearson correlation between character score and smoothness indicator.
+    pub pearson_corr_score_smooth: f64,
+    /// Average log2 of |Q(x)| (measures how far Q(x) >> ℓ).
+    pub avg_log2_qx: f64,
+    /// Ratio log2(Q(x)) / log2(ℓ) — measures the "overflow" factor.
+    pub overflow_ratio: f64,
+}
+
+/// Per-block QS polynomial enrichment result.
+#[derive(Debug, Clone, Serialize)]
+pub struct QSBlockResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_values: usize,
+    /// Number of Q(x) that are B-smooth.
+    pub n_smooth_total: usize,
+    pub overall_smooth_rate: f64,
+    /// Per-channel results.
+    pub channels: Vec<QSChannelEnrichmentResult>,
+    /// Best single-channel enrichment (top quartile).
+    pub best_single_enrichment: f64,
+    pub best_single_channel_idx: usize,
+}
+
+/// Generate QS polynomial values Q(x) = (x + floor(sqrt(N)))^2 - N for a
+/// given semiprime N, scanning x = 1, 2, ...
+///
+/// Returns Vec<(x, Q(x))> for the first `count` values where Q(x) > 0.
+fn generate_qs_values(n: u128, count: usize) -> Vec<(u64, u128)> {
+    let sqrt_n = isqrt(n);
+    let mut results = Vec::with_capacity(count);
+    for x in 1..=(count as u128 * 2 + 100) {
+        let val = (sqrt_n + x) * (sqrt_n + x);
+        if val > n {
+            let qx = val - n;
+            results.push((x as u64, qx));
+            if results.len() >= count {
+                break;
+            }
+        }
+    }
+    results
+}
+
+/// Compute QS enrichment for one block (one N, one smoothness bound).
+///
+/// For each channel, scores Q(x) mod ℓ by Re(χ_{r*}(Q(x) mod ℓ)),
+/// then measures whether high-scoring Q(x) values are more likely to be smooth.
+fn compute_qs_block(
+    n_bits: u32,
+    smooth_bound: u64,
+    n_values: usize,
+    seed: u64,
+) -> QSBlockResult {
+    use algebra::{build_dlog_table, primitive_root, re_char};
+
+    // Generate a semiprime N of the right size.
+    let n = generate_semiprime(n_bits, seed);
+
+    // Generate QS polynomial values.
+    let qs_values = generate_qs_values(n, n_values);
+    let actual_count = qs_values.len();
+
+    // Determine smoothness of each Q(x).
+    let smooth_flags: Vec<bool> = qs_values
+        .iter()
+        .map(|&(_, qx)| is_b_smooth_u128(qx, smooth_bound))
+        .collect();
+    let n_smooth_total = smooth_flags.iter().filter(|&&s| s).count();
+    let overall_smooth_rate = n_smooth_total as f64 / actual_count as f64;
+
+    // Average log2(|Q(x)|).
+    let avg_log2_qx: f64 = qs_values
+        .iter()
+        .map(|&(_, qx)| (qx as f64).log2())
+        .sum::<f64>()
+        / actual_count as f64;
+
+    // Per-channel enrichment.
+    let mut channel_results = Vec::with_capacity(7);
+    let mut best_single_enrichment = 0.0f64;
+    let mut best_single_channel_idx = 0usize;
+
+    for (ch_idx, ch) in eisenstein_hunt::CHANNELS.iter().enumerate() {
+        let ell = ch.ell;
+        let order = (ell - 1) as usize;
+        let prim_g = primitive_root(ell);
+        let dlog = build_dlog_table(ell, prim_g);
+
+        // Find r* from full-group smoothness spectrum.
+        let spectrum = smoothness_spectrum_full(ell, smooth_bound);
+        let full_r_star = spectrum
+            .coefficients
+            .iter()
+            .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap())
+            .map(|&(r, _, _, _)| r)
+            .unwrap_or(1);
+
+        // Score each Q(x): compute Re(χ_{r*}(Q(x) mod ℓ)).
+        let mut scores: Vec<f64> = Vec::with_capacity(actual_count);
+        let mut valid_indices: Vec<usize> = Vec::with_capacity(actual_count);
+
+        for (i, &(_, qx)) in qs_values.iter().enumerate() {
+            let qx_mod = (qx % ell as u128) as u64;
+            if qx_mod == 0 {
+                // Q(x) ≡ 0 (mod ℓ) — skip (not in (ℤ/ℓℤ)*)
+                continue;
+            }
+            let d = dlog[qx_mod as usize];
+            if d == u32::MAX {
+                continue;
+            }
+            scores.push(re_char(d, full_r_star, order));
+            valid_indices.push(i);
+        }
+
+        let n_tested = valid_indices.len();
+        if n_tested < 4 {
+            channel_results.push(QSChannelEnrichmentResult {
+                ell,
+                weight: ch.weight,
+                full_r_star,
+                n_tested,
+                n_smooth: 0,
+                smooth_rate: 0.0,
+                smooth_rate_top_q: 0.0,
+                enrichment_top_q: 0.0,
+                smooth_rate_bot_q: 0.0,
+                enrichment_bot_q: 0.0,
+                pearson_corr_score_smooth: 0.0,
+                avg_log2_qx,
+                overflow_ratio: avg_log2_qx / (ell as f64).log2(),
+            });
+            continue;
+        }
+
+        // Sort by score descending.
+        let mut sorted_idx: Vec<usize> = (0..n_tested).collect();
+        sorted_idx.sort_by(|&a, &b| {
+            scores[b]
+                .partial_cmp(&scores[a])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let smooth_for_valid: Vec<f64> = valid_indices
+            .iter()
+            .map(|&i| if smooth_flags[i] { 1.0 } else { 0.0 })
+            .collect();
+
+        let n_smooth = smooth_for_valid.iter().filter(|&&s| s > 0.5).count();
+        let smooth_rate = n_smooth as f64 / n_tested as f64;
+
+        // Top and bottom quartile enrichment.
+        let q_size = n_tested / 4;
+        let top_q_smooth = sorted_idx[..q_size]
+            .iter()
+            .filter(|&&idx| smooth_for_valid[idx] > 0.5)
+            .count();
+        let bot_q_smooth = sorted_idx[n_tested - q_size..]
+            .iter()
+            .filter(|&&idx| smooth_for_valid[idx] > 0.5)
+            .count();
+
+        let smooth_rate_top_q = top_q_smooth as f64 / q_size as f64;
+        let smooth_rate_bot_q = bot_q_smooth as f64 / q_size as f64;
+        let enrichment_top_q = if smooth_rate > 1e-15 {
+            smooth_rate_top_q / smooth_rate
+        } else {
+            0.0
+        };
+        let enrichment_bot_q = if smooth_rate > 1e-15 {
+            smooth_rate_bot_q / smooth_rate
+        } else {
+            0.0
+        };
+
+        // Pearson correlation between score and smoothness.
+        let pearson_corr_score_smooth =
+            algebra::pearson_corr(&scores, &smooth_for_valid);
+
+        if enrichment_top_q > best_single_enrichment {
+            best_single_enrichment = enrichment_top_q;
+            best_single_channel_idx = ch_idx;
+        }
+
+        channel_results.push(QSChannelEnrichmentResult {
+            ell,
+            weight: ch.weight,
+            full_r_star,
+            n_tested,
+            n_smooth,
+            smooth_rate,
+            smooth_rate_top_q,
+            enrichment_top_q,
+            smooth_rate_bot_q,
+            enrichment_bot_q,
+            pearson_corr_score_smooth,
+            avg_log2_qx,
+            overflow_ratio: avg_log2_qx / (ell as f64).log2(),
+        });
+    }
+
+    QSBlockResult {
+        n_bits,
+        smooth_bound,
+        n_values: actual_count,
+        n_smooth_total,
+        overall_smooth_rate,
+        channels: channel_results,
+        best_single_enrichment,
+        best_single_channel_idx,
+    }
+}
+
+/// Generate a random semiprime N = p*q where N has approximately n_bits bits.
+///
+/// Uses deterministic RNG seeded by `seed` for reproducibility.
+fn generate_semiprime(n_bits: u32, seed: u64) -> u128 {
+    use rand::Rng;
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let half = n_bits / 2;
+    let lo = 1u64 << (half - 1);
+    let hi = 1u64 << half;
+
+    loop {
+        let p_cand = lo + rng.gen_range(0..(hi - lo));
+        if !is_prime_u64(p_cand) {
+            continue;
+        }
+        let q_cand = lo + rng.gen_range(0..(hi - lo));
+        if !is_prime_u64(q_cand) || q_cand == p_cand {
+            continue;
+        }
+        let n = p_cand as u128 * q_cand as u128;
+        let n_actual_bits = 128 - n.leading_zeros();
+        if n_actual_bits == n_bits {
+            return n;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: Joint multi-channel scoring
+// ---------------------------------------------------------------------------
+
+/// Joint scoring result across multiple channels.
+#[derive(Debug, Clone, Serialize)]
+pub struct JointScoringResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_values: usize,
+    pub overall_smooth_rate: f64,
+    /// Best single-channel enrichment (top quartile).
+    pub best_single_enrichment: f64,
+    /// Joint score enrichment: average Re(χ_{r*}(Q(x) mod ℓ)) over channels.
+    pub joint_enrichment_top_q: f64,
+    /// Joint score enrichment (top decile).
+    pub joint_enrichment_top_d: f64,
+    /// Joint Pearson correlation.
+    pub joint_pearson_corr: f64,
+    /// Number of channels contributing to joint score.
+    pub n_channels_used: usize,
+    /// Per-channel weight in joint score (correlation with smoothness).
+    pub channel_weights: Vec<(usize, f64)>,
+}
+
+/// Compute joint multi-channel scoring for QS polynomial values.
+///
+/// Scores each Q(x) by the average Re(χ_{r*_i}(Q(x) mod ℓ_i)) across channels,
+/// weighting channels by their group-level enrichment amplitude.
+fn compute_joint_scoring(
+    n_bits: u32,
+    smooth_bound: u64,
+    n_values: usize,
+    seed: u64,
+) -> JointScoringResult {
+    use algebra::{build_dlog_table, primitive_root, re_char};
+
+    let n = generate_semiprime(n_bits, seed);
+    let qs_values = generate_qs_values(n, n_values);
+    let actual_count = qs_values.len();
+
+    let smooth_flags: Vec<bool> = qs_values
+        .iter()
+        .map(|&(_, qx)| is_b_smooth_u128(qx, smooth_bound))
+        .collect();
+    let overall_smooth_rate =
+        smooth_flags.iter().filter(|&&s| s).count() as f64 / actual_count as f64;
+
+    // Per-channel infrastructure.
+    struct ChannelInfo {
+        ell: u64,
+        order: usize,
+        dlog: Vec<u32>,
+        full_r_star: usize,
+        group_amplitude: f64,
+    }
+
+    let mut channel_infos: Vec<ChannelInfo> = Vec::with_capacity(7);
+    for ch in eisenstein_hunt::CHANNELS {
+        let ell = ch.ell;
+        let order = (ell - 1) as usize;
+        let prim_g = primitive_root(ell);
+        let dlog_tbl = build_dlog_table(ell, prim_g);
+
+        let spectrum = smoothness_spectrum_full(ell, smooth_bound);
+        let (full_r_star, group_amplitude) = spectrum
+            .coefficients
+            .iter()
+            .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap())
+            .map(|&(r, _, _, amp)| (r, amp))
+            .unwrap_or((1, 0.0));
+
+        channel_infos.push(ChannelInfo {
+            ell,
+            order,
+            dlog: dlog_tbl,
+            full_r_star,
+            group_amplitude,
+        });
+    }
+
+    // Compute per-channel scores for each Q(x).
+    let n_channels = channel_infos.len();
+    let mut per_channel_scores: Vec<Vec<f64>> = vec![Vec::with_capacity(actual_count); n_channels];
+
+    for &(_, qx) in &qs_values {
+        for (ch_idx, ci) in channel_infos.iter().enumerate() {
+            let qx_mod = (qx % ci.ell as u128) as u64;
+            if qx_mod == 0 {
+                per_channel_scores[ch_idx].push(0.0);
+            } else {
+                let d = ci.dlog[qx_mod as usize];
+                if d == u32::MAX {
+                    per_channel_scores[ch_idx].push(0.0);
+                } else {
+                    per_channel_scores[ch_idx].push(re_char(d, ci.full_r_star, ci.order));
+                }
+            }
+        }
+    }
+
+    // Compute per-channel Pearson correlations with smoothness.
+    let smooth_f64: Vec<f64> = smooth_flags
+        .iter()
+        .map(|&s| if s { 1.0 } else { 0.0 })
+        .collect();
+
+    let mut channel_weights: Vec<(usize, f64)> = Vec::with_capacity(n_channels);
+    for ch_idx in 0..n_channels {
+        let corr = algebra::pearson_corr(&per_channel_scores[ch_idx], &smooth_f64);
+        channel_weights.push((ch_idx, corr));
+    }
+
+    // Joint score: weighted average (weight = group_amplitude).
+    let total_weight: f64 = channel_infos.iter().map(|ci| ci.group_amplitude).sum();
+    let joint_scores: Vec<f64> = (0..actual_count)
+        .map(|i| {
+            let weighted_sum: f64 = channel_infos
+                .iter()
+                .enumerate()
+                .map(|(ch_idx, ci)| ci.group_amplitude * per_channel_scores[ch_idx][i])
+                .sum();
+            if total_weight > 1e-15 {
+                weighted_sum / total_weight
+            } else {
+                0.0
+            }
+        })
+        .collect();
+
+    let joint_pearson_corr = algebra::pearson_corr(&joint_scores, &smooth_f64);
+
+    // Sort by joint score descending, measure enrichment.
+    let mut sorted_idx: Vec<usize> = (0..actual_count).collect();
+    sorted_idx.sort_by(|&a, &b| {
+        joint_scores[b]
+            .partial_cmp(&joint_scores[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let q_size = actual_count / 4;
+    let d_size = actual_count / 10;
+
+    let top_q_smooth = sorted_idx[..q_size]
+        .iter()
+        .filter(|&&idx| smooth_flags[idx])
+        .count();
+    let joint_enrichment_top_q = if overall_smooth_rate > 1e-15 {
+        (top_q_smooth as f64 / q_size as f64) / overall_smooth_rate
+    } else {
+        0.0
+    };
+
+    let top_d_smooth = sorted_idx[..d_size]
+        .iter()
+        .filter(|&&idx| smooth_flags[idx])
+        .count();
+    let joint_enrichment_top_d = if overall_smooth_rate > 1e-15 {
+        (top_d_smooth as f64 / d_size as f64) / overall_smooth_rate
+    } else {
+        0.0
+    };
+
+    // Best single-channel enrichment (from per-channel scores).
+    let mut best_single = 0.0f64;
+    for ch_idx in 0..n_channels {
+        let mut ch_sorted: Vec<usize> = (0..actual_count).collect();
+        ch_sorted.sort_by(|&a, &b| {
+            per_channel_scores[ch_idx][b]
+                .partial_cmp(&per_channel_scores[ch_idx][a])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let ch_top_smooth = ch_sorted[..q_size]
+            .iter()
+            .filter(|&&idx| smooth_flags[idx])
+            .count();
+        let ch_enrichment = if overall_smooth_rate > 1e-15 {
+            (ch_top_smooth as f64 / q_size as f64) / overall_smooth_rate
+        } else {
+            0.0
+        };
+        if ch_enrichment > best_single {
+            best_single = ch_enrichment;
+        }
+    }
+
+    JointScoringResult {
+        n_bits,
+        smooth_bound,
+        n_values: actual_count,
+        overall_smooth_rate,
+        best_single_enrichment: best_single,
+        joint_enrichment_top_q,
+        joint_enrichment_top_d,
+        joint_pearson_corr,
+        n_channels_used: n_channels,
+        channel_weights,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: Direct sieve speedup measurement
+// ---------------------------------------------------------------------------
+
+/// Direct sieve speedup measurement result.
+#[derive(Debug, Clone, Serialize)]
+pub struct SieveSpeedupResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    /// Number of smooth Q(x) values needed (target for sieve).
+    pub target_smooth: usize,
+    /// Number of Q(x) tested to find `target_smooth` smooth values (random scan).
+    pub random_tested: usize,
+    /// Number of Q(x) tested to find `target_smooth` smooth values (scored scan).
+    pub scored_tested: usize,
+    /// Speedup factor: random_tested / scored_tested.
+    pub speedup_factor: f64,
+    /// Random smooth rate.
+    pub random_smooth_rate: f64,
+    /// Scored smooth rate.
+    pub scored_smooth_rate: f64,
+}
+
+/// Measure direct sieve speedup: how many Q(x) must be tested to find
+/// `target_smooth` B-smooth values, comparing random scan vs scored scan.
+///
+/// Random scan: test Q(x) for x = 1, 2, 3, ...
+/// Scored scan: sort Q(x) by joint character score, test in score-descending order.
+fn measure_sieve_speedup(
+    n_bits: u32,
+    smooth_bound: u64,
+    n_pool: usize,
+    target_smooth: usize,
+    seed: u64,
+) -> SieveSpeedupResult {
+    use algebra::{build_dlog_table, primitive_root, re_char};
+
+    let n = generate_semiprime(n_bits, seed);
+    let qs_values = generate_qs_values(n, n_pool);
+    let actual_pool = qs_values.len();
+
+    // Build per-channel scoring infrastructure.
+    struct ChInfo {
+        ell: u64,
+        order: usize,
+        dlog: Vec<u32>,
+        full_r_star: usize,
+        group_amplitude: f64,
+    }
+
+    let mut ch_infos: Vec<ChInfo> = Vec::with_capacity(7);
+    for ch in eisenstein_hunt::CHANNELS {
+        let ell = ch.ell;
+        let order = (ell - 1) as usize;
+        let prim_g = primitive_root(ell);
+        let dlog_tbl = build_dlog_table(ell, prim_g);
+        let spectrum = smoothness_spectrum_full(ell, smooth_bound);
+        let (r_star, amp) = spectrum
+            .coefficients
+            .iter()
+            .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap())
+            .map(|&(r, _, _, a)| (r, a))
+            .unwrap_or((1, 0.0));
+        ch_infos.push(ChInfo {
+            ell,
+            order,
+            dlog: dlog_tbl,
+            full_r_star: r_star,
+            group_amplitude: amp,
+        });
+    }
+
+    let total_weight: f64 = ch_infos.iter().map(|ci| ci.group_amplitude).sum();
+
+    // Score each Q(x).
+    let joint_scores: Vec<f64> = qs_values
+        .iter()
+        .map(|&(_, qx)| {
+            let weighted_sum: f64 = ch_infos
+                .iter()
+                .map(|ci| {
+                    let qx_mod = (qx % ci.ell as u128) as u64;
+                    if qx_mod == 0 {
+                        0.0
+                    } else {
+                        let d = ci.dlog[qx_mod as usize];
+                        if d == u32::MAX {
+                            0.0
+                        } else {
+                            ci.group_amplitude * re_char(d, ci.full_r_star, ci.order)
+                        }
+                    }
+                })
+                .sum();
+            if total_weight > 1e-15 {
+                weighted_sum / total_weight
+            } else {
+                0.0
+            }
+        })
+        .collect();
+
+    // Random scan: test in order x = 1, 2, 3, ...
+    let mut random_tested = 0usize;
+    let mut random_found = 0usize;
+    for &(_, qx) in &qs_values {
+        random_tested += 1;
+        if is_b_smooth_u128(qx, smooth_bound) {
+            random_found += 1;
+            if random_found >= target_smooth {
+                break;
+            }
+        }
+    }
+
+    // Scored scan: sort by joint score descending, test in that order.
+    let mut scored_order: Vec<usize> = (0..actual_pool).collect();
+    scored_order.sort_by(|&a, &b| {
+        joint_scores[b]
+            .partial_cmp(&joint_scores[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut scored_tested = 0usize;
+    let mut scored_found = 0usize;
+    for &idx in &scored_order {
+        scored_tested += 1;
+        if is_b_smooth_u128(qs_values[idx].1, smooth_bound) {
+            scored_found += 1;
+            if scored_found >= target_smooth {
+                break;
+            }
+        }
+    }
+
+    let speedup_factor = if scored_tested > 0 {
+        random_tested as f64 / scored_tested as f64
+    } else {
+        0.0
+    };
+
+    SieveSpeedupResult {
+        n_bits,
+        smooth_bound,
+        target_smooth,
+        random_tested,
+        scored_tested,
+        speedup_factor,
+        random_smooth_rate: if random_tested > 0 {
+            random_found as f64 / random_tested as f64
+        } else {
+            0.0
+        },
+        scored_smooth_rate: if scored_tested > 0 {
+            scored_found as f64 / scored_tested as f64
+        } else {
+            0.0
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Top-level E22 result types
+// ---------------------------------------------------------------------------
+
+/// Full E22 experiment result.
+#[derive(Debug, Clone, Serialize)]
+pub struct SieveEnrichmentResult {
+    /// Phase 1: Group-level enrichment profiles.
+    pub group_profiles: Vec<GroupEnrichmentResult>,
+    /// Phase 2: QS polynomial enrichment per block.
+    pub qs_blocks: Vec<QSBlockResult>,
+    /// Phase 3: Joint multi-channel scoring per block.
+    pub joint_scoring: Vec<JointScoringResult>,
+    /// Phase 4: Direct sieve speedup measurements.
+    pub sieve_speedup: Vec<SieveSpeedupResult>,
+}
+
+/// Run the full E22 experiment with checkpointing.
+///
+/// Writes intermediate results to `checkpoint_path` after each phase completes.
+pub fn run_sieve_enrichment(
+    bit_sizes: &[u32],
+    smooth_bounds: &[u64],
+    n_qs_values: usize,
+    n_pool: usize,
+    target_smooth: usize,
+    n_bins: usize,
+    seed: u64,
+    checkpoint_path: Option<&str>,
+) -> SieveEnrichmentResult {
+    // Phase 1: Group-level enrichment profiles.
+    eprintln!("\n=== E22 Phase 1: Group-level enrichment profiles ===\n");
+
+    let mut group_profiles = Vec::new();
+    for &bound in smooth_bounds {
+        for ch in eisenstein_hunt::CHANNELS {
+            eprint!(
+                "  ℓ={:6}, k={:2}, B={:3} … ",
+                ch.ell, ch.weight, bound
+            );
+            let result = compute_group_enrichment(ch.ell, ch.weight, bound, n_bins);
+            eprintln!(
+                "smooth={:.4}, enrich_q4={:.2}×, enrich_d10={:.2}×",
+                result.smooth_fraction,
+                result.enrichment_top_quartile,
+                result.enrichment_top_decile,
+            );
+            group_profiles.push(result);
+        }
+    }
+
+    // Checkpoint after phase 1.
+    if let Some(path) = checkpoint_path {
+        let partial = SieveEnrichmentResult {
+            group_profiles: group_profiles.clone(),
+            qs_blocks: vec![],
+            joint_scoring: vec![],
+            sieve_speedup: vec![],
+        };
+        write_checkpoint(path, &partial);
+        eprintln!("  [checkpoint: Phase 1 written to {path}]");
+    }
+
+    // Phase 2: QS polynomial enrichment.
+    eprintln!("\n=== E22 Phase 2: QS polynomial enrichment ===\n");
+
+    let mut qs_blocks = Vec::new();
+    for &n_bits in bit_sizes {
+        for &bound in smooth_bounds {
+            let block_seed = seed ^ (0xE22_0002u64 + n_bits as u64 * 1000 + bound);
+            eprint!(
+                "  n_bits={:2}, B={:3}, {} Q(x) values … ",
+                n_bits, bound, n_qs_values
+            );
+            let result = compute_qs_block(n_bits, bound, n_qs_values, block_seed);
+            eprintln!(
+                "smooth_rate={:.6}, best_enrich={:.3}×",
+                result.overall_smooth_rate,
+                result.best_single_enrichment,
+            );
+            qs_blocks.push(result);
+        }
+    }
+
+    // Checkpoint after phase 2.
+    if let Some(path) = checkpoint_path {
+        let partial = SieveEnrichmentResult {
+            group_profiles: group_profiles.clone(),
+            qs_blocks: qs_blocks.clone(),
+            joint_scoring: vec![],
+            sieve_speedup: vec![],
+        };
+        write_checkpoint(path, &partial);
+        eprintln!("  [checkpoint: Phase 2 written to {path}]");
+    }
+
+    // Phase 3: Joint multi-channel scoring.
+    eprintln!("\n=== E22 Phase 3: Joint multi-channel scoring ===\n");
+
+    let mut joint_scoring = Vec::new();
+    for &n_bits in bit_sizes {
+        for &bound in smooth_bounds {
+            let block_seed = seed ^ (0xE22_0003u64 + n_bits as u64 * 1000 + bound);
+            eprint!(
+                "  n_bits={:2}, B={:3} … ",
+                n_bits, bound
+            );
+            let result = compute_joint_scoring(n_bits, bound, n_qs_values, block_seed);
+            eprintln!(
+                "joint_enrich_q4={:.3}×, joint_corr={:.6}, best_single={:.3}×",
+                result.joint_enrichment_top_q,
+                result.joint_pearson_corr,
+                result.best_single_enrichment,
+            );
+            joint_scoring.push(result);
+        }
+    }
+
+    // Checkpoint after phase 3.
+    if let Some(path) = checkpoint_path {
+        let partial = SieveEnrichmentResult {
+            group_profiles: group_profiles.clone(),
+            qs_blocks: qs_blocks.clone(),
+            joint_scoring: joint_scoring.clone(),
+            sieve_speedup: vec![],
+        };
+        write_checkpoint(path, &partial);
+        eprintln!("  [checkpoint: Phase 3 written to {path}]");
+    }
+
+    // Phase 4: Direct sieve speedup.
+    eprintln!("\n=== E22 Phase 4: Direct sieve speedup ===\n");
+
+    let mut sieve_speedup = Vec::new();
+    for &n_bits in bit_sizes {
+        for &bound in smooth_bounds {
+            let block_seed = seed ^ (0xE22_0004u64 + n_bits as u64 * 1000 + bound);
+            eprint!(
+                "  n_bits={:2}, B={:3}, pool={}, target={} … ",
+                n_bits, bound, n_pool, target_smooth
+            );
+            let result = measure_sieve_speedup(n_bits, bound, n_pool, target_smooth, block_seed);
+            eprintln!(
+                "speedup={:.3}×, random={}/{}, scored={}/{}",
+                result.speedup_factor,
+                result.random_tested,
+                target_smooth,
+                result.scored_tested,
+                target_smooth,
+            );
+            sieve_speedup.push(result);
+        }
+    }
+
+    let full = SieveEnrichmentResult {
+        group_profiles,
+        qs_blocks,
+        joint_scoring,
+        sieve_speedup,
+    };
+
+    // Final checkpoint.
+    if let Some(path) = checkpoint_path {
+        write_checkpoint(path, &full);
+        eprintln!("  [checkpoint: FINAL written to {path}]");
+    }
+
+    full
+}
+
+/// Write a checkpoint JSON file.
+fn write_checkpoint(path: &str, result: &SieveEnrichmentResult) {
+    if let Ok(json) = serde_json::to_string_pretty(result) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -3655,5 +4642,120 @@ mod tests {
             mi.abs() < 0.05,
             "MI for independent bins/target should be near 0, got {mi}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // E22: Sieve enrichment tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_isqrt() {
+        assert_eq!(isqrt(0), 0);
+        assert_eq!(isqrt(1), 1);
+        assert_eq!(isqrt(4), 2);
+        assert_eq!(isqrt(9), 3);
+        assert_eq!(isqrt(15), 3);
+        assert_eq!(isqrt(16), 4);
+        assert_eq!(isqrt(100), 10);
+        // Large value: 10^18
+        let big = 1_000_000_000_000_000_000u128;
+        assert_eq!(isqrt(big), 1_000_000_000);
+        // Verify: s² ≤ n < (s+1)²
+        for n in [2u128, 3, 7, 10, 99, 101, 1000, 999999] {
+            let s = isqrt(n);
+            assert!(s * s <= n, "isqrt({n}) = {s}: s² > n");
+            assert!((s + 1) * (s + 1) > n, "isqrt({n}) = {s}: (s+1)² ≤ n");
+        }
+    }
+
+    #[test]
+    fn test_is_b_smooth_u128() {
+        assert!(is_b_smooth_u128(1, 2));
+        assert!(is_b_smooth_u128(12, 3)); // 2² · 3
+        assert!(!is_b_smooth_u128(12, 2));
+        assert!(is_b_smooth_u128(30, 5)); // 2 · 3 · 5
+        assert!(!is_b_smooth_u128(30, 3));
+        // Large smooth number: 2^40 = 1099511627776
+        assert!(is_b_smooth_u128(1u128 << 40, 2));
+        // Large non-smooth: 2^40 + 1 (has large prime factor)
+        assert!(!is_b_smooth_u128((1u128 << 40) + 1, 100));
+    }
+
+    #[test]
+    fn test_generate_semiprime() {
+        for &n_bits in &[20u32, 24, 28, 32] {
+            let n = generate_semiprime(n_bits, 0xE220_7E57 + n_bits as u64);
+            let actual_bits = 128 - n.leading_zeros();
+            assert_eq!(
+                actual_bits, n_bits,
+                "generate_semiprime({n_bits}) produced {actual_bits}-bit number"
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_qs_values() {
+        // N = 15 (3 × 5), sqrt(15) ≈ 3.87, floor = 3
+        // Q(x) = (x+3)² - 15
+        // Q(1) = 16 - 15 = 1
+        // Q(2) = 25 - 15 = 10
+        // Q(3) = 36 - 15 = 21
+        let qs = generate_qs_values(15, 5);
+        assert!(!qs.is_empty(), "should generate QS values");
+        // All Q(x) should be > 0.
+        for &(_, qx) in &qs {
+            assert!(qx > 0, "Q(x) should be positive");
+        }
+    }
+
+    #[test]
+    fn test_group_enrichment_smoke() {
+        // Small ℓ = 131, B = 10.
+        let result = compute_group_enrichment(131, 22, 10, 10);
+        assert!(result.smooth_fraction > 0.0, "some elements should be smooth");
+        assert!(result.smooth_fraction < 1.0, "not all elements are smooth");
+        assert!(result.full_r_star > 0, "r* should be > 0");
+        assert!(
+            result.enrichment_top_quartile >= 0.0,
+            "enrichment should be non-negative"
+        );
+        assert_eq!(result.bin_enrichments.len(), 10);
+        // Sum of bin sizes should cover the group.
+        assert!(result.bin_enrichments.iter().all(|&(_, f, _)| f >= 0.0 && f <= 1.0));
+    }
+
+    #[test]
+    fn test_qs_block_smoke() {
+        // Small: 20-bit N, B=10, 100 QS values.
+        let result = compute_qs_block(20, 10, 100, 0xE220_5000);
+        assert_eq!(result.n_bits, 20);
+        assert!(result.n_values > 0);
+        assert_eq!(result.channels.len(), 7);
+        for ch in &result.channels {
+            assert!(ch.n_tested > 0, "should have tested values for ℓ={}", ch.ell);
+            assert!(ch.avg_log2_qx > 0.0);
+            assert!(ch.overflow_ratio > 0.0);
+            assert!(ch.enrichment_top_q.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_sieve_enrichment_full_smoke() {
+        // Minimal run: 1 bit size, 1 bound, few values.
+        let result = run_sieve_enrichment(
+            &[20],
+            &[10],
+            50,   // n_qs_values
+            100,  // n_pool
+            5,    // target_smooth
+            5,    // n_bins
+            0xE220_F000,
+            None,
+        );
+        assert_eq!(result.group_profiles.len(), 7); // 7 channels × 1 bound
+        assert_eq!(result.qs_blocks.len(), 1);      // 1 bit size × 1 bound
+        assert_eq!(result.joint_scoring.len(), 1);
+        assert_eq!(result.sieve_speedup.len(), 1);
+        assert!(result.sieve_speedup[0].speedup_factor.is_finite());
     }
 }
