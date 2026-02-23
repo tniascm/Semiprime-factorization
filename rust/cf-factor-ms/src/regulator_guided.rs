@@ -21,7 +21,7 @@ use cf_factor::regulator::{compute_regulator, estimate_regulator};
 
 use crate::class_number_real::class_number_real_estimate;
 use crate::infrastructure::{
-    form_reveals_factor, power_step, rho_step, InfraForm,
+    form_reveals_factor, power_step, rho_step_ctx, InfraContext, InfraForm,
 };
 
 /// Configuration for regulator-guided factoring.
@@ -119,6 +119,7 @@ pub fn regulator_guided_factor(
     // for typical discriminants, so the number of rho steps ≈ distance / avg_step_size.
     let avg_step_size = estimate_average_step_size(n);
 
+    let ctx = InfraContext::new(n);
     let principal = InfraForm::principal(n);
 
     for k in 1..=config.max_multiples {
@@ -155,7 +156,7 @@ pub fn regulator_guided_factor(
         // Walk neighborhood around the target
         let mut current = jumped;
         for _ in 0..config.neighborhood_size {
-            current = rho_step(&current, n);
+            current = rho_step_ctx(&current, &ctx);
             forms_checked += 1;
 
             if let Some(factor) = form_reveals_factor(&current.form, n) {
@@ -193,21 +194,22 @@ fn estimate_average_step_size(n: &BigUint) -> f64 {
     }
 
     // Walk a few steps and measure average distance increment
+    let ctx = InfraContext::new(n);
     let mut current = InfraForm::principal(n);
     let test_steps = 50;
-    let mut total_distance = 0.0;
+    let mut actual_steps = 0usize;
 
     for _ in 0..test_steps {
-        let next = rho_step(&current, n);
-        total_distance = next.distance;
+        let next = rho_step_ctx(&current, &ctx);
         if next.form == current.form {
             break;
         }
+        actual_steps += 1;
         current = next;
     }
 
-    if total_distance > 0.0 {
-        total_distance / test_steps as f64
+    if actual_steps > 0 && current.distance > 0.0 {
+        current.distance / actual_steps as f64
     } else {
         // Fallback: theoretical average ≈ ln(1 + sqrt(2)) ≈ 0.88
         0.88

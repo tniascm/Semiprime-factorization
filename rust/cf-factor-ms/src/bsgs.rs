@@ -17,7 +17,8 @@ use num_bigint::BigUint;
 use num_traits::One;
 
 use crate::infrastructure::{
-    form_reveals_factor, giant_step, rho_step, walk_infrastructure, InfraForm, InfraHashTable,
+    form_reveals_factor, giant_step, rho_step_ctx, walk_infrastructure, InfraContext, InfraForm,
+    InfraHashTable,
 };
 
 /// Configuration for the BSGS search.
@@ -91,6 +92,7 @@ pub fn bsgs_factor(n: &BigUint, config: &BsgsConfig) -> BsgsResult {
     let mut collisions = 0;
 
     // Phase 1: Baby steps — walk the infrastructure and store forms
+    let ctx = InfraContext::new(n);
     let mut table = InfraHashTable::new();
     let mut current = InfraForm::principal(n);
     table.insert(current.clone());
@@ -112,7 +114,7 @@ pub fn bsgs_factor(n: &BigUint, config: &BsgsConfig) -> BsgsResult {
             }
         }
 
-        current = rho_step(&current, n);
+        current = rho_step_ctx(&current, &ctx);
         table.insert(current.clone());
         baby_steps_taken += 1;
     }

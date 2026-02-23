@@ -177,46 +177,51 @@ fn enumerate_recursive(
 
     // Enumerate in zig-zag order from center for better results faster
     let c_center = c.round() as i64;
-    let mut offsets = Vec::new();
-    offsets.push(0i64);
-    for delta in 1..=(c_high - c_low + 1) {
-        offsets.push(delta);
-        offsets.push(-delta);
-    }
+    let max_delta = (c_high - c_low + 1).max(0);
 
-    for &offset in &offsets {
-        let ci = c_center + offset;
-        if ci < c_low || ci > c_high {
-            continue;
-        }
+    // Process center first, then alternate +delta/-delta
+    for delta in 0..=max_delta {
         if results.len() >= config.max_vectors {
             return;
         }
 
-        coords[level] = ci;
-        let diff = (ci as f64) - c;
-        partial_norms_sq[level] = partial_norms_sq[level + 1] + diff * diff * bstar_sq;
+        // For delta=0, process once. For delta>0, process +delta then -delta.
+        let iterations = if delta == 0 { 1 } else { 2 };
+        for sign_idx in 0..iterations {
+            let offset = if sign_idx == 0 { delta } else { -delta };
+            let ci = c_center + offset;
+            if ci < c_low || ci > c_high {
+                continue;
+            }
+            if results.len() >= config.max_vectors {
+                return;
+            }
 
-        if partial_norms_sq[level] > radius_sq {
-            continue;
-        }
+            coords[level] = ci;
+            let diff = (ci as f64) - c;
+            partial_norms_sq[level] = partial_norms_sq[level + 1] + diff * diff * bstar_sq;
 
-        if level == 0 {
-            try_add_point(coords, basis, m, config, results);
-        } else {
-            enumerate_recursive(
-                level - 1,
-                coords,
-                partial_norms_sq,
-                center,
-                ortho_norms_sq,
-                mu,
-                basis,
-                m,
-                radius_sq,
-                config,
-                results,
-            );
+            if partial_norms_sq[level] > radius_sq {
+                continue;
+            }
+
+            if level == 0 {
+                try_add_point(coords, basis, m, config, results);
+            } else {
+                enumerate_recursive(
+                    level - 1,
+                    coords,
+                    partial_norms_sq,
+                    center,
+                    ortho_norms_sq,
+                    mu,
+                    basis,
+                    m,
+                    radius_sq,
+                    config,
+                    results,
+                );
+            }
         }
     }
 }

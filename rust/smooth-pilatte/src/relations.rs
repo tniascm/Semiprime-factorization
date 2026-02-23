@@ -79,6 +79,37 @@ fn mod_pow_biguint(base: &BigUint, exp: u64, modulus: &BigUint) -> BigUint {
     result
 }
 
+/// Compute modular inverse via Fermat's little theorem (for prime moduli)
+/// or extended Euclidean algorithm.
+/// Returns None if inverse doesn't exist (gcd(a, n) != 1).
+fn mod_inverse(a: &BigUint, n: &BigUint) -> Option<BigUint> {
+    use num_bigint::BigInt;
+
+    let a_int = BigInt::from(a.clone());
+    let n_int = BigInt::from(n.clone());
+
+    let (g, x, _) = extended_gcd(&a_int, &n_int);
+    if g != BigInt::one() {
+        return None;
+    }
+
+    let result = ((x % &n_int) + &n_int) % &n_int;
+    Some(result.to_biguint().unwrap())
+}
+
+/// Extended GCD: returns (gcd, x, y) such that a*x + b*y = gcd.
+fn extended_gcd(a: &num_bigint::BigInt, b: &num_bigint::BigInt) -> (num_bigint::BigInt, num_bigint::BigInt, num_bigint::BigInt) {
+    use num_bigint::BigInt;
+
+    if b.is_zero() {
+        return (a.clone(), BigInt::one(), BigInt::zero());
+    }
+    let (g, x1, y1) = extended_gcd(b, &(a % b));
+    let x = y1.clone();
+    let y = x1 - (a / b) * &y1;
+    (g, x, y)
+}
+
 /// Test whether an exponent vector encodes a smooth relation modulo N.
 ///
 /// Given exponents (e_1, ..., e_d) and primes (p_1, ..., p_d):
@@ -101,20 +132,28 @@ pub fn test_relation(exponents: &[i64], primes: &[u64], n: &BigUint) -> SmoothRe
         }
     }
 
-    // Compute residue: the difference/ratio captures the relation's "smoothness"
-    // We compute pos_product and neg_product, then check:
-    //   - If pos_product == neg_product mod N, it's a trivial relation
-    //   - Otherwise, test if pos_product * neg_product mod N is smooth
-    let combined = (&pos_product * &neg_product) % n;
+    // Compute residue: pos_product / neg_product mod N = pos_product * neg_product^{-1} mod N
+    // This is the actual "remainder" of the relation modulo N.
+    // If this quotient is smooth over the factor base, we have a useful relation.
+    let combined = if neg_product.is_one() {
+        pos_product.clone()
+    } else if pos_product.is_one() {
+        neg_product.clone()
+    } else if let Some(inv) = mod_inverse(&neg_product, n) {
+        (&pos_product * &inv) % n
+    } else {
+        // gcd(neg_product, N) != 1 — neg_product shares a factor with N
+        // This is actually useful: the gcd itself may be a factor
+        (&pos_product * &neg_product) % n
+    };
+
     let is_smooth;
     let residue_exponents;
 
     if combined.is_zero() || combined.is_one() {
-        // Trivial relation, still useful for GF(2) matrix
         is_smooth = true;
         residue_exponents = Some(vec![0u32; primes.len()]);
     } else {
-        // Check if combined value is smooth over (extended) factor base
         match smooth_factorize(&combined, primes) {
             Some(exps) => {
                 is_smooth = true;

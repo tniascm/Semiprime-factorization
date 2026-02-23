@@ -49,6 +49,28 @@ impl InfraForm {
     }
 }
 
+/// Precomputed constants for infrastructure walks on a fixed N.
+///
+/// Avoids recomputing D = 4N and isqrt(D) on every rho step.
+pub struct InfraContext {
+    /// Discriminant D = 4N as BigInt.
+    pub d_big: BigInt,
+    /// floor(sqrt(D)) as BigInt.
+    pub sqrt_d: BigInt,
+}
+
+impl InfraContext {
+    /// Create a context for N.
+    pub fn new(n: &BigUint) -> Self {
+        let d_uint = BigUint::from(4u32) * n;
+        let sqrt_d = isqrt(&d_uint);
+        InfraContext {
+            d_big: BigInt::from(4u32) * BigInt::from(n.clone()),
+            sqrt_d: BigInt::from(sqrt_d),
+        }
+    }
+}
+
 /// Perform one rho step in the infrastructure of D = 4N.
 ///
 /// Given a reduced form (a, b, c), compute the next reduced form
@@ -58,12 +80,12 @@ impl InfraForm {
 ///   b' ≡ -b (mod 2|c|) with sqrt(D) - 2|c| < b' <= sqrt(D)
 ///   c' = (b'^2 - D) / (4c)
 pub fn rho_step(form: &InfraForm, n: &BigUint) -> InfraForm {
-    let d_big = BigInt::from(4u32) * BigInt::from(n.clone());
-    let d_uint = BigUint::from(4u32) * n;
-    let sqrt_d = isqrt(&d_uint);
-    let sqrt_d_int = BigInt::from(sqrt_d);
+    let ctx = InfraContext::new(n);
+    rho_step_ctx(form, &ctx)
+}
 
-    let _a = &form.form.a;
+/// Rho step with precomputed context (avoids recomputing isqrt each call).
+pub fn rho_step_ctx(form: &InfraForm, ctx: &InfraContext) -> InfraForm {
     let b = &form.form.b;
     let c = &form.form.c;
 
@@ -80,16 +102,16 @@ pub fn rho_step(form: &InfraForm, n: &BigUint) -> InfraForm {
     // b' ≡ -b (mod 2|c|) with sqrt(D) - 2|c| < b' <= sqrt(D)
     let neg_b = -b;
     let r = neg_b.mod_floor(&two_abs_c);
-    let diff = &sqrt_d_int - &r;
+    let diff = &ctx.sqrt_d - &r;
     let k = diff.div_floor(&two_abs_c);
     let new_b = &r + &k * &two_abs_c;
 
     let new_a = c.clone();
-    let new_c = (&new_b * &new_b - &d_big) / (BigInt::from(4) * &new_a);
+    let new_c = (&new_b * &new_b - &ctx.d_big) / (BigInt::from(4) * &new_a);
 
     // Distance increment: ln(|new_b + sqrt(D)| / (2|a|))
     // Approximation: ln(a_k) where a_k is the partial quotient
-    let partial_quotient = (&sqrt_d_int + b) / &two_abs_c;
+    let partial_quotient = (&ctx.sqrt_d + b) / &two_abs_c;
     let pq_f64 = partial_quotient
         .to_f64()
         .unwrap_or(1.0)
@@ -107,12 +129,13 @@ pub fn rho_step(form: &InfraForm, n: &BigUint) -> InfraForm {
 ///
 /// Returns all forms visited along with their distances.
 pub fn walk_infrastructure(n: &BigUint, max_steps: usize) -> Vec<InfraForm> {
+    let ctx = InfraContext::new(n);
     let mut forms = Vec::with_capacity(max_steps);
     let mut current = InfraForm::principal(n);
     forms.push(current.clone());
 
     for _ in 0..max_steps {
-        let next = rho_step(&current, n);
+        let next = rho_step_ctx(&current, &ctx);
         if next.form == current.form {
             break; // Cycle detected
         }
@@ -217,10 +240,13 @@ impl InfraHashTable {
     }
 }
 
-/// Compute a hash key for a reduced form.
+/// Compute a hash key for a form.
+///
+/// Forms from rho_step are already in reduced-like form; we just normalize
+/// the sign of a and b for consistent keying. Using String keys avoids
+/// needing Hash on BigInt directly.
 fn form_key(f: &QuadForm) -> (String, String) {
-    let reduced = f.reduce();
-    (reduced.a.abs().to_string(), reduced.b.abs().to_string())
+    (f.a.abs().to_string(), f.b.abs().to_string())
 }
 
 /// Check if a form reveals a factor of N.

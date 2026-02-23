@@ -10,6 +10,24 @@ use factoring_core::{gcd, Algorithm, FactorResult};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 
+/// Modular exponentiation: base^exp mod modulus.
+fn mod_pow(base: &BigUint, exp: u64, modulus: &BigUint) -> BigUint {
+    if modulus.is_one() {
+        return BigUint::zero();
+    }
+    let mut result = BigUint::one();
+    let mut b = base % modulus;
+    let mut e = exp;
+    while e > 0 {
+        if e & 1 == 1 {
+            result = (&result * &b) % modulus;
+        }
+        e >>= 1;
+        b = (&b * &b) % modulus;
+    }
+    result
+}
+
 use crate::enumerate::{enumerate_short_vectors, EnumerationConfig};
 use crate::lattice::{
     build_pilatte_lattice, build_weighted_pilatte_lattice, extract_exponent_vectors,
@@ -265,13 +283,9 @@ fn try_direct_gcd(
             }
             let p_big = BigUint::from(primes[i]);
             if exp > 0 {
-                for _ in 0..exp {
-                    lhs = (&lhs * &p_big) % n;
-                }
+                lhs = (&lhs * &mod_pow(&p_big, exp as u64, n)) % n;
             } else if exp < 0 {
-                for _ in 0..(-exp) {
-                    rhs = (&rhs * &p_big) % n;
-                }
+                rhs = (&rhs * &mod_pow(&p_big, (-exp) as u64, n)) % n;
             }
         }
 
@@ -352,9 +366,7 @@ fn extract_factor_from_deps(
             let half_exp = exp.unsigned_abs() / 2;
             if half_exp > 0 {
                 let p_big = BigUint::from(primes[i]);
-                for _ in 0..half_exp {
-                    x = (&x * &p_big) % n;
-                }
+                x = (&x * &mod_pow(&p_big, half_exp, n)) % n;
             }
         }
 
