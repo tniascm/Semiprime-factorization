@@ -2079,6 +2079,132 @@ pub fn run_bootstrap_ci(
     }
 }
 
+// ===========================================================================
+// E21c: Joint cross-channel N-only tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// OLS solver via Cholesky decomposition
+// ---------------------------------------------------------------------------
+
+/// Cholesky decomposition: A = L L^T for symmetric positive-definite A.
+///
+/// Returns lower-triangular L, or None if A is not positive-definite.
+/// Input `a` is n×n stored as `Vec<Vec<f64>>`.
+fn cholesky(a: &[Vec<f64>], n: usize) -> Option<Vec<Vec<f64>>> {
+    let mut l = vec![vec![0.0f64; n]; n];
+    for j in 0..n {
+        let mut diag = a[j][j];
+        for k in 0..j {
+            diag -= l[j][k] * l[j][k];
+        }
+        if diag <= 0.0 {
+            return None;
+        }
+        l[j][j] = diag.sqrt();
+        for i in (j + 1)..n {
+            let mut sum = a[i][j];
+            for k in 0..j {
+                sum -= l[i][k] * l[j][k];
+            }
+            l[i][j] = sum / l[j][j];
+        }
+    }
+    Some(l)
+}
+
+/// Solve L L^T x = b given lower-triangular L (Cholesky factor).
+///
+/// Forward substitution: L y = b, then backward substitution: L^T x = y.
+fn cholesky_solve(l: &[Vec<f64>], b: &[f64], n: usize) -> Vec<f64> {
+    // Forward: L y = b
+    let mut y = vec![0.0f64; n];
+    for i in 0..n {
+        let mut sum = b[i];
+        for j in 0..i {
+            sum -= l[i][j] * y[j];
+        }
+        y[i] = sum / l[i][i];
+    }
+    // Backward: L^T x = y
+    let mut x = vec![0.0f64; n];
+    for i in (0..n).rev() {
+        let mut sum = y[i];
+        for j in (i + 1)..n {
+            sum -= l[j][i] * x[j]; // L^T[i][j] = L[j][i]
+        }
+        x[i] = sum / l[i][i];
+    }
+    x
+}
+
+/// Ordinary least squares: minimise ‖Xβ − y‖² via normal equations
+/// (X^T X + λI)β = X^T y with Tikhonov regularisation λ = 1e-6.
+///
+/// `x_rows[i]` is the i-th feature vector (length p).  `y` has length n.
+/// Returns coefficient vector β (length p), or None if decomposition fails.
+fn ols_solve(x_rows: &[Vec<f64>], y: &[f64]) -> Option<Vec<f64>> {
+    let n = x_rows.len();
+    if n == 0 {
+        return None;
+    }
+    let p = x_rows[0].len();
+    if p == 0 {
+        return None;
+    }
+
+    // Build X^T X (p × p) with Tikhonov regularisation.
+    let lambda = 1e-6;
+    let mut xtx = vec![vec![0.0f64; p]; p];
+    for row in x_rows {
+        for j in 0..p {
+            for k in j..p {
+                xtx[j][k] += row[j] * row[k];
+            }
+        }
+    }
+    // Symmetrise and add regularisation.
+    for j in 0..p {
+        xtx[j][j] += lambda;
+        for k in (j + 1)..p {
+            xtx[k][j] = xtx[j][k];
+        }
+    }
+
+    // Build X^T y (length p).
+    let mut xty = vec![0.0f64; p];
+    for (row, &yi) in x_rows.iter().zip(y.iter()) {
+        for j in 0..p {
+            xty[j] += row[j] * yi;
+        }
+    }
+
+    let l = cholesky(&xtx, p)?;
+    Some(cholesky_solve(&l, &xty, p))
+}
+
+/// Compute R² = 1 − SS_res/SS_tot for predictions Xβ vs actual y.
+fn ols_r_squared(x_rows: &[Vec<f64>], y: &[f64], beta: &[f64]) -> f64 {
+    let n = y.len();
+    if n < 2 {
+        return 0.0;
+    }
+    let mean_y: f64 = y.iter().sum::<f64>() / n as f64;
+    let ss_tot: f64 = y.iter().map(|&yi| (yi - mean_y).powi(2)).sum();
+    if ss_tot < 1e-15 {
+        return 0.0;
+    }
+    let ss_res: f64 = x_rows
+        .iter()
+        .zip(y.iter())
+        .map(|(row, &yi)| {
+            let pred: f64 = row.iter().zip(beta.iter()).map(|(&x, &b)| x * b).sum();
+            (yi - pred).powi(2)
+        })
+        .sum();
+    1.0 - ss_res / ss_tot
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -2516,6 +2642,59 @@ mod tests {
             ev1.best_char_amp > 0.90,
             "full-group control: 2nd eigenvector should match a character, got amp={:.3}",
             ev1.best_char_amp,
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // E21c: OLS solver tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_cholesky_identity() {
+        // Cholesky of I₃ should be I₃.
+        let a = vec![
+            vec![1.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0],
+        ];
+        let l = cholesky(&a, 3).expect("Cholesky should succeed on identity");
+        for i in 0..3 {
+            for j in 0..3 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!(
+                    (l[i][j] - expected).abs() < 1e-12,
+                    "L[{i}][{j}] = {}, expected {expected}",
+                    l[i][j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_ols_solve_exact() {
+        // y = 2·x₁ + 3·x₂ exactly on 4 data points.
+        let x_rows = vec![
+            vec![1.0, 0.0],
+            vec![0.0, 1.0],
+            vec![1.0, 1.0],
+            vec![2.0, 3.0],
+        ];
+        let y: Vec<f64> = x_rows.iter().map(|r| 2.0 * r[0] + 3.0 * r[1]).collect();
+        let beta = ols_solve(&x_rows, &y).expect("OLS should succeed");
+        assert!(
+            (beta[0] - 2.0).abs() < 1e-4,
+            "beta[0] = {}, expected 2.0",
+            beta[0]
+        );
+        assert!(
+            (beta[1] - 3.0).abs() < 1e-4,
+            "beta[1] = {}, expected 3.0",
+            beta[1]
+        );
+        let r2 = ols_r_squared(&x_rows, &y, &beta);
+        assert!(
+            r2 > 0.999,
+            "R² should be ≈ 1 for exact fit, got {r2}"
         );
     }
 }
