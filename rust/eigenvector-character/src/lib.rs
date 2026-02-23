@@ -2610,6 +2610,364 @@ fn mod_pow_u128(mut base: u128, mut exp: u128, modulus: u128) -> u128 {
 }
 
 // ---------------------------------------------------------------------------
+// Test C1: Pairwise interaction correlations
+// ---------------------------------------------------------------------------
+
+/// For each channel pair (i, j) with i < j, compute 4 cross-products:
+///   Re_i·Re_j, Re_i·Im_j, Im_i·Re_j, Im_i·Im_j
+/// and correlate each with `target`.
+///
+/// Total tests: C(7,2) × 4 = 84.  Bonferroni threshold at α = 0.05.
+fn run_pairwise_interactions(
+    block: &CrossChannelBlock,
+    features: &[Vec<f64>],
+) -> CrossChannelPairwiseResult {
+    use algebra::pearson_corr;
+
+    let n_channels = block.channels.len();
+    let n_pairs = features.len();
+    let target = &block.target_ref;
+    let cross_names = ["Re·Re", "Re·Im", "Im·Re", "Im·Im"];
+
+    let mut max_abs_corr = 0.0f64;
+    let mut sum_abs_corr = 0.0f64;
+    let mut n_tests = 0usize;
+    let mut max_ch_i = 0;
+    let mut max_ch_j = 0;
+    let mut max_type = String::new();
+
+    for i in 0..n_channels {
+        for j in (i + 1)..n_channels {
+            // Indices into the 14-element feature vector.
+            let ri = 2 * i;     // Re_i
+            let ii = 2 * i + 1; // Im_i
+            let rj = 2 * j;     // Re_j
+            let ij = 2 * j + 1; // Im_j
+
+            let cross_pairs = [(ri, rj), (ri, ij), (ii, rj), (ii, ij)];
+
+            for (idx, &(fi, fj)) in cross_pairs.iter().enumerate() {
+                let cross_product: Vec<f64> = features
+                    .iter()
+                    .map(|f| f[fi] * f[fj])
+                    .collect();
+                let corr = pearson_corr(&cross_product, target);
+                let abs_corr = corr.abs();
+                sum_abs_corr += abs_corr;
+                n_tests += 1;
+
+                if abs_corr > max_abs_corr {
+                    max_abs_corr = abs_corr;
+                    max_ch_i = i;
+                    max_ch_j = j;
+                    max_type = cross_names[idx].to_string();
+                }
+            }
+        }
+    }
+
+    let mean_abs_corr = if n_tests > 0 {
+        sum_abs_corr / n_tests as f64
+    } else {
+        0.0
+    };
+
+    // Bonferroni threshold: two-sided test at α/n_tests.
+    // For Pearson r with n-2 df, approximate: threshold ≈ sqrt(2 * ln(2*n_tests/α) / (n-2)).
+    let alpha = 0.05;
+    let bonferroni_threshold = if n_pairs > 2 {
+        (2.0 * (2.0 * n_tests as f64 / alpha).ln() / (n_pairs - 2) as f64).sqrt()
+    } else {
+        1.0
+    };
+
+    CrossChannelPairwiseResult {
+        n_bits: block.n_bits,
+        smoothness_bound: block.bound,
+        n_pairs,
+        max_abs_corr,
+        mean_abs_corr,
+        max_corr_ch_i: max_ch_i,
+        max_corr_ch_j: max_ch_j,
+        max_corr_type: max_type,
+        bonferroni_threshold,
+        n_tests,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test C2: OLS regression with holdout
+// ---------------------------------------------------------------------------
+
+/// Build 35 features per pair (14 linear + 21 Re_i·Re_j products),
+/// fit OLS on first half, evaluate R² on second half.
+fn run_cross_channel_ols(
+    block: &CrossChannelBlock,
+    features: &[Vec<f64>],
+) -> CrossChannelOLSResult {
+    use algebra::pearson_corr;
+
+    let n = features.len();
+    let n_channels = block.channels.len();
+    let target = &block.target_ref;
+
+    // Build augmented feature matrix: 14 linear + 21 products = 35 features.
+    let n_products = n_channels * (n_channels - 1) / 2; // C(7,2) = 21
+    let n_feats = 2 * n_channels + n_products;           // 14 + 21 = 35
+
+    let augmented: Vec<Vec<f64>> = features
+        .iter()
+        .map(|f| {
+            let mut row = f.clone();
+            // Add Re_i · Re_j products for i < j.
+            for i in 0..n_channels {
+                for j in (i + 1)..n_channels {
+                    row.push(f[2 * i] * f[2 * j]);
+                }
+            }
+            row
+        })
+        .collect();
+
+    // 50/50 train/test split (deterministic: first half train).
+    let n_train = n / 2;
+    let n_test = n - n_train;
+
+    let (train_x, test_x) = augmented.split_at(n_train);
+    let (train_y, test_y) = target.split_at(n_train);
+
+    let test_r_squared = if n_train > n_feats && n_test > 2 {
+        match ols_solve(train_x, train_y) {
+            Some(beta) => ols_r_squared(test_x, test_y, &beta),
+            None => f64::NEG_INFINITY,
+        }
+    } else {
+        // Not enough samples for OLS; return negative R².
+        f64::NEG_INFINITY
+    };
+
+    // Best single-channel R² (max over 7 of pearson_corr(Re_i, target)²).
+    let best_single_r_squared = (0..n_channels)
+        .map(|i| {
+            let re_vals: Vec<f64> = features.iter().map(|f| f[2 * i]).collect();
+            let c = pearson_corr(&re_vals, target);
+            c * c
+        })
+        .fold(0.0f64, f64::max);
+
+    CrossChannelOLSResult {
+        n_bits: block.n_bits,
+        smoothness_bound: block.bound,
+        n_features: n_feats,
+        n_train,
+        n_test,
+        test_r_squared,
+        best_single_r_squared,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test C3: Binned mutual information
+// ---------------------------------------------------------------------------
+
+/// Compute MI between binned N-derived dlogs (from two channels) and
+/// binarised smoothness target, with permutation null.
+fn run_cross_channel_mi(
+    block: &CrossChannelBlock,
+    features: &[Vec<f64>],
+    n_bins: usize,
+    n_permutations: usize,
+    seed: u64,
+) -> Option<CrossChannelMIResult> {
+    use rand::seq::SliceRandom;
+
+    let n = features.len();
+
+    // Require sufficient bin occupancy: n ≥ n_bins² × 4.
+    if n < n_bins * n_bins * 4 {
+        return None;
+    }
+
+    // Use channels with smallest ℓ for best resolution:
+    // idx 5 (ℓ=131) and idx 3 (ℓ=283).
+    let ch_i = 5;
+    let ch_j = 3;
+
+    // Get N^{k-1} mod ℓ dlogs for each channel.
+    let prime_idx = |p: u64| -> usize { block.prime_set.partition_point(|&x| x < p) };
+    let mut dlogs_i = Vec::with_capacity(n);
+    let mut dlogs_j = Vec::with_capacity(n);
+
+    for &pair_idx in &block.valid_indices {
+        let (p, q) = block.pairs[pair_idx];
+        let n_val = p as u128 * q as u128;
+
+        let nk_i = mod_pow_u128(
+            n_val,
+            block.channels[ch_i].k1 as u128,
+            block.channels[ch_i].ell as u128,
+        ) as u64;
+        let nk_j = mod_pow_u128(
+            n_val,
+            block.channels[ch_j].k1 as u128,
+            block.channels[ch_j].ell as u128,
+        ) as u64;
+
+        let dlog_i = if nk_i == 0 { 0u32 } else { block.channels[ch_i].dlog[nk_i as usize] };
+        let dlog_j = if nk_j == 0 { 0u32 } else { block.channels[ch_j].dlog[nk_j as usize] };
+        dlogs_i.push(dlog_i);
+        dlogs_j.push(dlog_j);
+    }
+
+    let bins_i = assign_quantile_bins(&dlogs_i, n_bins);
+    let bins_j = assign_quantile_bins(&dlogs_j, n_bins);
+
+    // Binarise target (threshold at mean).
+    let mean_target: f64 = block.target_ref.iter().sum::<f64>() / n as f64;
+    let binary_target: Vec<f64> = block
+        .target_ref
+        .iter()
+        .map(|&t| if t > mean_target { 1.0 } else { 0.0 })
+        .collect();
+
+    let observed_mi = binned_mutual_information(&binary_target, &bins_i, &bins_j, n_bins);
+
+    // Permutation null: shuffle target n_permutations times.
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut null_mis = Vec::with_capacity(n_permutations);
+    let mut shuffled = binary_target.clone();
+
+    for _ in 0..n_permutations {
+        shuffled.shuffle(&mut rng);
+        let mi = binned_mutual_information(&shuffled, &bins_i, &bins_j, n_bins);
+        null_mis.push(mi);
+    }
+
+    let null_mean: f64 = null_mis.iter().sum::<f64>() / n_permutations as f64;
+    let null_var: f64 = null_mis
+        .iter()
+        .map(|&m| (m - null_mean).powi(2))
+        .sum::<f64>()
+        / n_permutations as f64;
+    let null_std = null_var.sqrt();
+
+    let z_score = if null_std > 1e-15 {
+        (observed_mi - null_mean) / null_std
+    } else {
+        0.0
+    };
+
+    let empirical_p_value = null_mis
+        .iter()
+        .filter(|&&m| m >= observed_mi)
+        .count() as f64
+        / n_permutations as f64;
+
+    Some(CrossChannelMIResult {
+        n_bits: block.n_bits,
+        smoothness_bound: block.bound,
+        channel_i: ch_i,
+        channel_j: ch_j,
+        n_bins,
+        observed_mi,
+        null_mean,
+        null_std,
+        z_score,
+        empirical_p_value,
+        n_permutations,
+        n_pairs: n,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Test C4: Permutation null on strongest cross-channel feature
+// ---------------------------------------------------------------------------
+
+/// Take the strongest feature from C1, shuffle target, recompute correlation.
+fn run_cross_channel_perm(
+    block: &CrossChannelBlock,
+    features: &[Vec<f64>],
+    best_i: usize,
+    best_j: usize,
+    best_type: &str,
+    n_permutations: usize,
+    seed: u64,
+) -> CrossChannelPermResult {
+    use algebra::pearson_corr;
+    use rand::seq::SliceRandom;
+
+    let n = features.len();
+    let target = &block.target_ref;
+
+    // Reconstruct the best cross-product feature.
+    let (fi, fj) = match best_type {
+        "Re·Re" => (2 * best_i, 2 * best_j),
+        "Re·Im" => (2 * best_i, 2 * best_j + 1),
+        "Im·Re" => (2 * best_i + 1, 2 * best_j),
+        "Im·Im" => (2 * best_i + 1, 2 * best_j + 1),
+        _ => (2 * best_i, 2 * best_j), // fallback
+    };
+
+    let cross_product: Vec<f64> = features.iter().map(|f| f[fi] * f[fj]).collect();
+    let observed_corr = pearson_corr(&cross_product, target);
+
+    // Permutation null.
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut null_corrs = Vec::with_capacity(n_permutations);
+    let mut shuffled = target.clone();
+
+    for _ in 0..n_permutations {
+        shuffled.shuffle(&mut rng);
+        let c = pearson_corr(&cross_product, &shuffled);
+        null_corrs.push(c);
+    }
+
+    let null_mean: f64 = null_corrs.iter().sum::<f64>() / n_permutations as f64;
+    let null_var: f64 = null_corrs
+        .iter()
+        .map(|&c| (c - null_mean).powi(2))
+        .sum::<f64>()
+        / n_permutations as f64;
+    let null_std = null_var.sqrt();
+
+    let z_score = if null_std > 1e-15 {
+        (observed_corr.abs() - null_mean.abs()) / null_std
+    } else {
+        0.0
+    };
+
+    let empirical_p_value = null_corrs
+        .iter()
+        .filter(|&&c| c.abs() >= observed_corr.abs())
+        .count() as f64
+        / n_permutations as f64;
+
+    let feature_desc = format!(
+        "ch{}(k={},ℓ={})×ch{}(k={},ℓ={}) {}",
+        best_i,
+        block.channels[best_i].channel_weight,
+        block.channels[best_i].ell,
+        best_j,
+        block.channels[best_j].channel_weight,
+        block.channels[best_j].ell,
+        best_type,
+    );
+
+    CrossChannelPermResult {
+        n_bits: block.n_bits,
+        smoothness_bound: block.bound,
+        feature_desc,
+        observed_corr,
+        null_mean,
+        null_std,
+        z_score,
+        empirical_p_value,
+        n_permutations,
+        n_pairs: n,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
