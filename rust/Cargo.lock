@@ -397,6 +397,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "eigenvector-character"
+version = "0.1.0"
+dependencies = [
+ "eisenstein-hunt",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "eisenstein-hunt"
 version = "0.1.0"
 dependencies = [

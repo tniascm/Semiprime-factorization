@@ -1,0 +1,15 @@
+[package]
+name = "eigenvector-character"
+version = "0.1.0"
+edition = "2021"
+description = "E21: Verify multiplicative character structure of dominant eigenvectors of the Eisenstein CRT matrix"
+
+[dependencies]
+eisenstein-hunt = { path = "../eisenstein-hunt" }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+rand       = { workspace = true }
+
+[[bin]]
+name = "eigenvector-character"
+path = "src/main.rs"
