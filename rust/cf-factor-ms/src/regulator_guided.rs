@@ -16,6 +16,8 @@
 
 use num_bigint::BigUint;
 use num_traits::One;
+#[cfg(test)]
+use num_traits::ToPrimitive;
 
 use cf_factor::regulator::{compute_regulator, estimate_regulator};
 
