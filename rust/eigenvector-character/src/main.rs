@@ -19,9 +19,11 @@
 
 use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
+    run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
-    PrimeRestrictedResult, SmoothnessScalingAnalysis,
+    PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
+    PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -38,8 +40,9 @@ fn main() {
         "scaling"  => run_scaling_mode(&opts),
         "smooth"   => run_smooth_mode(&opts),
         "restrict" => run_restrict_mode(&opts),
+        "stress"   => run_stress_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress");
             std::process::exit(1);
         }
     }
@@ -950,6 +953,274 @@ fn print_smooth_summary(analyses: &[SmoothnessScalingAnalysis]) {
         println!("    After accounting for density, smoothness Fourier spectrum is");
         println!("    consistent with a random subset — no exploitable structure.");
     }
+}
+
+fn run_stress_mode(opts: &HashMap<String, String>) {
+    let top_k = parse_usize(opts, "topk", 10);
+    let bit_sizes = parse_bit_sizes(opts, &[14, 16, 18, 20, 24, 28, 32, 40, 48]);
+    let channel_ids = parse_channel_ids(opts, 7);
+    let n_perm = parse_usize(opts, "permutations", 200);
+    let n_boot = parse_usize(opts, "bootstrap", 500);
+    let seed = parse_u64(opts, "seed", 0xE21b_5713_E55);
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![10, 30]);
+
+    println!("E21b STRESS TESTS: validating smoothness character findings");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Channels     : {:?}", channel_ids);
+    println!("Bounds B     : {:?}", bounds);
+    println!("Permutations : {n_perm}");
+    println!("Bootstrap    : {n_boot}");
+    println!("{}", "─".repeat(72));
+
+    let mut all_perm: Vec<PermutationNullResult> = Vec::new();
+    let mut all_transfer: Vec<CrossNTransferResult> = Vec::new();
+    let mut all_multi: Vec<MultiCharacterScoreResult> = Vec::new();
+    let mut all_boot: Vec<BootstrapCIResult> = Vec::new();
+
+    for &b in &bounds {
+        println!();
+        println!("═══ B = {b} ═══");
+
+        for &ch_idx in &channel_ids {
+            let ch = &CHANNELS[ch_idx];
+
+            // Test 2: Cross-n transfer (once per (ch, B), across all bit sizes).
+            eprint!(
+                "  Cross-n transfer: k={}, ℓ={}, B={b} … ",
+                ch.weight, ch.ell
+            );
+            let transfer = run_cross_n_transfer(ch, b, top_k, &bit_sizes, 20);
+            eprintln!("done");
+            all_transfer.push(transfer);
+
+            for &n_bits in &bit_sizes {
+                let block_seed = seed ^ (n_bits as u64 * 0x10000 + ch.ell);
+
+                // Test 1: Permutation null.
+                eprint!(
+                    "  Perm null: n={n_bits:2}, k={:2}, ℓ={:6}, B={b:3} … ",
+                    ch.weight, ch.ell
+                );
+                let perm = run_permutation_null(n_bits, ch, b, top_k, n_perm, block_seed);
+                eprintln!(
+                    "z={:+.2}, p={:.3}",
+                    perm.z_score, perm.empirical_p_value
+                );
+                all_perm.push(perm);
+
+                // Test 3: Multi-character N-score.
+                eprint!(
+                    "  Multi-chr: n={n_bits:2}, k={:2}, ℓ={:6}, B={b:3} … ",
+                    ch.weight, ch.ell
+                );
+                let multi = run_multi_character_score(n_bits, ch, b, top_k, block_seed);
+                eprintln!(
+                    "all={:+.4}, top10={:+.4}, direct={:+.4}, R²={:.4}",
+                    multi.corr_dft_weighted_all,
+                    multi.corr_dft_weighted_top10,
+                    multi.corr_direct_smoothness,
+                    multi.train_test_r_squared,
+                );
+                all_multi.push(multi);
+
+                // Test 4: Bootstrap CI.
+                eprint!(
+                    "  Bootstrap: n={n_bits:2}, k={:2}, ℓ={:6}, B={b:3} … ",
+                    ch.weight, ch.ell
+                );
+                let boot = run_bootstrap_ci(n_bits, ch, b, top_k, n_boot, block_seed);
+                eprintln!(
+                    "fix=[{:.2},{:.2}], Nk=[{:+.4},{:+.4}]",
+                    boot.fix_excess_ci_lo,
+                    boot.fix_excess_ci_hi,
+                    boot.corr_nk_ci_lo,
+                    boot.corr_nk_ci_hi,
+                );
+                all_boot.push(boot);
+            }
+        }
+    }
+
+    let result = StressTestResult {
+        permutation_null: all_perm,
+        cross_n_transfer: all_transfer,
+        multi_character_score: all_multi,
+        bootstrap_ci: all_boot,
+    };
+
+    println!();
+    print_stress_summary(&result);
+    write_json(&result, "data/E21b_stress_tests.json");
+}
+
+fn print_stress_summary(result: &StressTestResult) {
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E21b STRESS TESTS: validation of smoothness character findings            │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Table 1: Permutation null ───
+    println!("Test 1: PERMUTATION NULL (is observed corr_Nk consistent with random pairing?)");
+    println!("  p > 0.05 = observed is consistent with null (barrier confirmed)");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>4} {:>8} {:>8} {:>8} {:>8} {:>8}  {}",
+        "n", "k", "ℓ", "B", "obs_Nk", "null_μ", "null_σ", "z", "p-val", "verdict"
+    );
+    println!("  {}", "─".repeat(80));
+    for r in &result.permutation_null {
+        let verdict = if r.empirical_p_value > 0.05 {
+            "✓ consistent"
+        } else {
+            "⚠ anomalous"
+        };
+        println!(
+            "  {:>4} {:>4} {:>6} {:>4} {:>+8.4} {:>+8.4} {:>8.4} {:>+8.2} {:>8.3}  {}",
+            r.n_bits,
+            r.channel_weight,
+            r.ell,
+            r.smoothness_bound,
+            r.observed_corr_nk,
+            r.null_mean,
+            r.null_std,
+            r.z_score,
+            r.empirical_p_value,
+            verdict,
+        );
+    }
+    let n_consistent = result
+        .permutation_null
+        .iter()
+        .filter(|r| r.empirical_p_value > 0.05)
+        .count();
+    let n_total_perm = result.permutation_null.len();
+    println!(
+        "  Summary: {n_consistent}/{n_total_perm} blocks consistent with null (p > 0.05)"
+    );
+    println!();
+
+    // ─── Table 2: Cross-n transfer ───
+    println!("Test 2: CROSS-N TRANSFER (is scanned r* from n=20 stable at other bit sizes?)");
+    println!("  ratio = transfer_fix_excess / local_fix_excess; [0.7, 1.3] = stable");
+    for tr in &result.cross_n_transfer {
+        println!(
+            "\n  k={}, ℓ={}, B={}, source_r*={}",
+            tr.channel_weight, tr.ell, tr.smoothness_bound, tr.source_r_star
+        );
+        println!(
+            "  {:>5} {:>12} {:>12} {:>12} {:>8} {:>8}  {}",
+            "n", "local_r*", "local_exc", "xfer_exc", "ratio", "n_valid", "verdict"
+        );
+        println!("  {}", "─".repeat(78));
+        for e in &tr.entries {
+            let verdict = if e.consistency_ratio >= 0.5 && e.consistency_ratio <= 2.0 {
+                "✓ stable"
+            } else if e.consistency_ratio > 0.0 {
+                "~ weak"
+            } else {
+                "✗ fail"
+            };
+            println!(
+                "  {:>5} {:>12} {:>12.2} {:>12.2} {:>8.3} {:>8}  {}",
+                e.n_bits,
+                e.local_r_star,
+                e.local_fix_excess,
+                e.transfer_fix_excess,
+                e.consistency_ratio,
+                e.n_valid,
+                verdict,
+            );
+        }
+    }
+    println!();
+
+    // ─── Table 3: Multi-character N-score ───
+    println!("Test 3: MULTI-CHARACTER N-SCORE (can any character combination extract from N?)");
+    println!("  all = DFT-optimal weighting (≡ direct smoothness check)");
+    println!("  top10 = top-10 characters; R² = held-out from trained weights");
+    println!("  all ≈ 0 = NO extraction possible");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>4} {:>8} {:>8} {:>8} {:>8}  {}",
+        "n", "k", "ℓ", "B", "corr_all", "top10", "direct", "R²", "verdict"
+    );
+    println!("  {}", "─".repeat(72));
+    for m in &result.multi_character_score {
+        let verdict = if m.corr_dft_weighted_all.abs() < 0.15
+            && m.corr_dft_weighted_top10.abs() < 0.15
+            && m.train_test_r_squared < 0.05
+        {
+            "✓ BARRIER"
+        } else {
+            "⚠ signal?"
+        };
+        println!(
+            "  {:>4} {:>4} {:>6} {:>4} {:>+8.4} {:>+8.4} {:>+8.4} {:>8.4}  {}",
+            m.n_bits,
+            m.channel_weight,
+            m.ell,
+            m.smoothness_bound,
+            m.corr_dft_weighted_all,
+            m.corr_dft_weighted_top10,
+            m.corr_direct_smoothness,
+            m.train_test_r_squared,
+            verdict,
+        );
+    }
+    let n_barrier_multi = result
+        .multi_character_score
+        .iter()
+        .filter(|m| {
+            m.corr_dft_weighted_all.abs() < 0.15
+                && m.corr_dft_weighted_top10.abs() < 0.15
+                && m.train_test_r_squared < 0.05
+        })
+        .count();
+    let n_total_multi = result.multi_character_score.len();
+    println!("  Summary: {n_barrier_multi}/{n_total_multi} blocks confirm barrier");
+    println!();
+
+    // ─── Table 4: Bootstrap CI ───
+    println!("Test 4: BOOTSTRAP CONFIDENCE INTERVALS (95% CI for fix_excess and corr_Nk)");
+    println!(
+        "  {:>4} {:>4} {:>6} {:>4} {:>8} {:>18} {:>8} {:>18}",
+        "n", "k", "ℓ", "B", "fix_mean", "fix_95%CI", "Nk_mean", "Nk_95%CI"
+    );
+    println!("  {}", "─".repeat(82));
+    for b in &result.bootstrap_ci {
+        println!(
+            "  {:>4} {:>4} {:>6} {:>4} {:>8.2} [{:>6.2}, {:>6.2}] {:>+8.4} [{:>+7.4}, {:>+7.4}]",
+            b.n_bits,
+            b.channel_weight,
+            b.ell,
+            b.smoothness_bound,
+            b.fix_excess_mean,
+            b.fix_excess_ci_lo,
+            b.fix_excess_ci_hi,
+            b.corr_nk_mean,
+            b.corr_nk_ci_lo,
+            b.corr_nk_ci_hi,
+        );
+    }
+    let n_fix_sig = result
+        .bootstrap_ci
+        .iter()
+        .filter(|b| b.fix_excess_ci_lo > 1.5)
+        .count();
+    let n_nk_zero = result
+        .bootstrap_ci
+        .iter()
+        .filter(|b| b.corr_nk_ci_lo <= 0.0 && b.corr_nk_ci_hi >= 0.0)
+        .count();
+    let n_total_boot = result.bootstrap_ci.len();
+    println!(
+        "  Summary: {n_fix_sig}/{n_total_boot} blocks with fix_excess CI_lo > 1.5"
+    );
+    println!(
+        "  Summary: {n_nk_zero}/{n_total_boot} blocks with corr_Nk CI containing 0"
+    );
 }
 
 // ---------------------------------------------------------------------------
