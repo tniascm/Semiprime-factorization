@@ -7,6 +7,7 @@
 pub mod evolution;
 pub mod fitness;
 pub mod macros;
+pub mod novelty;
 pub mod primitives;
 
 use num_bigint::BigUint;
