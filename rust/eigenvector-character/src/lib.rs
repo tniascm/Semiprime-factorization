@@ -607,6 +607,20 @@ pub struct SmoothnessSpectrumResult {
     pub parity_a_max: f64,
     /// Ratio: smoothness A_max / parity A_max. >1 means smoothness has MORE bias.
     pub ratio_to_parity: f64,
+    /// Expected A_max for a RANDOM subset of the same density p in (ℤ/ℓℤ)*:
+    ///   null = √(p(1−p) · 2·ln(n/2) / n)  where n = ℓ−1, p = smooth_fraction.
+    /// This is the extreme-value-corrected null for the maximum of ~n/2 i.i.d.
+    /// Gaussian random variables with variance p(1−p)/n.
+    pub null_a_max: f64,
+    /// Excess ratio: a_max / null_a_max.  >1 means genuine multiplicative structure
+    /// beyond what a random subset of the same density would produce.
+    pub excess_ratio: f64,
+    /// Head energy fraction: Σ_{top-k} |ĥ(r)|² / Σ_{all r≠0} |ĥ(r)|².
+    /// By Parseval, Σ_{r≠0} |ĥ(r)|² = Var(s̃_B) = p(1−p).
+    /// High head energy = spectral concentration in few modes (multiplicative bias).
+    pub head_energy_fraction: f64,
+    /// Parity head energy fraction for comparison.
+    pub parity_head_energy: f64,
     /// Top-k character amplitudes.
     pub top_amplitudes: Vec<(usize, f64)>,
 }
@@ -658,19 +672,43 @@ pub fn smoothness_spectrum(ell: u64, bound: u64, top_k: usize) -> SmoothnessSpec
         if is_b_smooth(a, bound) { 1.0 } else { 0.0 }
     });
 
-    // DFT of centered smoothness indicator.
+    // DFT of centered smoothness indicator (returns top-k by amplitude).
     let (dc, amplitudes) = dft_on_cyclic_group(&f_smooth, top_k);
 
     let a_max = amplitudes.first().map(|x| x.1).unwrap_or(0.0);
     let ell_f = ell as f64;
+    let n_f = order as f64;
     let a_max_scaled = a_max * ell_f.sqrt();
     let a_max_corrected = a_max * ell_f.sqrt() / ell_f.ln().sqrt();
 
-    // Parity baseline: use the existing function.
-    let parity_result = centered_parity_spectrum(ell, 1);
+    // Parity baseline: use the existing function (request top_k amplitudes for head energy).
+    let parity_result = centered_parity_spectrum(ell, top_k);
     let parity_a_max = parity_result.a_max;
 
     let ratio = if parity_a_max > 1e-15 { a_max / parity_a_max } else { 0.0 };
+
+    // Density-normalized null: expected A_max for a RANDOM subset of density p.
+    // For n i.i.d. centered Bernoulli(p) variables, each DFT coefficient has
+    // variance p(1-p)/n. The max over ~n/2 such coefficients (Gaussian approx):
+    //   null_a_max ≈ √(p(1-p) · 2·ln(n/2) / n)
+    let p = dc; // smooth_fraction = DC component = mean of indicator
+    let pq = p * (1.0 - p);
+    let null_a_max = if pq > 1e-15 && n_f > 4.0 {
+        (pq * 2.0 * (n_f / 2.0).ln() / n_f).sqrt()
+    } else {
+        0.0
+    };
+    let excess_ratio = if null_a_max > 1e-15 { a_max / null_a_max } else { 0.0 };
+
+    // Head energy fraction: Σ_{top-k} |ĥ(r)|² / Σ_{all r≠0} |ĥ(r)|².
+    // By Parseval on centered function: Σ_{r≠0} |ĥ(r)|² = Var(f̃) = p(1-p).
+    let head_energy_sum: f64 = amplitudes.iter().map(|&(_, amp)| amp * amp).sum();
+    let head_energy_fraction = if pq > 1e-15 { head_energy_sum / pq } else { 0.0 };
+
+    // Parity head energy: centered parity h̃ ∈ {−1,+1} has Parseval total ≈ 1.0.
+    // (Not 0.25: the {0,1} indicator has Var=0.25, but h̃ = 2h−1 has Var=1.0.)
+    let parity_head_sum: f64 = parity_result.top_amplitudes.iter().map(|&(_, amp)| amp * amp).sum();
+    let parity_head_energy = parity_head_sum; // Parseval total for {−1,+1} = 1.0
 
     SmoothnessSpectrumResult {
         ell,
@@ -682,6 +720,10 @@ pub fn smoothness_spectrum(ell: u64, bound: u64, top_k: usize) -> SmoothnessSpec
         a_max_corrected,
         parity_a_max,
         ratio_to_parity: ratio,
+        null_a_max,
+        excess_ratio,
+        head_energy_fraction,
+        parity_head_energy,
         top_amplitudes: amplitudes,
     }
 }
