@@ -1,20 +1,23 @@
 /// E21: Eigenvector Multiplicative Character Audit — CLI
 ///
 /// Usage:
-///   eigenvector-character [--mode=audit|control] [--bits=14,16,18,20]
+///   eigenvector-character [--mode=audit|control|scaling] [--bits=14,16,18,20]
 ///                         [--channels=0,1,...,6] [--eigenvectors=3] [--seed=N]
 ///
 /// Modes:
 ///   audit   — (default) run character audit over prime-restricted CRT matrix
 ///   control — pipeline validation: full-group H[a][b]=parity(ab mod ℓ) matrix,
 ///             where characters ARE exact eigenvectors → should find amp ≈ 1
+///   scaling — Fourier scaling: DFT of centered parity h̃=2h−1 on (ℤ/ℓℤ)*
+///             for many primes ℓ; measures A_max(ℓ) and fits power law
 ///
 /// Outputs:
 ///   - Human-readable summary to stdout
 ///   - JSON to data/E21_*.json
 
 use eigenvector_character::{
-    run_character_audit, run_full_group_control, CharacterAuditResult, FullGroupControlResult,
+    run_character_audit, run_full_group_control, scaling_primes,
+    CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -28,8 +31,9 @@ fn main() {
     match mode {
         "audit"   => run_audit_mode(&opts),
         "control" => run_control_mode(&opts),
+        "scaling" => run_scaling_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling");
             std::process::exit(1);
         }
     }
@@ -100,6 +104,38 @@ fn run_control_mode(opts: &HashMap<String, String>) {
     println!();
     print_control_summary(&all);
     write_json(&all, "data/E21_control_results.json");
+}
+
+fn run_scaling_mode(opts: &HashMap<String, String>) {
+    use eigenvector_character::{centered_parity_spectrum, FourierScalingResult};
+
+    let lo      = parse_u64(opts, "lo", 101);
+    let hi      = parse_u64(opts, "hi", 50_000);
+    let n_pts   = parse_usize(opts, "points", 30);
+    let top_k   = parse_usize(opts, "topk", 10);
+
+    let primes = scaling_primes(lo, hi, n_pts);
+
+    println!("E21 FOURIER SCALING: centered parity h̃(a) = 2(a mod 2) − 1 on (ℤ/ℓℤ)*");
+    println!("Primes     : {} values from {} to {}", primes.len(), primes.first().unwrap(), primes.last().unwrap());
+    println!("Top-k chars: {top_k}");
+    println!("{}", "─".repeat(72));
+
+    // Compute per-prime with progress output.
+    let mut results: Vec<FourierScalingResult> = Vec::with_capacity(primes.len());
+    for &ell in &primes {
+        eprint!("  ℓ={ell:6} (order {:6}) … ", ell - 1);
+        let result = centered_parity_spectrum(ell, top_k);
+        eprintln!("A_max={:.5}  A_max·√ℓ={:.3}", result.a_max, result.a_max_scaled);
+        results.push(result);
+    }
+
+    // Build analysis with log-log fit.
+    let analysis = eigenvector_character::build_fourier_scaling_analysis(results);
+
+    println!();
+    print_scaling_summary(&analysis);
+    write_json(&analysis, "data/E21_fourier_scaling.json");
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +307,75 @@ fn print_control_summary(results: &[FullGroupControlResult]) {
         println!("     not a pipeline artifact.");
     } else {
         println!("   ⚠ Some eigenvectors not matched — may indicate convergence issues.");
+    }
+}
+
+fn print_scaling_summary(analysis: &FourierScalingAnalysis) {
+    println!("┌───────────────────────────────────────────────────────────────────────┐");
+    println!("│ E21 FOURIER SCALING: centered parity h̃ = 2h − 1 on (ℤ/ℓℤ)*         │");
+    println!("│ A_max(ℓ) = max_{{r≥1}} |ĥ̃(r)|  — should scale as C · ℓ^{{−1/2}}      │");
+    println!("└───────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // Main table with corrected ratio column.
+    println!(
+        "{:>7}  {:>7}  {:>9}  {:>9}  {:>11}  top-3 (r, amp)",
+        "ℓ", "order", "A_max", "A_max·√ℓ", "A·√ℓ/√logℓ"
+    );
+    println!("{}", "─".repeat(82));
+
+    for r in &analysis.results {
+        let ell_f = r.ell as f64;
+        let corrected = r.a_max * ell_f.sqrt() / ell_f.ln().sqrt();
+        let top3_str: String = r.top_amplitudes.iter()
+            .take(3)
+            .map(|(r_idx, amp)| format!("({r_idx},{amp:.4})"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        println!(
+            "{:>7}  {:>7}  {:>9.6}  {:>9.3}  {:>11.3}  {}",
+            r.ell,
+            r.order,
+            r.a_max,
+            r.a_max_scaled,
+            corrected,
+            top3_str,
+        );
+    }
+
+    println!();
+    println!("Uncorrected power-law fit: A_max ≈ {:.4} · ℓ^({:.4})", analysis.fitted_prefactor, analysis.fitted_slope);
+    println!("  Expected slope : −0.5000  (pure Gauss sum bound)");
+    println!("  Observed slope : {:+.4}", analysis.fitted_slope);
+    println!("  R²             : {:.6}", analysis.r_squared);
+    println!();
+    println!("Corrected ratio: A_max · √ℓ / √(log ℓ)");
+    println!("  Mean  : {:.3}", analysis.corrected_ratio_mean);
+    println!("  Std   : {:.3}", analysis.corrected_ratio_std);
+    println!("  CV    : {:.1}%", 100.0 * analysis.corrected_ratio_std / analysis.corrected_ratio_mean);
+    println!();
+
+    // Verdict: is the deviation from -0.5 explained by √(log ℓ)?
+    let cv = analysis.corrected_ratio_std / analysis.corrected_ratio_mean;
+    let slope_dev = analysis.fitted_slope + 0.5; // positive = slower than ℓ^{-1/2}
+
+    if cv < 0.10 && slope_dev.abs() < 0.10 {
+        println!("  ✓ A_max = Θ(√(log ℓ) / √ℓ) — confirmed.");
+        println!("    Slope deviation from −1/2 is fully explained by √(log ℓ) correction");
+        println!("    (extremal-value statistics over ~ℓ/2 characters).");
+        println!("    The stable rank head is an intrinsic harmonic artifact,");
+        println!("    not an exploitable arithmetic leak.");
+    } else if slope_dev > 0.15 {
+        println!("  ⚠ Slope SLOWER than ℓ^{{−1/2}} by {slope_dev:.3} — unexpected.");
+        println!("    Possible multiplicative bias; warrants investigation.");
+    } else if slope_dev < -0.15 {
+        println!("  ⚠ Slope FASTER than ℓ^{{−1/2}} by {:.3} — unexpected.", slope_dev.abs());
+    } else {
+        println!("  ~ Slope near −1/2 (deviation {slope_dev:+.4}) with √(log ℓ) correction (CV={cv:.1}%).");
+        if cv < 0.15 {
+            println!("    Consistent with A_max = Θ(√(log ℓ) / √ℓ).");
+            println!("    No exploitable structure detected.");
+        }
     }
 }
 

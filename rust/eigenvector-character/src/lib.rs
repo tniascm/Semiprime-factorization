@@ -409,6 +409,237 @@ pub fn run_full_group_control(ell: u64, n_eigenvectors: usize, seed: u64) -> Ful
 }
 
 // ---------------------------------------------------------------------------
+// Fourier scaling: centered parity spectrum on the full group
+// ---------------------------------------------------------------------------
+
+/// Result of the Fourier scaling analysis for a single prime ℓ.
+///
+/// Computes the DFT of the centered parity function h̃(a) = 2(a mod 2) − 1
+/// on the full cyclic group (ℤ/ℓℤ)*, giving exact Fourier coefficients
+/// ĥ̃(r) for r = 0, …, ℓ−2.
+#[derive(Debug, Clone, Serialize)]
+pub struct FourierScalingResult {
+    pub ell: u64,
+    pub order: usize,
+    /// A_max = max_{r≥1} |ĥ̃(r)|  (excluding r=0 DC component).
+    pub a_max: f64,
+    /// A_max · √ℓ — should be O(1) if ĥ̃(r) = O(1/√ℓ).
+    pub a_max_scaled: f64,
+    /// ĥ̃(0) = mean of h̃ over the group.  Should be ≈ 0 for centered parity.
+    pub dc_component: f64,
+    /// Top-k character amplitudes: [(r, |ĥ̃(r)|)], sorted descending by amplitude.
+    pub top_amplitudes: Vec<(usize, f64)>,
+}
+
+/// Full Fourier scaling analysis result across multiple primes.
+#[derive(Debug, Clone, Serialize)]
+pub struct FourierScalingAnalysis {
+    /// Per-prime results.
+    pub results: Vec<FourierScalingResult>,
+    /// Fitted power law: A_max ≈ C · ℓ^slope.
+    pub fitted_slope: f64,
+    /// Fitted prefactor C in A_max ≈ C · ℓ^slope.
+    pub fitted_prefactor: f64,
+    /// R² of the log-log fit.
+    pub r_squared: f64,
+    /// Corrected fit: A_max · √ℓ / √(log ℓ) — should be ≈ constant if
+    /// the √(log ℓ) extremal-value correction explains the deviation from -1/2.
+    pub corrected_ratio_mean: f64,
+    /// Standard deviation of A_max · √ℓ / √(log ℓ).
+    pub corrected_ratio_std: f64,
+}
+
+/// Compute the full Fourier spectrum of the centered parity function
+/// h̃(a) = 2(a mod 2) − 1 on (ℤ/ℓℤ)* for prime ℓ.
+///
+/// Returns the Fourier coefficients ĥ̃(r) for r = 0, …, ℓ−2:
+///   ĥ̃(r) = (1/(ℓ−1)) · Σ_{a=1}^{ℓ−1} h̃(a) · χ̄_r(a)
+///
+/// Using the discrete log: let f(k) = h̃(g^k), then
+///   ĥ̃(r) = (1/n) · Σ_{k=0}^{n−1} f(k) · exp(−2πi·r·k/n)
+///
+/// Returns Vec of (|ĥ̃(r)|², r) for efficiency; caller takes sqrt if needed.
+/// Only computes r = 0 … n/2 (conjugate symmetry for real h̃).
+pub fn centered_parity_spectrum(ell: u64, top_k: usize) -> FourierScalingResult {
+    use algebra::primitive_root;
+
+    let order = (ell - 1) as usize;
+    let prim_g = primitive_root(ell);
+
+    // Build the centered parity sequence in dlog order: f[k] = h̃(g^k mod ℓ)
+    // where h̃(a) = 2*(a%2) - 1 ∈ {-1, +1}.
+    let mut f = vec![0.0f64; order];
+    let mut val = 1u64; // g^0 = 1
+    for k in 0..order {
+        let a = val;
+        f[k] = 2.0 * (a % 2) as f64 - 1.0; // +1 if odd, -1 if even
+        val = val * prim_g % ell;
+    }
+    debug_assert_eq!(val, 1, "primitive root cycle failed");
+
+    // Compute DFT: ĥ̃(r) = (1/n) · Σ_k f(k) · exp(-2πi·r·k/n)
+    // For r = 0 … n/2 (conjugate symmetry: |ĥ̃(r)| = |ĥ̃(n-r)| for real f).
+    let n = order;
+    let n_f = n as f64;
+    let half = n / 2;
+
+    let mut amplitudes: Vec<(usize, f64)> = Vec::with_capacity(half + 1);
+
+    // r = 0: DC component = mean of h̃.
+    let dc: f64 = f.iter().sum::<f64>() / n_f;
+
+    // r = 1 … n/2
+    for r in 1..=half {
+        let mut re_sum = 0.0f64;
+        let mut im_sum = 0.0f64;
+        let phase_step = std::f64::consts::TAU * (r as f64) / n_f;
+        for k in 0..n {
+            let phase = phase_step * (k as f64);
+            re_sum += f[k] * phase.cos();
+            im_sum -= f[k] * phase.sin(); // conjugate: exp(-iθ)
+        }
+        let amp = (re_sum * re_sum + im_sum * im_sum).sqrt() / n_f;
+        amplitudes.push((r, amp));
+    }
+
+    // Sort by amplitude descending.
+    amplitudes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let a_max = amplitudes.first().map(|x| x.1).unwrap_or(0.0);
+    let a_max_scaled = a_max * (ell as f64).sqrt();
+
+    amplitudes.truncate(top_k);
+
+    FourierScalingResult {
+        ell,
+        order,
+        a_max,
+        a_max_scaled,
+        dc_component: dc,
+        top_amplitudes: amplitudes,
+    }
+}
+
+/// Run the Fourier scaling analysis across many primes ℓ.
+///
+/// For each prime, computes the exact DFT of centered parity h̃ on (ℤ/ℓℤ)*
+/// and records A_max(ℓ).  Then fits log(A_max) = slope·log(ℓ) + log(C)
+/// via least-squares regression.
+pub fn run_fourier_scaling(primes: &[u64], top_k: usize) -> FourierScalingAnalysis {
+    let results: Vec<FourierScalingResult> = primes
+        .iter()
+        .map(|&ell| centered_parity_spectrum(ell, top_k))
+        .collect();
+
+    build_fourier_scaling_analysis(results)
+}
+
+/// Build a `FourierScalingAnalysis` from pre-computed per-prime results.
+///
+/// Fits log(A_max) = slope·log(ℓ) + log(C) via least-squares, and also
+/// computes the √(log ℓ)-corrected ratio A_max·√ℓ/√(log ℓ) to check
+/// whether the deviation from slope = -1/2 is explained by extremal
+/// value statistics.
+pub fn build_fourier_scaling_analysis(results: Vec<FourierScalingResult>) -> FourierScalingAnalysis {
+    let (slope, intercept, r_sq) = if results.len() >= 2 {
+        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = results.iter().map(|r| r.a_max.ln()).collect();
+        log_log_fit(&xs, &ys)
+    } else {
+        (-0.5, 0.0, 0.0)
+    };
+
+    // Compute corrected ratio: A_max · √ℓ / √(log ℓ).
+    // If A_max = C · √(log ℓ) / √ℓ, this should be roughly constant.
+    let ratios: Vec<f64> = results
+        .iter()
+        .map(|r| {
+            let ell_f = r.ell as f64;
+            r.a_max * ell_f.sqrt() / ell_f.ln().sqrt()
+        })
+        .collect();
+    let n = ratios.len() as f64;
+    let mean = if n > 0.0 { ratios.iter().sum::<f64>() / n } else { 0.0 };
+    let std_dev = if n > 1.0 {
+        (ratios.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt()
+    } else {
+        0.0
+    };
+
+    FourierScalingAnalysis {
+        results,
+        fitted_slope: slope,
+        fitted_prefactor: intercept.exp(),
+        r_squared: r_sq,
+        corrected_ratio_mean: mean,
+        corrected_ratio_std: std_dev,
+    }
+}
+
+/// Simple least-squares fit: y = slope·x + intercept.
+/// Returns (slope, intercept, R²).
+fn log_log_fit(x: &[f64], y: &[f64]) -> (f64, f64, f64) {
+    let n = x.len() as f64;
+    let sx: f64 = x.iter().sum();
+    let sy: f64 = y.iter().sum();
+    let sxy: f64 = x.iter().zip(y.iter()).map(|(a, b)| a * b).sum();
+    let sxx: f64 = x.iter().map(|a| a * a).sum();
+    let _syy: f64 = y.iter().map(|b| b * b).sum();
+
+    let denom = n * sxx - sx * sx;
+    if denom.abs() < 1e-15 {
+        return (0.0, sy / n, 0.0);
+    }
+
+    let slope = (n * sxy - sx * sy) / denom;
+    let intercept = (sy - slope * sx) / n;
+
+    // R²
+    let ss_res: f64 = x
+        .iter()
+        .zip(y.iter())
+        .map(|(xi, yi)| {
+            let pred = slope * xi + intercept;
+            (yi - pred).powi(2)
+        })
+        .sum();
+    let mean_y = sy / n;
+    let ss_tot: f64 = y.iter().map(|yi| (yi - mean_y).powi(2)).sum();
+    let r_sq = if ss_tot > 1e-15 { 1.0 - ss_res / ss_tot } else { 1.0 };
+
+    (slope, intercept, r_sq)
+}
+
+/// Generate a list of primes for the scaling sweep.
+///
+/// Picks primes near logarithmically-spaced targets from `lo` to `hi`.
+pub fn scaling_primes(lo: u64, hi: u64, n_target: usize) -> Vec<u64> {
+    let log_lo = (lo as f64).ln();
+    let log_hi = (hi as f64).ln();
+    let step = (log_hi - log_lo) / (n_target.max(2) - 1) as f64;
+
+    let mut primes = Vec::with_capacity(n_target);
+    for i in 0..n_target {
+        let target = (log_lo + step * i as f64).exp() as u64;
+        // Find the smallest prime >= target.
+        let p = next_prime(target.max(3));
+        if primes.last() != Some(&p) {
+            primes.push(p);
+        }
+    }
+    primes
+}
+
+/// Find the smallest prime ≥ n.
+fn next_prime(n: u64) -> u64 {
+    let mut candidate = if n % 2 == 0 { n + 1 } else { n };
+    while !is_prime_u64(candidate) {
+        candidate += 2;
+    }
+    candidate
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -478,6 +709,67 @@ mod tests {
             // g(p)·g(q) mod ℓ should equal σ_{k−1}(pq) mod ℓ
             assert_eq!(gp * gq % ell, sigma % ell,
                 "identity failed at p={p}, q={q}");
+        }
+    }
+
+    #[test]
+    fn test_centered_parity_spectrum_dc_near_zero() {
+        // For prime ℓ, half the elements of {1,…,ℓ-1} are odd, half even.
+        // Centered parity: DC = (n_odd - n_even) / (ℓ-1).
+        // For ℓ > 2, DC should be ±1/(ℓ-1) (exactly one more odd than even,
+        // or vice versa).
+        let result = centered_parity_spectrum(131, 5);
+        assert!(
+            result.dc_component.abs() < 0.02,
+            "DC should be near zero for centered parity, got {}",
+            result.dc_component
+        );
+    }
+
+    #[test]
+    fn test_centered_parity_spectrum_scaling() {
+        // For ℓ = 131, A_max · √ℓ should be O(1) — roughly 1–2.
+        let result = centered_parity_spectrum(131, 10);
+        assert!(
+            result.a_max_scaled > 0.5 && result.a_max_scaled < 5.0,
+            "A_max·√ℓ should be O(1), got {}",
+            result.a_max_scaled
+        );
+        assert!(
+            !result.top_amplitudes.is_empty(),
+            "should have at least one non-trivial amplitude"
+        );
+    }
+
+    #[test]
+    fn test_fourier_scaling_regression() {
+        // Run on a few small primes and check that fitted slope is negative.
+        let primes = vec![101, 251, 503, 1009];
+        let analysis = run_fourier_scaling(&primes, 5);
+        assert_eq!(analysis.results.len(), 4);
+        assert!(
+            analysis.fitted_slope < 0.0,
+            "slope should be negative (amplitudes decay), got {}",
+            analysis.fitted_slope
+        );
+        assert!(
+            analysis.fitted_slope > -1.0,
+            "slope should be > -1 (not decaying faster than 1/ℓ), got {}",
+            analysis.fitted_slope
+        );
+    }
+
+    #[test]
+    fn test_scaling_primes() {
+        let primes = scaling_primes(100, 10000, 8);
+        assert!(primes.len() >= 6, "should generate several primes");
+        // All should be prime
+        for &p in &primes {
+            assert!(is_prime_u64(p), "{p} is not prime");
+        }
+        // Should be sorted ascending
+        for w in primes.windows(2) {
+            assert!(w[0] < w[1], "primes not sorted: {} >= {}", w[0], w[1]);
         }
     }
 
