@@ -111,22 +111,33 @@ non-trivial eigenvectors:
 identifies characters when they truly are eigenvectors.**  The drop to noise
 in the prime-restricted audit (Table 1) is real.
 
-### Fourier coefficient scaling: ĥ(r) = O(1/√ℓ)
+### Fourier scaling: exact DFT of centered parity on the full group
 
-From the control eigenvalues, the dominant non-trivial Fourier coefficient is
-ĥ(r*) = λ₁/(ℓ−1).  Measured values:
+To precisely measure how the dominant Fourier amplitude scales with ℓ, we
+compute the **exact DFT** of the centered parity function h̃(a) = 2(a mod 2) − 1
+on the full group (ℤ/ℓℤ)* for 30 primes spanning ℓ = 101 to 50021.  This uses
+no eigenvectors, no prime restriction — just the pure harmonic spectrum of h̃.
 
-| ℓ   | λ₁   | ĥ(r*) | ĥ(r*)·√ℓ |
-|-----|------|-------|-----------|
-| 131 | 15.0 | 0.115 | 1.32      |
-| 283 | 20.2 | 0.072 | 1.21      |
-| 593 | 31.3 | 0.053 | 1.29      |
-| 617 | 23.8 | 0.039 | 0.96      |
-| 691 | 31.2 | 0.045 | 1.19      |
+Define A_max(ℓ) = max_{r≥1} |ĥ̃(r)|.  Representative values:
 
-ĥ(r*)·√ℓ ≈ 1.2 across all ℓ, confirming **ĥ(r) = O(1/√ℓ)** scaling.  This is
-the standard bound for Fourier coefficients of the parity function on cyclic
-groups (Gauss sum bound).
+| ℓ      | A_max     | A_max·√ℓ | A·√ℓ/√(log ℓ) |
+|--------|-----------|-----------|----------------|
+| 101    | 0.22576   | 2.27      | 1.056          |
+| 701    | 0.09689   | 2.57      | 1.002          |
+| 3109   | 0.05245   | 2.92      | 1.031          |
+| 11197  | 0.02936   | 3.11      | 1.017          |
+| 50021  | 0.01476   | 3.30      | 1.004          |
+
+**Uncorrected fit:** A_max ≈ 1.79 · ℓ^(−0.44), R² = 0.998.
+The raw slope (−0.44) is shallower than −1/2.
+
+**With √(log ℓ) correction:** A_max · √ℓ / √(log ℓ) = **1.050 ± 0.035**
+(CV = 3.3%) — essentially constant across 3 orders of magnitude.
+
+**Conclusion:** A_max = Θ(√(log ℓ) / √ℓ).  The deviation from pure ℓ^(−1/2)
+is fully explained by the √(log ℓ) extremal-value correction (the maximum
+over ~ℓ/2 characters, each with amplitude ~1/√ℓ).  No anomalous multiplicative
+bias is present.
 
 ## Statistical interpretation
 
@@ -149,16 +160,17 @@ too sparse (though sparsity compounds the problem).  The more decisive reason is
 
 1. **Parity projection destroys character diagonalisation.**  Over the full group,
    H[a][b] = h(ab mod ℓ) has characters as eigenvectors with eigenvalues
-   (ℓ−1)·ĥ(r).  But these eigenvalues scale as O(√ℓ) (see table above), while
-   the trivial eigenvalue is (ℓ−1)/2 ≈ ℓ/2.  The ratio λ₁/λ₀ ≈ O(1/√ℓ) → 0,
-   so the spectral gap between the trivial mode and any non-trivial character
-   vanishes as ℓ grows.
+   (ℓ−1)·ĥ(r).  But A_max = Θ(√(log ℓ)/√ℓ) (confirmed empirically over 30
+   primes with CV = 3.3%), so the non-trivial eigenvalues scale as O(√(ℓ·log ℓ))
+   while the trivial eigenvalue is (ℓ−1)/2 ≈ ℓ/2.  The ratio
+   λ₁/λ₀ ≈ O(√(log ℓ)/√ℓ) → 0, so the spectral gap between the trivial mode
+   and any non-trivial character vanishes as ℓ grows.
 
 2. **No single character dominates.**  Since all non-trivial Fourier coefficients
-   are O(1/√ℓ), many characters have comparable amplitude.  The top eigenvectors
-   of M are mixtures of the O(1) dominant Fourier modes of h, not individual
-   characters.  This is consistent with E20's stable rank ≈ 3.7: the 3–4
-   dominant directions in M represent **collective** modes arising from the
+   are O(√(log ℓ)/√ℓ), many characters have comparable amplitude.  The top
+   eigenvectors of M are mixtures of the O(1) dominant Fourier modes of h, not
+   individual characters.  This is consistent with E20's stable rank ≈ 3.7: the
+   3–4 dominant directions in M represent **collective** modes arising from the
    interplay of the parity function and the group structure, not individual χ_r.
 
 3. **The g(·) mapping adds no structure that could help.**  Even if a single
@@ -186,10 +198,14 @@ extractable.
    amp ≈ 1.0 over the unrestricted group.  The drop to noise in the
    prime-restricted audit is real, not a pipeline artifact.
 
-4. **Fourier coefficient scaling confirmed**: ĥ(r*) = O(1/√ℓ), with
-   ĥ(r*)·√ℓ ≈ 1.2.  This explains why the stable rank is O(1): the
-   eigenvalue spectrum of H has O(1) modes at amplitude O(√ℓ) against a
-   trivial background of ℓ/2, giving effective rank ≈ Σ(λ_r²)/λ₀² = O(1).
+4. **Fourier scaling confirmed**: A_max(ℓ) = Θ(√(log ℓ)/√ℓ), measured via
+   exact DFT of centered parity h̃ = 2h − 1 on (ℤ/ℓℤ)* for 30 primes
+   (ℓ = 101 to 50021).  The corrected ratio A_max·√ℓ/√(log ℓ) = 1.050 ± 0.035
+   is constant to 3.3% CV across 3 orders of magnitude.  The √(log ℓ) factor
+   is the extremal-value correction from maximising over ~ℓ/2 characters.
+   This explains why the stable rank is O(1): the eigenvalue spectrum of H
+   has O(1) modes at amplitude O(√(ℓ·log ℓ)) against a trivial background
+   of ℓ/2, giving effective rank ≈ Σ(λ_r²)/λ₀² = O(log ℓ/ℓ) · (ℓ/2) = O(1).
 
 5. **Barrier intact** (Product test B): `corr(u₁(p)·u₁(q), N^{k−1} mod ℓ) ≈ 0`
    uniformly.  The product of eigenvector components is NOT accessible from N
@@ -200,11 +216,12 @@ extractable.
    are NOT individual characters — they are collective modes arising from the
    O(1) dominant Fourier coefficients of the parity function on (ℤ/ℓℤ)*.
    Each such direction is a superposition of many characters at comparable
-   amplitude O(1/√ℓ), making them useless for extracting a single
+   amplitude O(√(log ℓ)/√ℓ), making them useless for extracting a single
    N-computable product.
 
 ## Data files
 
 - `rust/data/E21_character_audit.json` — full per-block per-eigenvector results
 - `rust/data/E21_control_results.json` — full-group control experiment results
+- `rust/data/E21_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
 - `rust/eigenvector-character/` — Rust crate implementing E21
