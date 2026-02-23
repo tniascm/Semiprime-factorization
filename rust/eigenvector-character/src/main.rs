@@ -232,11 +232,12 @@ fn run_restrict_mode(opts: &HashMap<String, String>) {
                 let result = run_prime_restricted_smoothness(n_bits, ch, b, top_k);
 
                 eprintln!(
-                    "done  ({} primes, fix_exc={:.2}, scan_exc={:.2}, corr_Nk={:+.4})",
+                    "done  ({} primes, fix_exc={:.2}, scan_exc={:.2}, corr_Nk={:+.4}, corr_apx={:+.4})",
                     result.n_primes,
                     result.fixed_r_excess,
                     result.scanned_excess,
                     result.product_corr_nk,
+                    result.product_corr_approx,
                 );
                 all_results.push(result);
             }
@@ -359,6 +360,40 @@ fn print_restrict_summary(results: &[PrimeRestrictedResult]) {
             r.product_corr_sigma,
             r.product_corr_nk,
             r.scanned_r_star,
+            verdict,
+        );
+    }
+
+    println!();
+
+    // ─── Table D: σ-approximation corridor test ───
+    println!("Table D: σ-approximation corridor test  (the last algebraic loophole)");
+    println!("  σ_approx = 1 + 2·⌊√N⌋^{{k−1}} + N^{{k−1}} mod ℓ   [N-only, assumes p≈q]");
+    println!("  corr_σ   = true σ (needs p,q)    corr_apx = approximation (N-only)");
+    println!("  err      = mean |σ_approx − σ_true| / ℓ   (0 = perfect, 0.25 = random)");
+    println!();
+    println!(
+        "{:>4}  {:>3}  {:>6}  {:>3}  {:>8}  {:>8}  {:>8}  {:>6}  verdict",
+        "bits", "k", "ℓ", "B", "corr_σ", "corr_apx", "corr_Nk", "err"
+    );
+    println!("{}", "─".repeat(72));
+
+    for r in results {
+        let verdict = if r.product_corr_approx.abs() > 0.15 {
+            "⚠ APPROX?"
+        } else {
+            "✓ dead"
+        };
+        println!(
+            "{:>4}  {:>3}  {:>6}  {:>3}  {:>+8.4}  {:>+8.4}  {:>+8.4}  {:>5.3}  {}",
+            r.n_bits,
+            r.channel_weight,
+            r.ell,
+            r.smoothness_bound,
+            r.product_corr_sigma,
+            r.product_corr_approx,
+            r.product_corr_nk,
+            r.sigma_approx_error_mean,
             verdict,
         );
     }
