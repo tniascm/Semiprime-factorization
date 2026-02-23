@@ -25,6 +25,7 @@ members = [
     "smooth-pilatte",
     "cf-factor-ms",
     "cado-evolve",
+    "path-sum-degree",
 ]
 
 [workspace.dependencies]
