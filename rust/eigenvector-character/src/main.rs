@@ -1,7 +1,7 @@
 /// E21: Eigenvector Multiplicative Character Audit — CLI
 ///
 /// Usage:
-///   eigenvector-character [--mode=audit|control|scaling] [--bits=14,16,18,20]
+///   eigenvector-character [--mode=audit|control|scaling|smooth] [--bits=14,16,18,20]
 ///                         [--channels=0,1,...,6] [--eigenvectors=3] [--seed=N]
 ///
 /// Modes:
@@ -10,6 +10,8 @@
 ///             where characters ARE exact eigenvectors → should find amp ≈ 1
 ///   scaling — Fourier scaling: DFT of centered parity h̃=2h−1 on (ℤ/ℓℤ)*
 ///             for many primes ℓ; measures A_max(ℓ) and fits power law
+///   smooth  — smoothness spectrum: DFT of centered B-smoothness indicator
+///             on (ℤ/ℓℤ)* for multiple B; compares decay rate to parity baseline
 ///
 /// Outputs:
 ///   - Human-readable summary to stdout
@@ -17,7 +19,9 @@
 
 use eigenvector_character::{
     run_character_audit, run_full_group_control, scaling_primes,
+    smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
+    SmoothnessScalingAnalysis,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -32,8 +36,9 @@ fn main() {
         "audit"   => run_audit_mode(&opts),
         "control" => run_control_mode(&opts),
         "scaling" => run_scaling_mode(&opts),
+        "smooth"  => run_smooth_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth");
             std::process::exit(1);
         }
     }
@@ -136,6 +141,131 @@ fn run_scaling_mode(opts: &HashMap<String, String>) {
     println!();
     print_scaling_summary(&analysis);
     write_json(&analysis, "data/E21_fourier_scaling.json");
+}
+
+fn run_smooth_mode(opts: &HashMap<String, String>) {
+    let lo      = parse_u64(opts, "lo", 101);
+    let hi      = parse_u64(opts, "hi", 50_000);
+    let n_pts   = parse_usize(opts, "points", 30);
+    let top_k   = parse_usize(opts, "topk", 10);
+
+    // Smoothness bounds to test.  Default: 10, 30, 100, 300.
+    let bounds: Vec<u64> = opts.get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![10, 30, 100, 300]);
+
+    let primes = scaling_primes(lo, hi, n_pts);
+
+    println!("E21b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness indicator on (ℤ/ℓℤ)*");
+    println!("Primes     : {} values from {} to {}", primes.len(), primes.first().unwrap(), primes.last().unwrap());
+    println!("Bounds B   : {:?}", bounds);
+    println!("Top-k chars: {top_k}");
+    println!("{}", "─".repeat(72));
+
+    let mut all_analyses: Vec<SmoothnessScalingAnalysis> = Vec::new();
+
+    for &b in &bounds {
+        println!();
+        println!("═══ B = {b} ═══");
+
+        // Compute per-prime with progress output.
+        let mut results = Vec::with_capacity(primes.len());
+        for &ell in &primes {
+            eprint!("  ℓ={ell:6} B={b:3} … ");
+            let result = smoothness_spectrum(ell, b, top_k);
+            eprintln!(
+                "smooth={:.3}  A_max={:.5}  A·√ℓ={:.3}  ratio={:.2}",
+                result.smooth_fraction,
+                result.a_max,
+                result.a_max_scaled,
+                result.ratio_to_parity,
+            );
+            results.push(result);
+        }
+
+        // Build scaling analysis from pre-computed results.
+        let analysis = build_smooth_analysis(b, results);
+        all_analyses.push(analysis);
+    }
+
+    println!();
+    print_smooth_summary(&all_analyses);
+
+    // Write all analyses to JSON.
+    write_json(&all_analyses, "data/E21b_smoothness_spectrum.json");
+}
+
+/// Build a `SmoothnessScalingAnalysis` from pre-computed results.
+fn build_smooth_analysis(
+    bound: u64,
+    results: Vec<eigenvector_character::SmoothnessSpectrumResult>,
+) -> SmoothnessScalingAnalysis {
+    // Log-log fit for smoothness.
+    let (slope, intercept, r_sq) = if results.len() >= 2 {
+        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = results.iter().map(|r| r.a_max.ln()).collect();
+        log_log_fit(&xs, &ys)
+    } else {
+        (-0.5, 0.0, 0.0)
+    };
+
+    // Corrected ratio.
+    let ratios: Vec<f64> = results
+        .iter()
+        .map(|r| {
+            let ell_f = r.ell as f64;
+            r.a_max * ell_f.sqrt() / ell_f.ln().sqrt()
+        })
+        .collect();
+    let n = ratios.len() as f64;
+    let mean = if n > 0.0 { ratios.iter().sum::<f64>() / n } else { 0.0 };
+    let std_dev = if n > 1.0 {
+        (ratios.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt()
+    } else {
+        0.0
+    };
+
+    // Parity baseline slope.
+    let parity_slope = if results.len() >= 2 {
+        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = results.iter().map(|r| r.parity_a_max.ln()).collect();
+        log_log_fit(&xs, &ys).0
+    } else {
+        -0.5
+    };
+
+    SmoothnessScalingAnalysis {
+        smoothness_bound: bound,
+        results,
+        fitted_slope: slope,
+        fitted_prefactor: intercept.exp(),
+        r_squared: r_sq,
+        corrected_ratio_mean: mean,
+        corrected_ratio_std: std_dev,
+        parity_slope,
+    }
+}
+
+/// Simple least-squares fit (duplicated from lib for CLI convenience).
+fn log_log_fit(x: &[f64], y: &[f64]) -> (f64, f64, f64) {
+    let n = x.len() as f64;
+    let sx: f64 = x.iter().sum();
+    let sy: f64 = y.iter().sum();
+    let sxy: f64 = x.iter().zip(y.iter()).map(|(a, b)| a * b).sum();
+    let sxx: f64 = x.iter().map(|a| a * a).sum();
+    let denom = n * sxx - sx * sx;
+    if denom.abs() < 1e-15 {
+        return (0.0, sy / n, 0.0);
+    }
+    let slope = (n * sxy - sx * sy) / denom;
+    let intercept = (sy - slope * sx) / n;
+    let ss_res: f64 = x.iter().zip(y.iter())
+        .map(|(xi, yi)| { let pred = slope * xi + intercept; (yi - pred).powi(2) })
+        .sum();
+    let mean_y = sy / n;
+    let ss_tot: f64 = y.iter().map(|yi| (yi - mean_y).powi(2)).sum();
+    let r_sq = if ss_tot > 1e-15 { 1.0 - ss_res / ss_tot } else { 1.0 };
+    (slope, intercept, r_sq)
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +506,116 @@ fn print_scaling_summary(analysis: &FourierScalingAnalysis) {
             println!("    Consistent with A_max = Θ(√(log ℓ) / √ℓ).");
             println!("    No exploitable structure detected.");
         }
+    }
+}
+
+fn print_smooth_summary(analyses: &[SmoothnessScalingAnalysis]) {
+    println!("┌───────────────────────────────────────────────────────────────────────┐");
+    println!("│ E21b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness on (ℤ/ℓℤ)*   │");
+    println!("│ Comparing decay rate of max Fourier amplitude to parity baseline     │");
+    println!("└───────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // Summary table per B.
+    println!(
+        "{:>5}  {:>7}  {:>8}  {:>8}  {:>9}  {:>9}  {:>6}  verdict",
+        "B", "slope", "par_slp", "Δslope", "corr_mean", "corr_std", "R²"
+    );
+    println!("{}", "─".repeat(80));
+
+    for a in analyses {
+        let delta = a.fitted_slope - a.parity_slope;
+        let _cv = if a.corrected_ratio_mean > 0.0 {
+            a.corrected_ratio_std / a.corrected_ratio_mean
+        } else {
+            f64::INFINITY
+        };
+        let verdict = if delta > 0.10 {
+            "⚠ SLOWER decay — possible bias"
+        } else if delta > 0.03 {
+            "~ slightly slower"
+        } else if delta < -0.10 {
+            "✓ faster decay than parity"
+        } else {
+            "✓ same as parity"
+        };
+        println!(
+            "{:>5}  {:>+7.4}  {:>+8.4}  {:>+8.4}  {:>9.4}  {:>9.4}  {:>6.4}  {}",
+            a.smoothness_bound,
+            a.fitted_slope,
+            a.parity_slope,
+            delta,
+            a.corrected_ratio_mean,
+            a.corrected_ratio_std,
+            a.r_squared,
+            verdict,
+        );
+    }
+
+    println!();
+
+    // Detailed per-ℓ table for the most interesting B (the one with largest delta).
+    let best_analysis = analyses
+        .iter()
+        .max_by(|a, b| {
+            let da = a.fitted_slope - a.parity_slope;
+            let db = b.fitted_slope - b.parity_slope;
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+    if let Some(best) = best_analysis {
+        println!(
+            "Detailed results for B = {} (largest Δslope = {:+.4}):",
+            best.smoothness_bound,
+            best.fitted_slope - best.parity_slope,
+        );
+        println!(
+            "{:>7}  {:>6}  {:>7}  {:>9}  {:>9}  {:>9}  {:>6}",
+            "ℓ", "smooth%", "A_max", "A·√ℓ", "A·√ℓ/√lgℓ", "par_A·√ℓ", "ratio"
+        );
+        println!("{}", "─".repeat(72));
+
+        for r in &best.results {
+            let ell_f = r.ell as f64;
+            let par_scaled = r.parity_a_max * ell_f.sqrt();
+            println!(
+                "{:>7}  {:>5.1}%  {:>9.6}  {:>9.3}  {:>9.3}  {:>9.3}  {:>6.2}",
+                r.ell,
+                r.smooth_fraction * 100.0,
+                r.a_max,
+                r.a_max_scaled,
+                r.a_max_corrected,
+                par_scaled,
+                r.ratio_to_parity,
+            );
+        }
+    }
+
+    println!();
+    println!("Interpretation:");
+    println!("  Δslope > 0  : smoothness indicator has SLOWER Fourier decay than parity");
+    println!("              → residual multiplicative bias that GNFS exploits.");
+    println!("  Δslope ≈ 0  : same decay rate → no special structure in smoothness.");
+    println!("  Δslope < 0  : faster decay → smoothness is LESS structured than parity.");
+    println!();
+
+    // Final verdict.
+    let max_delta = analyses
+        .iter()
+        .map(|a| a.fitted_slope - a.parity_slope)
+        .fold(f64::NEG_INFINITY, f64::max);
+    if max_delta > 0.10 {
+        println!("  ⚠ POSITIVE Δslope detected (max = {:+.4}).", max_delta);
+        println!("    The B-smoothness indicator has a slower Fourier decay than");
+        println!("    parity — there IS residual multiplicative bias.");
+        println!("    This warrants further investigation for GNFS improvement.");
+    } else if max_delta > 0.03 {
+        println!("  ~ Marginal positive Δslope (max = {:+.4}).", max_delta);
+        println!("    Suggestive but not conclusive.  Needs larger ℓ range.");
+    } else {
+        println!("  ✓ No significant Δslope detected (max = {:+.4}).", max_delta);
+        println!("    Smoothness Fourier spectrum decays at the same rate as parity.");
+        println!("    No exploitable multiplicative bias found in the Fourier domain.");
     }
 }
 
