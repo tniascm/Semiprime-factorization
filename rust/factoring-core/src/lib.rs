@@ -93,20 +93,38 @@ impl RsaTarget {
 /// Generate a random prime of approximately `bits` bit size.
 /// Uses probabilistic primality testing.
 pub fn random_prime(bits: u32, rng: &mut impl Rng) -> BigUint {
+    assert!(bits >= 2, "Cannot generate a prime with fewer than 2 bits");
     loop {
-        let mut bytes = vec![0u8; (bits as usize + 7) / 8];
+        let num_bytes = (bits as usize + 7) / 8;
+        let mut bytes = vec![0u8; num_bytes];
         rng.fill(&mut bytes[..]);
 
-        // Set the top bit to ensure correct bit length
-        if let Some(first) = bytes.first_mut() {
-            *first |= 0x80;
+        // Clear excess high bits to ensure the number fits in `bits` bits.
+        // For example, if bits=50 and num_bytes=7 (56 bits), we need to
+        // clear the top 6 bits of the first byte.
+        let excess_bits = (num_bytes * 8) as u32 - bits;
+        if excess_bits > 0 {
+            bytes[0] &= (1u8 << (8 - excess_bits)) - 1;
         }
+
+        // Set the top bit (bit `bits-1`) to ensure the number has exactly
+        // `bits` bits. The top bit position within the first byte depends
+        // on the alignment.
+        let top_bit_in_byte = (bits - 1) % 8;
+        bytes[0] |= 1u8 << top_bit_in_byte;
+
         // Set the bottom bit to ensure odd
         if let Some(last) = bytes.last_mut() {
             *last |= 0x01;
         }
 
         let candidate = BigUint::from_bytes_be(&bytes);
+        debug_assert!(
+            candidate.bits() == bits as u64,
+            "Generated number has {} bits, expected {}",
+            candidate.bits(),
+            bits
+        );
         if is_probably_prime(&candidate, 20) {
             return candidate;
         }
@@ -1207,6 +1225,45 @@ mod tests {
         let mut rng = rand::thread_rng();
         let target = generate_rsa_target(64, &mut rng);
         assert_eq!(&target.p * &target.q, target.n);
+    }
+
+    #[test]
+    fn test_random_prime_bit_length() {
+        let mut rng = rand::thread_rng();
+        // Test that random_prime generates primes with exactly the requested bit length
+        for bits in [16, 32, 50, 64, 100, 128] {
+            for _ in 0..5 {
+                let p = random_prime(bits, &mut rng);
+                assert_eq!(
+                    p.bits(),
+                    bits as u64,
+                    "random_prime({}) generated a {}-bit number: {}",
+                    bits,
+                    p.bits(),
+                    p
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_rsa_target_bit_size() {
+        let mut rng = rand::thread_rng();
+        // Test that generate_rsa_target produces semiprimes within ±1 bit of target
+        for target_bits in [64, 100, 128, 200] {
+            for _ in 0..3 {
+                let target = generate_rsa_target(target_bits, &mut rng);
+                let actual_bits = target.n.bits() as u32;
+                assert!(
+                    actual_bits >= target_bits - 1 && actual_bits <= target_bits,
+                    "generate_rsa_target({}) produced {}-bit semiprime (expected {}-{})",
+                    target_bits,
+                    actual_bits,
+                    target_bits - 1,
+                    target_bits
+                );
+            }
+        }
     }
 
     #[test]
