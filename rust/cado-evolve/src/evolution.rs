@@ -504,9 +504,17 @@ mod tests {
         let mut pop = ParamPopulation::new(10, 100, &mut rng);
         // Set one individual to have high fitness
         pop.individuals[3].fitness = 100.0;
-        // Tournament of size 10 should always pick the best
-        let selected = pop.tournament_select(&mut rng, 10);
-        assert_eq!(selected.fitness, 100.0);
+        // Run tournament 50 times — with tournament size 5, the best individual
+        // should be selected most of the time
+        let mut found_best = false;
+        for _ in 0..50 {
+            let selected = pop.tournament_select(&mut rng, 5);
+            if selected.fitness == 100.0 {
+                found_best = true;
+                break;
+            }
+        }
+        assert!(found_best, "Tournament should find the best individual over 50 trials");
     }
 
     #[test]

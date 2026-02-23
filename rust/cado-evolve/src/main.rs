@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use rand::thread_rng;
 use serde::Serialize;
 
+use cado_evolve::analysis;
 use cado_evolve::benchmark;
 use cado_evolve::cado::CadoInstallation;
 use cado_evolve::evolution::{FitnessCache, IslandConfig, ParamIslandModel};
@@ -248,6 +249,7 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
     let start = Instant::now();
     let report_interval = if config.quick { 5 } else { 10 };
     let checkpoint_interval = if config.quick { 10 } else { 25 };
+    let mut convergence_history = Vec::new();
 
     for gen in 0..num_generations {
         // Generate fresh test semiprimes for this generation
@@ -272,6 +274,11 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
 
         // Evolve
         model.evolve_generation(&mut rng);
+
+        // Track convergence
+        if let Some(best) = model.global_best() {
+            convergence_history.push(best.fitness);
+        }
 
         // Report
         if (gen + 1) % report_interval == 0 || gen == 0 {
@@ -370,6 +377,33 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
             &format!("cado_comparison_{}bit.json", config.n_bits),
             &comparison,
         );
+
+        // Step 4: Post-evolution analysis
+        println!();
+        println!("Step 4: Post-evolution analysis...");
+        println!();
+
+        // Collect all individuals across islands
+        let all_individuals: Vec<cado_evolve::evolution::ParamIndividual> = model
+            .islands
+            .iter()
+            .flat_map(|island| island.individuals.iter().cloned())
+            .collect();
+
+        let report = analysis::generate_report(
+            &all_individuals,
+            &convergence_history,
+            &[comparison],
+            config.n_bits,
+        );
+
+        analysis::print_report_summary(&report);
+
+        save_json(
+            &format!("cado_analysis_{}bit.json", config.n_bits),
+            &report,
+        );
+        println!("  Analysis report saved: cado_analysis_{}bit.json", config.n_bits);
     }
 }
 

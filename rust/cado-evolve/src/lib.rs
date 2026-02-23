@@ -7,6 +7,7 @@
 //! Each "individual" in evolution = a complete CADO-NFS parameter configuration.
 //! Target range: 100–200 bit semiprimes.
 
+pub mod analysis;
 pub mod benchmark;
 pub mod cado;
 pub mod evolution;
