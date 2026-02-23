@@ -9,6 +9,7 @@ pub mod fitness;
 pub mod macros;
 pub mod novelty;
 pub mod primitives;
+pub mod symreg;
 
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
