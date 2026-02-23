@@ -247,6 +247,16 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
         ec
     };
 
+    // Generate a fixed training set for all generations.
+    // This ensures all individuals are compared on the same objective,
+    // and the fitness cache (keyed by params only) is valid.
+    let training_set_size = if config.quick { 4 } else { 8 };
+    let training_semiprimes = fitness::generate_test_semiprimes(
+        config.n_bits,
+        training_set_size,
+        &mut rng,
+    );
+
     println!(
         "Step 2: Evolution ({} islands × {} individuals, {} generations)",
         island_config.num_islands, island_config.island_size, num_generations
@@ -255,6 +265,7 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
     println!("  Culling: every {} gens", island_config.culling_interval);
     println!("  Mutation rate: {:.0}%", island_config.mutation_rate * 100.0);
     println!("  Timeout per CADO run: {:?}", eval_config.timeout);
+    println!("  Training set: {} fixed composites", training_set_size);
     println!();
 
     let start = Instant::now();
@@ -263,12 +274,10 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
     let mut convergence_history = Vec::new();
 
     for gen in 0..num_generations {
-        // Generate fresh test semiprimes for this generation
-        let test_semiprimes = fitness::generate_test_semiprimes(
-            config.n_bits,
-            eval_config.num_tests,
-            &mut rng,
-        );
+        // Use the fixed training set for all generations.
+        // This makes the fitness cache valid: same params always get
+        // same fitness because the test instances don't change.
+        let test_semiprimes = &training_semiprimes;
 
         // Evaluate all individuals across all islands
         for island in &mut model.islands {
@@ -276,7 +285,7 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
                 fitness::evaluate_individual_cached(
                     install,
                     individual,
-                    &test_semiprimes,
+                    test_semiprimes,
                     &eval_config,
                     &mut cache,
                 );
