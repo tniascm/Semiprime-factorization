@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn test_eval_config_quick() {
         let config = EvalConfig::quick(100);
-        assert_eq!(config.num_tests, 3);
+        assert_eq!(config.num_tests, 2);
         assert_eq!(config.n_bits, 100);
     }
 

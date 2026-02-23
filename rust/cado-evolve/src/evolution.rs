@@ -535,8 +535,8 @@ mod tests {
         let mut rng = thread_rng();
         let config = IslandConfig::quick(100);
         let model = ParamIslandModel::new(&config, &mut rng);
-        assert_eq!(model.islands.len(), 5);
-        assert_eq!(model.total_individuals(), 100); // 5 * 20
+        assert_eq!(model.islands.len(), 3);
+        assert_eq!(model.total_individuals(), 24); // 3 * 8
     }
 
     #[test]
@@ -558,7 +558,7 @@ mod tests {
         }
 
         assert_eq!(model.generation, 20);
-        assert_eq!(model.islands.len(), 5);
+        assert_eq!(model.islands.len(), 3);
     }
 
     #[test]
@@ -604,6 +604,6 @@ mod tests {
         let config = IslandConfig::quick(100);
         let model = ParamIslandModel::new(&config, &mut rng);
         let summary = model.island_fitness_summary();
-        assert_eq!(summary.len(), 5);
+        assert_eq!(summary.len(), 3);
     }
 }
