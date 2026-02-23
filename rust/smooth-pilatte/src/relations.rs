@@ -113,15 +113,108 @@ fn extended_gcd(a: &num_bigint::BigInt, b: &num_bigint::BigInt) -> (num_bigint::
 /// Test whether an exponent vector encodes a smooth relation modulo N.
 ///
 /// Given exponents (e_1, ..., e_d) and primes (p_1, ..., p_d):
-///   - Compute A = prod(p_i^{e_i} for e_i > 0) mod N
-///   - Compute B = prod(p_i^{-e_i} for e_i < 0) mod N
-///   - The relation A ≡ B (mod N) means A - B ≡ 0 (mod N)
-///   - Check if A*B^{-1} mod N (or |A - B|) is smooth over the factor base
+///   - Compute A = prod(p_i^{e_i} for e_i > 0) as a TRUE integer
+///   - Compute B = prod(p_i^{-e_i} for e_i < 0) as a TRUE integer
+///   - The lattice guarantees A/B ≈ 1 for short vectors, so |A - B| is small
+///   - Check if |A - B| is smooth over the factor base
+///
+/// This is the correct approach: |A - B| is much smaller than N for short
+/// lattice vectors, giving a dramatically higher smooth probability than
+/// testing a random element of Z/NZ.
 pub fn test_relation(exponents: &[i64], primes: &[u64], n: &BigUint) -> SmoothRelation {
+    // Estimate product size in bits to avoid blowup for huge exponents
+    let total_bits: f64 = exponents
+        .iter()
+        .enumerate()
+        .map(|(i, &e)| {
+            if i < primes.len() {
+                e.unsigned_abs() as f64 * (primes[i] as f64).log2()
+            } else {
+                0.0
+            }
+        })
+        .sum();
+
+    // For manageable sizes, compute true integer products
+    if total_bits < 1000.0 {
+        test_relation_true_integer(exponents, primes, n)
+    } else {
+        // Fallback for huge products: use mod-N computation
+        test_relation_mod_n(exponents, primes, n)
+    }
+}
+
+/// Compute true integer products and test |A - B| for smoothness.
+fn test_relation_true_integer(
+    exponents: &[i64],
+    primes: &[u64],
+    n: &BigUint,
+) -> SmoothRelation {
     let mut pos_product = BigUint::one();
     let mut neg_product = BigUint::one();
 
     for (i, &exp) in exponents.iter().enumerate() {
+        if i >= primes.len() {
+            break;
+        }
+        let p_big = BigUint::from(primes[i]);
+        if exp > 0 {
+            pos_product *= p_big.pow(exp as u32);
+        } else if exp < 0 {
+            neg_product *= p_big.pow((-exp) as u32);
+        }
+    }
+
+    // Compute |A - B| as a true integer
+    // For short lattice vectors with A/B ≈ 1, this is SMALL and likely smooth
+    let diff = if pos_product >= neg_product {
+        &pos_product - &neg_product
+    } else {
+        &neg_product - &pos_product
+    };
+
+    let is_smooth;
+    let residue_exponents;
+
+    if diff.is_zero() || diff.is_one() {
+        is_smooth = true;
+        residue_exponents = Some(vec![0u32; primes.len()]);
+    } else {
+        match smooth_factorize(&diff, primes) {
+            Some(exps) => {
+                is_smooth = true;
+                residue_exponents = Some(exps);
+            }
+            None => {
+                is_smooth = false;
+                residue_exponents = None;
+            }
+        }
+    }
+
+    SmoothRelation {
+        exponents: exponents.to_vec(),
+        positive_product: &pos_product % n,
+        negative_product: &neg_product % n,
+        residue_mod_n: diff,
+        is_smooth,
+        residue_exponents,
+    }
+}
+
+/// Fallback: compute mod-N products for huge exponent vectors.
+fn test_relation_mod_n(
+    exponents: &[i64],
+    primes: &[u64],
+    n: &BigUint,
+) -> SmoothRelation {
+    let mut pos_product = BigUint::one();
+    let mut neg_product = BigUint::one();
+
+    for (i, &exp) in exponents.iter().enumerate() {
+        if i >= primes.len() {
+            break;
+        }
         let p_big = BigUint::from(primes[i]);
         if exp > 0 {
             let pow = mod_pow_biguint(&p_big, exp as u64, n);
@@ -132,9 +225,6 @@ pub fn test_relation(exponents: &[i64], primes: &[u64], n: &BigUint) -> SmoothRe
         }
     }
 
-    // Compute residue: pos_product / neg_product mod N = pos_product * neg_product^{-1} mod N
-    // This is the actual "remainder" of the relation modulo N.
-    // If this quotient is smooth over the factor base, we have a useful relation.
     let combined = if neg_product.is_one() {
         pos_product.clone()
     } else if pos_product.is_one() {
@@ -142,8 +232,6 @@ pub fn test_relation(exponents: &[i64], primes: &[u64], n: &BigUint) -> SmoothRe
     } else if let Some(inv) = mod_inverse(&neg_product, n) {
         (&pos_product * &inv) % n
     } else {
-        // gcd(neg_product, N) != 1 — neg_product shares a factor with N
-        // This is actually useful: the gcd itself may be a factor
         (&pos_product * &neg_product) % n
     };
 

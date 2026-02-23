@@ -160,7 +160,7 @@ fn main() {
 
         // Linear walk
         let start = Instant::now();
-        let lw = linear_walk_factor(&target.n, 1000);
+        let lw = linear_walk_factor(&target.n, 5000);
         let lw_ms = start.elapsed().as_secs_f64() * 1000.0;
 
         // BSGS
@@ -168,8 +168,8 @@ fn main() {
         let bs = bsgs_factor(
             &target.n,
             &BsgsConfig {
-                baby_steps: 500,
-                giant_steps: 500,
+                baby_steps: 3000,
+                giant_steps: 3000,
                 check_ambiguous: true,
             },
         );
@@ -180,10 +180,10 @@ fn main() {
         let rg = regulator_guided_factor(
             &target.n,
             &RegulatorGuidedConfig {
-                max_regulator_terms: 5000,
-                neighborhood_size: 100,
+                max_regulator_terms: 10_000,
+                neighborhood_size: 300,
                 use_class_number: true,
-                max_multiples: 10,
+                max_multiples: 40,
             },
         );
         let rg_ms = start.elapsed().as_secs_f64() * 1000.0;

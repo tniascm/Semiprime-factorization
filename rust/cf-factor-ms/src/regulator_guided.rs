@@ -15,7 +15,7 @@
 //! this is genuinely fast.
 
 use num_bigint::BigUint;
-use num_traits::{One, ToPrimitive};
+use num_traits::One;
 
 use cf_factor::regulator::{compute_regulator, estimate_regulator};
 
@@ -41,9 +41,9 @@ impl Default for RegulatorGuidedConfig {
     fn default() -> Self {
         Self {
             max_regulator_terms: 10_000,
-            neighborhood_size: 100,
+            neighborhood_size: 300,
             use_class_number: true,
-            max_multiples: 20,
+            max_multiples: 40,
         }
     }
 }
@@ -117,27 +117,70 @@ pub fn regulator_guided_factor(
     // We need to convert continuous distances to discrete infrastructure steps.
     // The average step size in the CF expansion is approximately ln(golden_ratio) ≈ 0.48
     // for typical discriminants, so the number of rho steps ≈ distance / avg_step_size.
-    let avg_step_size = estimate_average_step_size(n);
-
     let ctx = InfraContext::new(n);
     let principal = InfraForm::principal(n);
+
+    // CRITICAL: Use a GENERATOR form, not the principal (identity).
+    // power_step(identity, k) = identity for all k — that's useless.
+    // Walk a few rho-steps to find a form with nonzero distance,
+    // then use power_step on that generator to jump to target distances.
+    let mut generator = principal.clone();
+    for _ in 0..20 {
+        let next = rho_step_ctx(&generator, &ctx);
+        if next.form == generator.form {
+            break; // Cycle
+        }
+        generator = next;
+        if generator.distance > 0.0 {
+            break;
+        }
+    }
+    let gen_dist = generator.distance;
+
+    if gen_dist <= 0.0 {
+        // Degenerate: infrastructure has zero distance steps; fall back to
+        // a direct linear walk checking forms
+        let mut walker = principal.clone();
+        for _ in 0..config.neighborhood_size * config.max_multiples {
+            walker = rho_step_ctx(&walker, &ctx);
+            forms_checked += 1;
+            if let Some(factor) = form_reveals_factor(&walker.form, n) {
+                if factor > one && factor < *n {
+                    return RegulatorGuidedResult {
+                        factor: Some(factor),
+                        regulator,
+                        class_number,
+                        found_at_multiple: None,
+                        forms_checked,
+                    };
+                }
+            }
+            if walker.form == principal.form {
+                break;
+            }
+        }
+        return RegulatorGuidedResult {
+            factor: None,
+            regulator,
+            class_number,
+            found_at_multiple: None,
+            forms_checked,
+        };
+    }
 
     for k in 1..=config.max_multiples {
         let target_dist = step_size * (k as f64);
 
-        // Convert to approximate number of rho steps
-        let approx_steps = if avg_step_size > 0.0 {
-            (target_dist / avg_step_size).round() as u64
-        } else {
-            k as u64 * 10
-        };
+        // Convert target distance to generator-powers
+        // generator^m lands at approximately m * gen_dist
+        let approx_power = (target_dist / gen_dist).round() as u64;
 
-        if approx_steps == 0 {
+        if approx_power == 0 {
             continue;
         }
 
-        // Jump to target using power_step (repeated squaring)
-        let jumped = power_step(&principal, approx_steps);
+        // Jump to target using power_step on the generator (repeated squaring)
+        let jumped = power_step(&generator, approx_power);
         forms_checked += 1;
 
         // Check the jumped form
@@ -187,6 +230,7 @@ pub fn regulator_guided_factor(
 /// For the CF expansion of sqrt(N), the average partial quotient
 /// is approximately sqrt(D) / ln(D) (Khinchin's constant),
 /// and the distance increment per step is ln(a_k) on average.
+#[cfg(test)]
 fn estimate_average_step_size(n: &BigUint) -> f64 {
     let n_f64 = n.to_f64().unwrap_or(1.0);
     if n_f64 <= 1.0 {
@@ -292,8 +336,8 @@ mod tests {
     fn test_config_defaults() {
         let config = RegulatorGuidedConfig::default();
         assert_eq!(config.max_regulator_terms, 10_000);
-        assert_eq!(config.neighborhood_size, 100);
+        assert_eq!(config.neighborhood_size, 300);
         assert!(config.use_class_number);
-        assert_eq!(config.max_multiples, 20);
+        assert_eq!(config.max_multiples, 40);
     }
 }

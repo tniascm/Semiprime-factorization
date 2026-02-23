@@ -47,7 +47,7 @@ pub struct MsPipelineConfig {
 impl Default for MsPipelineConfig {
     fn default() -> Self {
         Self {
-            linear_walk_steps: 500,
+            linear_walk_steps: 3000,
             bsgs_config: BsgsConfig::default(),
             regulator_config: RegulatorGuidedConfig::default(),
             try_squfof: true,

@@ -75,8 +75,8 @@ impl Default for PilatteConfig {
     fn default() -> Self {
         Self {
             dimension_override: 0,
-            radius_multiplier: 3.0,
-            max_enum_vectors: 5000,
+            radius_multiplier: 5.0,
+            max_enum_vectors: 10_000,
             try_weighted: true,
             max_dimension: 50,
         }
@@ -111,7 +111,7 @@ pub fn factor_smooth_pilatte_with_config(
     };
 
     // Try increasing dimensions
-    for dim_mult in 1..=3 {
+    for dim_mult in 1..=4 {
         let dim = (base_dim * dim_mult).min(config.max_dimension);
 
         // Standard lattice

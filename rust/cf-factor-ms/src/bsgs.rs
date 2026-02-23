@@ -17,8 +17,8 @@ use num_bigint::BigUint;
 use num_traits::One;
 
 use crate::infrastructure::{
-    form_reveals_factor, giant_step, rho_step_ctx, walk_infrastructure, InfraContext, InfraForm,
-    InfraHashTable,
+    form_reveals_factor, giant_step, power_step, rho_step_ctx, walk_infrastructure, InfraContext,
+    InfraForm, InfraHashTable,
 };
 
 /// Configuration for the BSGS search.
@@ -35,8 +35,8 @@ pub struct BsgsConfig {
 impl Default for BsgsConfig {
     fn default() -> Self {
         Self {
-            baby_steps: 1000,
-            giant_steps: 1000,
+            baby_steps: 3000,
+            giant_steps: 3000,
             check_ambiguous: true,
         }
     }
@@ -146,20 +146,62 @@ pub fn bsgs_factor(n: &BigUint, config: &BsgsConfig) -> BsgsResult {
         // Check for collision with baby step table
         if let Some(matches) = table.lookup(&giant_current.form) {
             collisions += 1;
-            // Collision found! The combined form at this distance may reveal a factor
-            for m in matches {
-                // The distance difference tells us something about the class group order
-                // Try composing and checking
-                let composed = giant_step(&giant_current, &m.form.inverse().into());
-                if let Some(factor) = form_reveals_factor(&composed.form, n) {
-                    if factor > one && factor < *n {
-                        return BsgsResult {
-                            factor: Some(factor),
-                            baby_steps_taken,
-                            giant_steps_taken,
-                            collisions,
-                            from_ambiguous: false,
-                        };
+            // Collision: giant at distance D_g matches baby at distance D_b.
+            // The period P = D_g - D_b is a multiple of the regulator R.
+            // Ambiguous forms (which reveal factors) sit at distance R/2 (mod R).
+            // Navigate to P/2 and check for factors.
+            for baby_match in matches {
+                let period_dist = giant_current.distance - baby_match.distance;
+                if period_dist <= 0.0 {
+                    continue;
+                }
+
+                // Use the generator (one rho-step form) for power_step jumping
+                let gen = rho_step_ctx(&InfraForm::principal(n), &ctx);
+                let gen_dist = gen.distance;
+                if gen_dist <= 0.0 {
+                    continue;
+                }
+
+                // Try several divisors of the period: P/2, P/3, P/4, P/6
+                // Ambiguous forms appear at R/2, and P might be kR for some k
+                for divisor in &[2u64, 3, 4, 6] {
+                    let target = period_dist / (*divisor as f64);
+                    let target_power = (target / gen_dist).round() as u64;
+                    if target_power == 0 {
+                        continue;
+                    }
+
+                    let jumped = power_step(&gen, target_power);
+
+                    // Check the jumped form and its neighborhood
+                    if let Some(factor) = form_reveals_factor(&jumped.form, n) {
+                        if factor > one && factor < *n {
+                            return BsgsResult {
+                                factor: Some(factor),
+                                baby_steps_taken,
+                                giant_steps_taken,
+                                collisions,
+                                from_ambiguous: false,
+                            };
+                        }
+                    }
+
+                    // Walk a small neighborhood (distance drift from power_step approximation)
+                    let mut walker = jumped;
+                    for _ in 0..200 {
+                        walker = rho_step_ctx(&walker, &ctx);
+                        if let Some(factor) = form_reveals_factor(&walker.form, n) {
+                            if factor > one && factor < *n {
+                                return BsgsResult {
+                                    factor: Some(factor),
+                                    baby_steps_taken,
+                                    giant_steps_taken,
+                                    collisions,
+                                    from_ambiguous: false,
+                                };
+                            }
+                        }
                     }
                 }
             }
@@ -278,8 +320,8 @@ mod tests {
     #[test]
     fn test_bsgs_default_config() {
         let config = BsgsConfig::default();
-        assert_eq!(config.baby_steps, 1000);
-        assert_eq!(config.giant_steps, 1000);
+        assert_eq!(config.baby_steps, 3000);
+        assert_eq!(config.giant_steps, 3000);
         assert!(config.check_ambiguous);
     }
 }
