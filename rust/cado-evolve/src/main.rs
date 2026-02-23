@@ -5,6 +5,8 @@
 //!   --mode=evolve --bits=120 --quick  Evolutionary parameter search (quick)
 //!   --mode=evolve --bits=120          Evolutionary parameter search (full)
 //!   --mode=compare --bits=120         Compare evolved params vs defaults
+//!   --mode=validate --bits=150        A/B validation with CI and p-values
+//!   --mode=transfer --bits=150        Cross-size transfer test
 //!
 //! Options:
 //!   --cado-dir=<path>   Path to CADO-NFS installation (default: ~/cado-nfs)
@@ -23,6 +25,7 @@ use cado_evolve::cado::CadoInstallation;
 use cado_evolve::evolution::{FitnessCache, IslandConfig, ParamIslandModel};
 use cado_evolve::fitness::{self, EvalConfig};
 use cado_evolve::params::CadoParams;
+use cado_evolve::validation;
 
 /// CLI configuration parsed from command-line arguments.
 struct CliConfig {
@@ -38,6 +41,8 @@ enum Mode {
     Baseline,
     Evolve,
     Compare,
+    Validate,
+    Transfer,
 }
 
 /// Checkpoint data for evolution runs.
@@ -56,6 +61,10 @@ fn parse_args() -> CliConfig {
 
     let mode = if args.iter().any(|a| a.contains("baseline")) {
         Mode::Baseline
+    } else if args.iter().any(|a| a.contains("transfer")) {
+        Mode::Transfer
+    } else if args.iter().any(|a| a.contains("validate")) {
+        Mode::Validate
     } else if args.iter().any(|a| a.contains("compare")) {
         Mode::Compare
     } else {
@@ -128,6 +137,8 @@ fn main() {
         Mode::Baseline => run_baseline_mode(&install, &config),
         Mode::Evolve => run_evolve_mode(&install, &config),
         Mode::Compare => run_compare_mode(&install, &config),
+        Mode::Validate => run_validate_mode(&install, &config),
+        Mode::Transfer => run_transfer_mode(&install, &config),
     }
 
     println!();
@@ -413,33 +424,8 @@ fn run_compare_mode(install: &CadoInstallation, config: &CliConfig) {
     println!("  Target: {}-bit semiprimes", config.n_bits);
     println!();
 
-    // Look for saved evolved parameters
-    let params_path = format!("cado_evolved_{}bit.params", config.n_bits);
-    if !std::path::Path::new(&params_path).exists() {
-        eprintln!("Error: No evolved parameters found at {}", params_path);
-        eprintln!("Run --mode=evolve first to generate parameters.");
-        std::process::exit(1);
-    }
-
-    // Parse the parameter file
-    let content = match std::fs::read_to_string(&params_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error reading {}: {}", params_path, e);
-            std::process::exit(1);
-        }
-    };
-
-    let evolved_params = match parse_params_file(&content, config.n_bits) {
-        Some(p) => p,
-        None => {
-            eprintln!("Error: Failed to parse parameter file {}", params_path);
-            std::process::exit(1);
-        }
-    };
-
-    println!("  Loaded evolved parameters from: {}", params_path);
-    println!("  {}", evolved_params.summary());
+    let evolved_params = load_evolved_params(config);
+    println!("  Loaded evolved parameters: {}", evolved_params.summary());
     println!();
 
     let mut rng = thread_rng();
@@ -488,6 +474,113 @@ fn run_compare_mode(install: &CadoInstallation, config: &CliConfig) {
         &format!("cado_compare_{}bit.json", config.n_bits),
         &comparison,
     );
+}
+
+/// Run held-out A/B validation with statistical significance testing.
+fn run_validate_mode(install: &CadoInstallation, config: &CliConfig) {
+    println!("--- Validate Mode ---");
+    println!("  Target: {}-bit semiprimes", config.n_bits);
+    println!();
+
+    let evolved_params = load_evolved_params(config);
+    println!("  Loaded evolved parameters: {}", evolved_params.summary());
+    println!();
+
+    let mut rng = thread_rng();
+    let num_composites = if config.quick { 10 } else { 20 };
+    let timeout = Duration::from_secs(if config.quick { 300 } else { 600 });
+
+    let result = validation::run_validation(
+        install,
+        &evolved_params,
+        config.n_bits,
+        num_composites,
+        timeout,
+        &mut rng,
+    );
+
+    save_json(
+        &format!("cado_validation_{}bit.json", config.n_bits),
+        &result,
+    );
+    println!(
+        "  Validation results saved: cado_validation_{}bit.json",
+        config.n_bits
+    );
+}
+
+/// Run cross-size transfer test.
+fn run_transfer_mode(install: &CadoInstallation, config: &CliConfig) {
+    println!("--- Transfer Mode ---");
+    println!("  Source: {}-bit evolved params", config.n_bits);
+    println!();
+
+    let evolved_params = load_evolved_params(config);
+    println!("  Loaded evolved parameters: {}", evolved_params.summary());
+    println!();
+
+    let mut rng = thread_rng();
+    let composites_per_size = if config.quick { 5 } else { 10 };
+    let timeout = Duration::from_secs(if config.quick { 300 } else { 600 });
+
+    // Test at nearby sizes: -20, -10, source, +10, +20, +30
+    let mut target_sizes: Vec<u32> = vec![
+        config.n_bits.saturating_sub(20),
+        config.n_bits.saturating_sub(10),
+        config.n_bits,
+        config.n_bits + 10,
+        config.n_bits + 20,
+        config.n_bits + 30,
+    ];
+    // Deduplicate and ensure minimum 100 bits
+    target_sizes.sort();
+    target_sizes.dedup();
+    target_sizes.retain(|&b| b >= 100);
+
+    let result = validation::run_transfer_test(
+        install,
+        &evolved_params,
+        config.n_bits,
+        &target_sizes,
+        composites_per_size,
+        timeout,
+        &mut rng,
+    );
+
+    save_json(
+        &format!("cado_transfer_{}bit.json", config.n_bits),
+        &result,
+    );
+    println!(
+        "  Transfer results saved: cado_transfer_{}bit.json",
+        config.n_bits
+    );
+}
+
+/// Load evolved parameters from a previously saved file.
+fn load_evolved_params(config: &CliConfig) -> CadoParams {
+    let params_path = format!("cado_evolved_{}bit.params", config.n_bits);
+    if !std::path::Path::new(&params_path).exists() {
+        eprintln!("Error: No evolved parameters found at {}", params_path);
+        eprintln!("Run --mode=evolve first to generate parameters.");
+        std::process::exit(1);
+    }
+
+    let content = match std::fs::read_to_string(&params_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading {}: {}", params_path, e);
+            std::process::exit(1);
+        }
+    };
+
+    match parse_params_file(&content, config.n_bits) {
+        Some(p) => p,
+        None => {
+            eprintln!("Error: Failed to parse parameter file {}", params_path);
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Parse a CADO-NFS parameter file back into CadoParams.
