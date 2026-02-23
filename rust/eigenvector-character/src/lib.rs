@@ -2300,6 +2300,123 @@ fn safe_plogp(p: f64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-channel data structures
+// ---------------------------------------------------------------------------
+
+/// Per-channel data within a cross-channel block.
+struct ChannelData {
+    ell: u64,
+    k1: u64,
+    order: usize,
+    #[allow(dead_code)]
+    prim_g: u64,
+    dlog: Vec<u32>,
+    g_vals: Vec<u64>,
+    dlogs_g: Vec<u32>,
+    smooth_vals: Vec<f64>,
+    scanned_r_star: usize,
+    full_r_star: usize,
+    channel_weight: u32,
+}
+
+/// Shared cross-channel block: same primes/pairs across all 7 channels.
+struct CrossChannelBlock {
+    n_bits: u32,
+    bound: u64,
+    prime_set: Vec<u64>,
+    pairs: Vec<(u64, u64)>,
+    channels: Vec<ChannelData>,
+    /// Pair indices where ALL channels have valid g(p) and g(q).
+    valid_indices: Vec<usize>,
+    /// Target: s_B(g(p))·s_B(g(q)) averaged across channels for valid pairs.
+    target_mean: Vec<f64>,
+    /// Target from reference channel (idx 5: k=22, ℓ=131).
+    target_ref: Vec<f64>,
+}
+
+// ---------------------------------------------------------------------------
+// Cross-channel result structs
+// ---------------------------------------------------------------------------
+
+/// C1: Pairwise interaction correlation results.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossChannelPairwiseResult {
+    pub n_bits: u32,
+    pub smoothness_bound: u64,
+    pub n_pairs: usize,
+    pub max_abs_corr: f64,
+    pub mean_abs_corr: f64,
+    pub max_corr_ch_i: usize,
+    pub max_corr_ch_j: usize,
+    pub max_corr_type: String,
+    pub bonferroni_threshold: f64,
+    pub n_tests: usize,
+}
+
+/// C2: OLS regression with holdout results.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossChannelOLSResult {
+    pub n_bits: u32,
+    pub smoothness_bound: u64,
+    pub n_features: usize,
+    pub n_train: usize,
+    pub n_test: usize,
+    pub test_r_squared: f64,
+    pub best_single_r_squared: f64,
+}
+
+/// C3: Binned mutual information results.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossChannelMIResult {
+    pub n_bits: u32,
+    pub smoothness_bound: u64,
+    pub channel_i: usize,
+    pub channel_j: usize,
+    pub n_bins: usize,
+    pub observed_mi: f64,
+    pub null_mean: f64,
+    pub null_std: f64,
+    pub z_score: f64,
+    pub empirical_p_value: f64,
+    pub n_permutations: usize,
+    pub n_pairs: usize,
+}
+
+/// C4: Permutation null on strongest cross-channel feature.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossChannelPermResult {
+    pub n_bits: u32,
+    pub smoothness_bound: u64,
+    pub feature_desc: String,
+    pub observed_corr: f64,
+    pub null_mean: f64,
+    pub null_std: f64,
+    pub z_score: f64,
+    pub empirical_p_value: f64,
+    pub n_permutations: usize,
+    pub n_pairs: usize,
+}
+
+/// Combined results for a single cross-channel block.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossChannelBlockResult {
+    pub n_bits: u32,
+    pub smoothness_bound: u64,
+    pub n_primes: usize,
+    pub n_pairs: usize,
+    pub pairwise: CrossChannelPairwiseResult,
+    pub ols: CrossChannelOLSResult,
+    pub mi: Option<CrossChannelMIResult>,
+    pub perm_null: CrossChannelPermResult,
+}
+
+/// Top-level E21c result.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossChannelResult {
+    pub blocks: Vec<CrossChannelBlockResult>,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
