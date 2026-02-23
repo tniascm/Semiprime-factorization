@@ -651,7 +651,7 @@ intervals.  The closure is validated for the tested observable family.
     bit sizes, the product is NOT predictable from N alone.
     The **smoothness Fourier corridor is closed for the tested invariant family**.
 
-12. **Stress tests validate all findings** (E21b Step 3): Four independent
+11. **Stress tests validate all findings** (E21b Step 3): Four independent
     validation controls confirm the Step 2 results across 126 blocks:
     - **Permutation null:** 124/126 blocks consistent with random pairing (p > 0.05).
     - **Cross-n transfer:** r* is a stable group property, not overfit to a prime set
@@ -662,7 +662,7 @@ intervals.  The closure is validated for the tested observable family.
     - **Bootstrap CI:** fix_excess is robust (93/126 CI_lo > 1.0); corr_Nk CI
       contains 0 in 119/126 blocks.  The signal is real; the barrier is real.
 
-11. **σ-approximation corridor closed** (E21b Step 2b): the balanced-semiprime
+12. **σ-approximation corridor closed** (E21b Step 2b): the balanced-semiprime
     approximation σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1} mod ℓ has circular
     distance error 0.252 ≈ 0.250 (random), with corr_approx ≈ 0 in all 56 blocks.
     High-order exponentiation (k−1 ≥ 11) destroys p ≈ q proximity modulo ℓ.
