@@ -697,17 +697,24 @@ pub fn run_smoothness_scaling(
         .map(|&ell| smoothness_spectrum(ell, bound, top_k))
         .collect();
 
-    // Log-log fit for smoothness.
-    let (slope, intercept, r_sq) = if results.len() >= 2 {
-        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
-        let ys: Vec<f64> = results.iter().map(|r| r.a_max.ln()).collect();
+    // Filter out primes where A_max ≈ 0 (all elements B-smooth → constant function).
+    // log(0) = -inf would corrupt the fit.
+    let valid: Vec<&SmoothnessSpectrumResult> = results
+        .iter()
+        .filter(|r| r.a_max > 1e-15)
+        .collect();
+
+    // Log-log fit for smoothness (on valid points only).
+    let (slope, intercept, r_sq) = if valid.len() >= 2 {
+        let xs: Vec<f64> = valid.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = valid.iter().map(|r| r.a_max.ln()).collect();
         log_log_fit(&xs, &ys)
     } else {
         (-0.5, 0.0, 0.0)
     };
 
-    // Corrected ratio.
-    let ratios: Vec<f64> = results
+    // Corrected ratio (only for valid points).
+    let ratios: Vec<f64> = valid
         .iter()
         .map(|r| {
             let ell_f = r.ell as f64;
@@ -722,10 +729,10 @@ pub fn run_smoothness_scaling(
         0.0
     };
 
-    // Parity baseline slope.
-    let parity_slope = if results.len() >= 2 {
-        let xs: Vec<f64> = results.iter().map(|r| (r.ell as f64).ln()).collect();
-        let ys: Vec<f64> = results.iter().map(|r| r.parity_a_max.ln()).collect();
+    // Parity baseline slope (computed on valid points to match ℓ range).
+    let parity_slope = if valid.len() >= 2 {
+        let xs: Vec<f64> = valid.iter().map(|r| (r.ell as f64).ln()).collect();
+        let ys: Vec<f64> = valid.iter().map(|r| r.parity_a_max.ln()).collect();
         log_log_fit(&xs, &ys).0
     } else {
         -0.5
