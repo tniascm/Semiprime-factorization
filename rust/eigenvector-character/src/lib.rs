@@ -4348,6 +4348,294 @@ fn cofactor_log(mut n: u128, bound: u64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// E23 Phase 1: Binary smoothness autocorrelation
+// ---------------------------------------------------------------------------
+
+/// Compute binary smoothness autocorrelation: C(δ) = P(smooth(x+δ) | smooth(x)) / P(smooth).
+///
+/// For each lag δ in 1..=max_lag, counts how often Q(x+δ) is smooth given Q(x) is smooth,
+/// normalized by the overall smooth rate. C(δ) > 1 means positive local correlation.
+pub fn compute_smoothness_autocorrelation(
+    qs_values: &[u128],
+    smooth_bound: u64,
+    max_lag: usize,
+    n_bits: u32,
+) -> SmoothnessAutocorrResult {
+    let n_pool = qs_values.len();
+
+    // Precompute smooth flags.
+    let smooth_flags: Vec<bool> = qs_values
+        .iter()
+        .map(|&v| is_b_smooth_u128(v, smooth_bound))
+        .collect();
+
+    let n_smooth: usize = smooth_flags.iter().filter(|&&s| s).count();
+    let overall_smooth_rate = n_smooth as f64 / n_pool as f64;
+
+    let mut lags = Vec::with_capacity(max_lag);
+
+    for delta in 1..=max_lag {
+        let mut n_base_smooth = 0usize;
+        let mut n_both_smooth = 0usize;
+
+        for i in 0..(n_pool - delta) {
+            if smooth_flags[i] {
+                n_base_smooth += 1;
+                if smooth_flags[i + delta] {
+                    n_both_smooth += 1;
+                }
+            }
+        }
+
+        let conditional_rate = if n_base_smooth > 0 {
+            n_both_smooth as f64 / n_base_smooth as f64
+        } else {
+            0.0
+        };
+
+        let c_delta = if overall_smooth_rate > 0.0 {
+            conditional_rate / overall_smooth_rate
+        } else {
+            0.0
+        };
+
+        lags.push(AutocorrLag {
+            delta,
+            n_both_smooth,
+            n_base_smooth,
+            c_delta,
+        });
+    }
+
+    SmoothnessAutocorrResult {
+        n_bits,
+        smooth_bound,
+        n_pool,
+        overall_smooth_rate,
+        lags,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E23 Phase 2: Partial-fraction Pearson autocorrelation
+// ---------------------------------------------------------------------------
+
+/// Compute Pearson autocorrelation of partial smooth fractions at each lag.
+///
+/// Uses the continuous metric partial_smooth_fraction(Q(x), B) for higher
+/// statistical power than binary smoothness.
+pub fn compute_partial_frac_autocorrelation(
+    qs_values: &[u128],
+    smooth_bound: u64,
+    max_lag: usize,
+    n_bits: u32,
+) -> PartialFracAutocorrResult {
+    let n_pool = qs_values.len();
+
+    // Precompute partial fractions.
+    let partial_fracs: Vec<f64> = qs_values
+        .iter()
+        .map(|&v| partial_smooth_fraction(v, smooth_bound))
+        .collect();
+
+    let mean_partial_frac = partial_fracs.iter().sum::<f64>() / n_pool as f64;
+
+    let mut lag_correlations = Vec::with_capacity(max_lag);
+
+    for delta in 1..=max_lag {
+        let len = n_pool - delta;
+        let x: Vec<f64> = partial_fracs[..len].to_vec();
+        let y: Vec<f64> = partial_fracs[delta..delta + len].to_vec();
+        let r = algebra::pearson_corr(&x, &y);
+        lag_correlations.push((delta, r));
+    }
+
+    PartialFracAutocorrResult {
+        n_bits,
+        smooth_bound,
+        n_pool,
+        mean_partial_frac,
+        lag_correlations,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E23 Phase 3: Cofactor decomposition (sieve-predicted null)
+// ---------------------------------------------------------------------------
+
+/// Decompose local structure into sieve-explained and cofactor components.
+///
+/// partial_frac captures what the sieve knows (small-prime divisibility).
+/// cofactor_log captures what the sieve doesn't know.
+/// If cofactor autocorrelation ≈ 0, the sieve captures all local structure.
+pub fn compute_cofactor_decomposition(
+    qs_values: &[u128],
+    smooth_bound: u64,
+    max_lag: usize,
+    n_bits: u32,
+) -> SievePredictedResult {
+    let n_pool = qs_values.len();
+
+    // Precompute both metrics.
+    let partial_fracs: Vec<f64> = qs_values
+        .iter()
+        .map(|&v| partial_smooth_fraction(v, smooth_bound))
+        .collect();
+    let cofactor_logs: Vec<f64> = qs_values
+        .iter()
+        .map(|&v| cofactor_log(v, smooth_bound))
+        .collect();
+
+    // Count sieve primes.
+    let n_sieve_primes = {
+        let mut count = 0;
+        let mut d = 2u64;
+        while d <= smooth_bound {
+            count += 1;
+            d += if d == 2 { 1 } else { 2 };
+        }
+        count
+    };
+
+    let mut lag_comparisons = Vec::with_capacity(max_lag);
+
+    for delta in 1..=max_lag {
+        let len = n_pool - delta;
+        let pf_x: Vec<f64> = partial_fracs[..len].to_vec();
+        let pf_y: Vec<f64> = partial_fracs[delta..delta + len].to_vec();
+        let pf_corr = algebra::pearson_corr(&pf_x, &pf_y);
+
+        let cf_x: Vec<f64> = cofactor_logs[..len].to_vec();
+        let cf_y: Vec<f64> = cofactor_logs[delta..delta + len].to_vec();
+        let cf_corr = algebra::pearson_corr(&cf_x, &cf_y);
+
+        let residual_ratio = if pf_corr.abs() > 1e-12 {
+            cf_corr / pf_corr
+        } else {
+            0.0
+        };
+
+        lag_comparisons.push((delta, pf_corr, cf_corr, residual_ratio));
+    }
+
+    SievePredictedResult {
+        n_bits,
+        smooth_bound,
+        n_pool,
+        lag_comparisons,
+        n_sieve_primes,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E23 Phase 4: Random control
+// ---------------------------------------------------------------------------
+
+/// Random control: compute autocorrelation on matched-size random integers.
+///
+/// Generates random u128 values in the same range as the QS polynomial,
+/// expects C(δ) ≈ 1.0 and partial-frac correlations ≈ 0.
+pub fn compute_random_control(
+    n: u128,
+    smooth_bound: u64,
+    n_pool: usize,
+    max_lag: usize,
+    seed: u64,
+    n_bits: u32,
+) -> RandomControlResult {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let s = isqrt(n);
+    let q_min = {
+        let v = (1u128 + s) * (1u128 + s);
+        v.saturating_sub(n).max(1)
+    };
+    let q_max = {
+        let v = (n_pool as u128 + s) * (n_pool as u128 + s);
+        v.saturating_sub(n).max(q_min + 1)
+    };
+    let range = q_max - q_min;
+
+    // Simple deterministic PRNG seeded from seed.
+    let mut state = seed;
+    let mut rng_next = move || -> u128 {
+        let mut hasher = DefaultHasher::new();
+        state.hash(&mut hasher);
+        let h1 = hasher.finish();
+        state = h1;
+        let mut hasher2 = DefaultHasher::new();
+        h1.hash(&mut hasher2);
+        let h2 = hasher2.finish();
+        let val = ((h1 as u128) << 64) | (h2 as u128);
+        q_min + (val % range)
+    };
+
+    let random_values: Vec<u128> = (0..n_pool).map(|_| rng_next()).collect();
+
+    let smooth_flags: Vec<bool> = random_values
+        .iter()
+        .map(|&v| is_b_smooth_u128(v, smooth_bound))
+        .collect();
+    let n_smooth = smooth_flags.iter().filter(|&&s| s).count();
+    let overall_smooth_rate = n_smooth as f64 / n_pool as f64;
+
+    let partial_fracs: Vec<f64> = random_values
+        .iter()
+        .map(|&v| partial_smooth_fraction(v, smooth_bound))
+        .collect();
+
+    let mut lags = Vec::with_capacity(max_lag);
+    let mut lag_correlations = Vec::with_capacity(max_lag);
+
+    for delta in 1..=max_lag {
+        // Binary autocorrelation.
+        let mut n_base_smooth = 0usize;
+        let mut n_both_smooth = 0usize;
+        for i in 0..(n_pool - delta) {
+            if smooth_flags[i] {
+                n_base_smooth += 1;
+                if smooth_flags[i + delta] {
+                    n_both_smooth += 1;
+                }
+            }
+        }
+        let conditional_rate = if n_base_smooth > 0 {
+            n_both_smooth as f64 / n_base_smooth as f64
+        } else {
+            0.0
+        };
+        let c_delta = if overall_smooth_rate > 0.0 {
+            conditional_rate / overall_smooth_rate
+        } else {
+            0.0
+        };
+        lags.push(AutocorrLag {
+            delta,
+            n_both_smooth,
+            n_base_smooth,
+            c_delta,
+        });
+
+        // Partial-frac Pearson.
+        let len = n_pool - delta;
+        let x: Vec<f64> = partial_fracs[..len].to_vec();
+        let y: Vec<f64> = partial_fracs[delta..delta + len].to_vec();
+        let r = algebra::pearson_corr(&x, &y);
+        lag_correlations.push((delta, r));
+    }
+
+    RandomControlResult {
+        n_bits,
+        smooth_bound,
+        n_pool,
+        overall_smooth_rate,
+        lags,
+        lag_correlations,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -5098,5 +5386,69 @@ mod tests {
             (f - expected).abs() < 1e-6,
             "partial_smooth_fraction(210, 5) = {f}, expected {expected}"
         );
+    }
+
+    #[test]
+    fn test_autocorrelation_smoke() {
+        // Small N (20-bit), B=30, pool=500. Just check it runs and returns sane values.
+        let n = generate_semiprime(20, 0xE230_0001);
+        let qs_pairs = generate_qs_values(n, 500);
+        let qs: Vec<u128> = qs_pairs.iter().map(|&(_, v)| v).collect();
+        let result = compute_smoothness_autocorrelation(&qs, 30, 10, 20);
+
+        assert_eq!(result.lags.len(), 10);
+        assert!(result.overall_smooth_rate > 0.0, "should have some smooth values");
+        // C(δ) should be positive for all lags.
+        for lag in &result.lags {
+            assert!(lag.c_delta >= 0.0, "C({}) = {} should be non-negative", lag.delta, lag.c_delta);
+        }
+    }
+
+    #[test]
+    fn test_partial_frac_autocorrelation_finite() {
+        let n = generate_semiprime(20, 0xE230_0002);
+        let qs_pairs = generate_qs_values(n, 500);
+        let qs: Vec<u128> = qs_pairs.iter().map(|&(_, v)| v).collect();
+        let result = compute_partial_frac_autocorrelation(&qs, 30, 10, 20);
+
+        assert_eq!(result.lag_correlations.len(), 10);
+        assert!(result.mean_partial_frac > 0.0, "mean partial frac should be positive");
+        // All Pearson correlations should be finite.
+        for &(delta, r) in &result.lag_correlations {
+            assert!(r.is_finite(), "r({delta}) is not finite");
+            assert!(r.abs() <= 1.0 + 1e-6, "r({delta}) = {r} out of [-1,1]");
+        }
+    }
+
+    #[test]
+    fn test_random_control_near_one() {
+        // Use larger B bound so random values have a chance of being smooth.
+        let n = generate_semiprime(20, 0xE230_0004);
+        let result = compute_random_control(n, 500, 500, 10, 0xE230_C000, 20);
+
+        // Verify structure: correct number of lags.
+        assert_eq!(result.lags.len(), 10);
+        assert_eq!(result.lag_correlations.len(), 10);
+
+        // For random data with large enough smooth bound:
+        // C(δ) should be near 1.0 IF there are enough smooth values.
+        for lag in &result.lags {
+            if lag.n_base_smooth >= 10 {
+                assert!(
+                    lag.c_delta > 0.2 && lag.c_delta < 5.0,
+                    "Random C({}) = {} far from 1.0",
+                    lag.delta,
+                    lag.c_delta,
+                );
+            }
+        }
+        // Partial-frac correlations should be near 0 (no structure in random data).
+        for &(delta, r) in &result.lag_correlations {
+            assert!(r.is_finite(), "r({delta}) not finite");
+            assert!(
+                r.abs() < 0.5,
+                "Random partial-frac r({delta}) = {r} too far from 0",
+            );
+        }
     }
 }
