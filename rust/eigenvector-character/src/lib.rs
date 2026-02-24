@@ -4088,6 +4088,190 @@ fn write_checkpoint(path: &str, result: &SieveEnrichmentResult) {
     }
 }
 
+// ===========================================================================
+// E23: Local Smoothness Dependence in QS Polynomial Neighborhoods
+// ===========================================================================
+//
+// Tests whether smoothness of QS polynomial values Q(x) = (x + ⌊√N⌋)² − N
+// has local structure beyond what the standard sieve already captures.
+//
+// Phase 1: Binary smoothness autocorrelation C(δ)
+// Phase 2: Continuous partial-smooth-fraction Pearson autocorrelation
+// Phase 3: Cofactor decomposition — does the sieve capture all local structure?
+// Phase 4: Matched-size random control
+
+/// Overflow-safe modular multiplication via u128.
+#[inline]
+fn mul_mod_u64(a: u64, b: u64, m: u64) -> u64 {
+    ((a as u128 * b as u128) % m as u128) as u64
+}
+
+/// Modular exponentiation: base^exp mod modulus, using u128 intermediates.
+fn mod_pow_u64(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
+    if modulus == 1 {
+        return 0;
+    }
+    let mut result: u64 = 1;
+    base %= modulus;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = mul_mod_u64(result, base, modulus);
+        }
+        exp >>= 1;
+        base = mul_mod_u64(base, base, modulus);
+    }
+    result
+}
+
+/// Tonelli-Shanks algorithm: compute x such that x² ≡ n (mod p).
+/// Returns None if n is not a quadratic residue mod p. Requires p to be prime.
+fn tonelli_shanks(n: u64, p: u64) -> Option<u64> {
+    if p == 2 {
+        return Some(n % 2);
+    }
+    let n = n % p;
+    if n == 0 {
+        return Some(0);
+    }
+
+    // Euler's criterion: n^((p-1)/2) ≡ 1 (mod p) iff n is a QR
+    if mod_pow_u64(n, (p - 1) / 2, p) != 1 {
+        return None;
+    }
+
+    // Factor out powers of 2: p - 1 = q · 2^s with q odd
+    let mut q = p - 1;
+    let mut s: u32 = 0;
+    while q % 2 == 0 {
+        q /= 2;
+        s += 1;
+    }
+
+    if s == 1 {
+        // p ≡ 3 (mod 4) — simple case
+        return Some(mod_pow_u64(n, (p + 1) / 4, p));
+    }
+
+    // Find a quadratic non-residue z
+    let mut z = 2u64;
+    while mod_pow_u64(z, (p - 1) / 2, p) != p - 1 {
+        z += 1;
+        if z >= p {
+            return None;
+        }
+    }
+
+    let mut m = s;
+    let mut c = mod_pow_u64(z, q, p);
+    let mut t = mod_pow_u64(n, q, p);
+    let mut r = mod_pow_u64(n, (q + 1) / 2, p);
+
+    loop {
+        if t == 0 {
+            return Some(0);
+        }
+        if t == 1 {
+            return Some(r);
+        }
+
+        // Find least i such that t^(2^i) ≡ 1 (mod p)
+        let mut i: u32 = 1;
+        let mut temp = mul_mod_u64(t, t, p);
+        while temp != 1 {
+            temp = mul_mod_u64(temp, temp, p);
+            i += 1;
+            if i >= m {
+                return None;
+            }
+        }
+
+        let b = mod_pow_u64(c, 1u64 << (m - i - 1), p);
+        m = i;
+        c = mul_mod_u64(b, b, p);
+        t = mul_mod_u64(t, c, p);
+        r = mul_mod_u64(r, b, p);
+    }
+}
+
+/// Find roots of Q(x) ≡ 0 (mod p) for QS polynomial Q(x) = (x + s)² − N.
+///
+/// Q(x) ≡ 0 (mod p) means (x + s)² ≡ N (mod p), so x ≡ ±√(N mod p) − s (mod p).
+/// Returns 0 roots if N is a NQR mod p, 1 if the two roots coincide, 2 otherwise.
+fn qs_roots_mod_p(n: u128, p: u64) -> Vec<u64> {
+    let n_mod_p = (n % p as u128) as u64;
+    let s = (isqrt(n) % p as u128) as u64;
+
+    match tonelli_shanks(n_mod_p, p) {
+        None => vec![],
+        Some(r) => {
+            // x ≡ r - s (mod p) and x ≡ -r - s ≡ p - r - s (mod p)
+            let root1 = (r + p - s % p) % p;
+            let root2 = (p - r + p - s % p) % p;
+            if root1 == root2 {
+                vec![root1]
+            } else {
+                vec![root1, root2]
+            }
+        }
+    }
+}
+
+/// Compute the log-fraction of n explained by primes ≤ bound.
+///
+/// Returns sum(v_p(n) · ln(p)) / ln(n) for all primes p ≤ bound dividing n.
+/// Result is in [0, 1]: 1.0 means fully B-smooth, 0.0 means no small-prime factors.
+fn partial_smooth_fraction(mut n: u128, bound: u64) -> f64 {
+    if n <= 1 {
+        return 1.0;
+    }
+    let total_log = (n as f64).ln();
+    let mut smooth_log = 0.0f64;
+
+    let mut d = 2u64;
+    while (d as u128) * (d as u128) <= n && d <= bound {
+        if n % (d as u128) == 0 {
+            let d_log = (d as f64).ln();
+            while n % (d as u128) == 0 {
+                smooth_log += d_log;
+                n /= d as u128;
+            }
+        }
+        d += if d == 2 { 1 } else { 2 };
+    }
+    // If n > 1 and n <= bound, it's a prime factor within the bound.
+    if n > 1 && n <= bound as u128 {
+        smooth_log += (n as f64).ln();
+    }
+
+    smooth_log / total_log
+}
+
+/// Compute log₂ of the cofactor of n after dividing out all primes ≤ bound.
+///
+/// cofactor = n / (B-smooth part of n). Returns log₂(cofactor).
+/// 0.0 means n is fully B-smooth.
+fn cofactor_log(mut n: u128, bound: u64) -> f64 {
+    if n <= 1 {
+        return 0.0;
+    }
+    let mut d = 2u64;
+    while (d as u128) * (d as u128) <= n && d <= bound {
+        while n % (d as u128) == 0 {
+            n /= d as u128;
+        }
+        d += if d == 2 { 1 } else { 2 };
+    }
+    // If remaining n <= bound, it's a small prime factor.
+    if n > 1 && n <= bound as u128 {
+        n = 1;
+    }
+    if n <= 1 {
+        0.0
+    } else {
+        (n as f64).log2()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -4757,5 +4941,87 @@ mod tests {
         assert_eq!(result.joint_scoring.len(), 1);
         assert_eq!(result.sieve_speedup.len(), 1);
         assert!(result.sieve_speedup[0].speedup_factor.is_finite());
+    }
+
+    // -----------------------------------------------------------------------
+    // E23: Local smoothness helper tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_tonelli_shanks() {
+        // sqrt(2) mod 7: 3² = 9 ≡ 2 (mod 7), so sqrt(2) = 3 or 4.
+        let r = tonelli_shanks(2, 7).expect("2 is QR mod 7");
+        assert!(r == 3 || r == 4, "sqrt(2) mod 7 should be 3 or 4, got {r}");
+        assert_eq!(mul_mod_u64(r, r, 7), 2);
+
+        // sqrt(4) mod 13: 2² = 4, so sqrt(4) = 2 or 11.
+        let r = tonelli_shanks(4, 13).expect("4 is QR mod 13");
+        assert_eq!(mul_mod_u64(r, r, 13), 4);
+
+        // 3 is NQR mod 7.
+        assert!(tonelli_shanks(3, 7).is_none(), "3 is NQR mod 7");
+
+        // sqrt(0) mod 13 = 0.
+        assert_eq!(tonelli_shanks(0, 13), Some(0));
+
+        // p = 2 edge case.
+        assert_eq!(tonelli_shanks(1, 2), Some(1));
+        assert_eq!(tonelli_shanks(0, 2), Some(0));
+
+        // 5 is NQR mod 997 (Legendre symbol = -1).
+        assert!(tonelli_shanks(5, 997).is_none(), "5 is NQR mod 997");
+
+        // Large prime: p = 997 (≡ 1 mod 4, needs full Tonelli-Shanks).
+        // 100² mod 997 = 30, so 30 is a QR mod 997.
+        let r = tonelli_shanks(30, 997).expect("30 is QR mod 997");
+        assert_eq!(mul_mod_u64(r, r, 997), 30);
+    }
+
+    #[test]
+    fn test_qs_roots_mod_p() {
+        // N = 15 (3 × 5). Q(x) = (x+3)² - 15.
+        // Q(x) ≡ 0 (mod 7) means (x+3)² ≡ 15 ≡ 1 (mod 7), so x+3 ≡ ±1 (mod 7).
+        // x ≡ -2 ≡ 5 (mod 7) or x ≡ -4 ≡ 3 (mod 7).
+        let roots = qs_roots_mod_p(15, 7);
+        assert_eq!(roots.len(), 2, "should have 2 roots mod 7");
+        // Verify each root: (root + 3)² ≡ 15 (mod 7)
+        for &r in &roots {
+            let val = mul_mod_u64((r + 3) % 7, (r + 3) % 7, 7);
+            assert_eq!(val, 15 % 7, "root {r} doesn't satisfy Q(x) ≡ 0 (mod 7)");
+        }
+    }
+
+    #[test]
+    fn test_partial_smooth_fraction() {
+        // 12 = 2² · 3, B=3 → fully smooth → 1.0
+        let f = partial_smooth_fraction(12, 3);
+        assert!((f - 1.0).abs() < 1e-10, "12 is 3-smooth, got {f}");
+
+        // 14 = 2 · 7, B=5 → only factor 2 is ≤ 5 → ln(2)/ln(14)
+        let f = partial_smooth_fraction(14, 5);
+        let expected = (2.0f64).ln() / (14.0f64).ln();
+        assert!(
+            (f - expected).abs() < 1e-6,
+            "partial_smooth_fraction(14, 5) = {f}, expected {expected}"
+        );
+
+        // 7, B=5 → no small factors → 0.0
+        let f = partial_smooth_fraction(7, 5);
+        assert!((f - 0.0).abs() < 1e-10, "7 has no factors ≤ 5, got {f}");
+
+        // 1 → 1.0 (trivially smooth)
+        assert!((partial_smooth_fraction(1, 2) - 1.0).abs() < 1e-10);
+
+        // 30 = 2·3·5, B=5 → fully smooth → 1.0
+        let f = partial_smooth_fraction(30, 5);
+        assert!((f - 1.0).abs() < 1e-10, "30 is 5-smooth, got {f}");
+
+        // 210 = 2·3·5·7, B=5 → partial: ln(2·3·5)/ln(210) = ln(30)/ln(210)
+        let f = partial_smooth_fraction(210, 5);
+        let expected = (30.0f64).ln() / (210.0f64).ln();
+        assert!(
+            (f - expected).abs() < 1e-6,
+            "partial_smooth_fraction(210, 5) = {f}, expected {expected}"
+        );
     }
 }
