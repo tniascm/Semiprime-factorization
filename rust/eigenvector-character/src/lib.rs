@@ -4636,6 +4636,116 @@ pub fn compute_random_control(
 }
 
 // ---------------------------------------------------------------------------
+// E23 Top-level runner
+// ---------------------------------------------------------------------------
+
+/// Compute all 4 phases for a single (n_bits, smooth_bound) block.
+///
+/// Generates QS values once and precomputes all shared data.
+pub fn compute_local_block(
+    n_bits: u32,
+    smooth_bound: u64,
+    n_pool: usize,
+    max_lag: usize,
+    seed: u64,
+) -> LocalBlockResult {
+    let n = generate_semiprime(n_bits, seed);
+    let qs_pairs = generate_qs_values(n, n_pool);
+    let qs_values: Vec<u128> = qs_pairs.iter().map(|&(_, v)| v).collect();
+
+    eprintln!("    Phase 1: binary smoothness autocorrelation ...");
+    let phase1 = compute_smoothness_autocorrelation(&qs_values, smooth_bound, max_lag, n_bits);
+    eprintln!(
+        "      smooth_rate={:.6}, C(1)={:.4}",
+        phase1.overall_smooth_rate,
+        phase1.lags.first().map(|l| l.c_delta).unwrap_or(0.0),
+    );
+
+    eprintln!("    Phase 2: partial-fraction Pearson autocorrelation ...");
+    let phase2 = compute_partial_frac_autocorrelation(&qs_values, smooth_bound, max_lag, n_bits);
+    eprintln!(
+        "      mean_pf={:.4}, r(1)={:.6}",
+        phase2.mean_partial_frac,
+        phase2.lag_correlations.first().map(|&(_, r)| r).unwrap_or(0.0),
+    );
+
+    eprintln!("    Phase 3: cofactor decomposition ...");
+    let phase3 = compute_cofactor_decomposition(&qs_values, smooth_bound, max_lag, n_bits);
+    let (cf_corr_1, resid_1) = phase3
+        .lag_comparisons
+        .first()
+        .map(|&(_, _, cf, rr)| (cf, rr))
+        .unwrap_or((0.0, 0.0));
+    eprintln!(
+        "      cofactor_corr(1)={:.6}, residual_ratio(1)={:.4}",
+        cf_corr_1, resid_1,
+    );
+
+    eprintln!("    Phase 4: random control ...");
+    let phase4 = compute_random_control(n, smooth_bound, n_pool, max_lag, seed ^ 0xE23_FFFF_0000, n_bits);
+    eprintln!(
+        "      random_smooth_rate={:.6}, random_r(1)={:.6}",
+        phase4.overall_smooth_rate,
+        phase4.lag_correlations.first().map(|&(_, r)| r).unwrap_or(0.0),
+    );
+
+    LocalBlockResult {
+        n_bits,
+        smooth_bound,
+        seed,
+        phase1,
+        phase2,
+        phase3,
+        phase4,
+    }
+}
+
+fn write_local_checkpoint(path: &str, result: &LocalSmoothnessResult) {
+    if let Ok(json) = serde_json::to_string_pretty(result) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Run the full E23 local smoothness experiment across all bit sizes and bounds.
+pub fn run_local_smoothness(
+    bit_sizes: &[u32],
+    smooth_bounds: &[u64],
+    n_pool: usize,
+    max_lag: usize,
+    seed: u64,
+    checkpoint_path: Option<&str>,
+) -> LocalSmoothnessResult {
+    let mut blocks = Vec::new();
+
+    let total = bit_sizes.len() * smooth_bounds.len();
+    let mut done = 0;
+
+    for &n_bits in bit_sizes {
+        for &bound in smooth_bounds {
+            done += 1;
+            let block_seed = seed ^ (n_bits as u64 * 10000 + bound);
+            eprintln!(
+                "\n  [{done}/{total}] n_bits={n_bits}, B={bound}, pool={n_pool}, max_lag={max_lag}"
+            );
+
+            let block = compute_local_block(n_bits, bound, n_pool, max_lag, block_seed);
+            blocks.push(block);
+
+            // Checkpoint after each block.
+            if let Some(path) = checkpoint_path {
+                let partial = LocalSmoothnessResult {
+                    blocks: blocks.clone(),
+                };
+                write_local_checkpoint(path, &partial);
+                eprintln!("    [checkpoint: {done}/{total} blocks written to {path}]");
+            }
+        }
+    }
+
+    LocalSmoothnessResult { blocks }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -5449,6 +5559,32 @@ mod tests {
                 r.abs() < 0.5,
                 "Random partial-frac r({delta}) = {r} too far from 0",
             );
+        }
+    }
+
+    #[test]
+    fn test_local_block_smoke() {
+        // Quick smoke test: 20-bit, B=30, pool=200, max_lag=5.
+        let block = compute_local_block(20, 30, 200, 5, 0xE230_B000);
+
+        assert_eq!(block.n_bits, 20);
+        assert_eq!(block.smooth_bound, 30);
+        assert_eq!(block.phase1.lags.len(), 5);
+        assert_eq!(block.phase2.lag_correlations.len(), 5);
+        assert_eq!(block.phase3.lag_comparisons.len(), 5);
+        assert_eq!(block.phase4.lags.len(), 5);
+
+        // Phase 1: smooth rate should be positive for 20-bit with B=30.
+        assert!(block.phase1.overall_smooth_rate > 0.0);
+
+        // Phase 2: all correlations should be finite.
+        for &(_, r) in &block.phase2.lag_correlations {
+            assert!(r.is_finite());
+        }
+
+        // Phase 3: cofactor correlations should be finite.
+        for &(_, _, cf_corr, _) in &block.phase3.lag_comparisons {
+            assert!(cf_corr.is_finite());
         }
     }
 }
