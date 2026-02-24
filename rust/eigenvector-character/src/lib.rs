@@ -4100,6 +4100,81 @@ fn write_checkpoint(path: &str, result: &SieveEnrichmentResult) {
 // Phase 3: Cofactor decomposition — does the sieve capture all local structure?
 // Phase 4: Matched-size random control
 
+/// One lag entry for binary smoothness autocorrelation (Phase 1).
+#[derive(Debug, Clone, Serialize)]
+pub struct AutocorrLag {
+    pub delta: usize,
+    /// Number of positions where both Q(x) and Q(x+δ) are B-smooth.
+    pub n_both_smooth: usize,
+    /// Number of positions where Q(x) is B-smooth (denominator).
+    pub n_base_smooth: usize,
+    /// C(δ) = P(Q(x+δ) smooth | Q(x) smooth) / P(smooth overall).
+    /// Values > 1 indicate positive local correlation.
+    pub c_delta: f64,
+}
+
+/// Phase 1 result: binary smoothness autocorrelation across lags.
+#[derive(Debug, Clone, Serialize)]
+pub struct SmoothnessAutocorrResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_pool: usize,
+    pub overall_smooth_rate: f64,
+    pub lags: Vec<AutocorrLag>,
+}
+
+/// Phase 2 result: partial-fraction Pearson autocorrelation across lags.
+#[derive(Debug, Clone, Serialize)]
+pub struct PartialFracAutocorrResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_pool: usize,
+    pub mean_partial_frac: f64,
+    /// (lag, pearson_r) pairs.
+    pub lag_correlations: Vec<(usize, f64)>,
+}
+
+/// Phase 3 result: cofactor decomposition separating sieve-known from unknown structure.
+#[derive(Debug, Clone, Serialize)]
+pub struct SievePredictedResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_pool: usize,
+    /// (delta, partial_frac_corr, cofactor_corr, residual_ratio) per lag.
+    /// residual_ratio = cofactor_corr / partial_frac_corr — near 0 means sieve captures all.
+    pub lag_comparisons: Vec<(usize, f64, f64, f64)>,
+    pub n_sieve_primes: usize,
+}
+
+/// Phase 4 result: random control (matched-size random integers).
+#[derive(Debug, Clone, Serialize)]
+pub struct RandomControlResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_pool: usize,
+    pub overall_smooth_rate: f64,
+    pub lags: Vec<AutocorrLag>,
+    pub lag_correlations: Vec<(usize, f64)>,
+}
+
+/// Combined result for one (n_bits, smooth_bound) block.
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalBlockResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub seed: u64,
+    pub phase1: SmoothnessAutocorrResult,
+    pub phase2: PartialFracAutocorrResult,
+    pub phase3: SievePredictedResult,
+    pub phase4: RandomControlResult,
+}
+
+/// Top-level E23 result aggregating all blocks.
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalSmoothnessResult {
+    pub blocks: Vec<LocalBlockResult>,
+}
+
 /// Overflow-safe modular multiplication via u128.
 #[inline]
 fn mul_mod_u64(a: u64, b: u64, m: u64) -> u64 {
