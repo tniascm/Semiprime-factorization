@@ -20,12 +20,12 @@
 use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
     run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
-    run_cross_channel_tests, run_sieve_enrichment,
+    run_cross_channel_tests, run_sieve_enrichment, run_local_smoothness,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
     PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
     PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
-    CrossChannelResult, SieveEnrichmentResult,
+    CrossChannelResult, SieveEnrichmentResult, LocalSmoothnessResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -45,8 +45,9 @@ fn main() {
         "stress"    => run_stress_mode(&opts),
         "crosschan" => run_crosschan_mode(&opts),
         "sieve"     => run_sieve_mode(&opts),
+        "local"     => run_local_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local");
             std::process::exit(1);
         }
     }
@@ -1624,6 +1625,200 @@ fn print_sieve_summary(result: &SieveEnrichmentResult) {
             speedups.len(),
             100.0 * n_faster as f64 / speedups.len() as f64
         );
+    }
+    println!();
+}
+
+// ---------------------------------------------------------------------------
+// E23: Local smoothness mode
+// ---------------------------------------------------------------------------
+
+fn run_local_mode(opts: &HashMap<String, String>) {
+    let bit_sizes = parse_bit_sizes(opts, &[24, 28, 32, 40, 48]);
+    let seed = parse_u64(opts, "seed", 0xE230_5EED_0001);
+    let n_pool = parse_usize(opts, "pool", 100_000);
+    let max_lag = parse_usize(opts, "lag", 50);
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![30, 100, 500]);
+
+    println!("E23 LOCAL SMOOTHNESS: autocorrelation in QS polynomial neighborhoods");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Bounds B     : {:?}", bounds);
+    println!("Pool size    : {n_pool}");
+    println!("Max lag      : {max_lag}");
+    println!("Seed         : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let checkpoint_path = "data/E23_local_smoothness_checkpoint.json";
+    let result = run_local_smoothness(
+        &bit_sizes,
+        &bounds,
+        n_pool,
+        max_lag,
+        seed,
+        Some(checkpoint_path),
+    );
+
+    println!();
+    print_local_summary(&result);
+    write_json(&result, "data/E23_local_smoothness.json");
+}
+
+fn print_local_summary(result: &LocalSmoothnessResult) {
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E23 LOCAL SMOOTHNESS: QS polynomial neighborhood autocorrelation          │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Table 1: Binary smoothness autocorrelation C(δ) ───
+    println!("TABLE 1: BINARY SMOOTHNESS AUTOCORRELATION C(δ) = P(smooth(x+δ)|smooth(x)) / P(smooth)");
+    println!("  C(δ) > 1.0 → local positive correlation; C(δ) ≈ 1.0 → independence.");
+    println!();
+    print!("  {:>4} {:>4} {:>8}", "bits", "B", "smooth%");
+    // Print columns for selected lags.
+    let display_lags = [1, 2, 3, 5, 10, 20, 50];
+    for &d in &display_lags {
+        print!(" {:>8}", format!("C({d})"));
+    }
+    println!();
+    println!("  {}", "─".repeat(4 + 1 + 4 + 1 + 8 + display_lags.len() * 9));
+
+    for block in &result.blocks {
+        print!(
+            "  {:>4} {:>4} {:>7.3}%",
+            block.n_bits,
+            block.smooth_bound,
+            block.phase1.overall_smooth_rate * 100.0,
+        );
+        for &d in &display_lags {
+            if d <= block.phase1.lags.len() {
+                let c = block.phase1.lags[d - 1].c_delta;
+                print!(" {:>8.4}", c);
+            } else {
+                print!(" {:>8}", "—");
+            }
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Table 2: Partial-fraction Pearson autocorrelation ───
+    println!("TABLE 2: PARTIAL-FRACTION PEARSON AUTOCORRELATION ρ(δ)");
+    println!("  Uses continuous metric log₂(B-smooth part)/log₂(n). Higher power than binary.");
+    println!();
+    print!("  {:>4} {:>4} {:>8}", "bits", "B", "mean_pf");
+    for &d in &display_lags {
+        print!(" {:>8}", format!("ρ({d})"));
+    }
+    println!();
+    println!("  {}", "─".repeat(4 + 1 + 4 + 1 + 8 + display_lags.len() * 9));
+
+    for block in &result.blocks {
+        print!(
+            "  {:>4} {:>4} {:>8.4}",
+            block.n_bits,
+            block.smooth_bound,
+            block.phase2.mean_partial_frac,
+        );
+        for &d in &display_lags {
+            if d <= block.phase2.lag_correlations.len() {
+                let (_, r) = block.phase2.lag_correlations[d - 1];
+                print!(" {:>8.5}", r);
+            } else {
+                print!(" {:>8}", "—");
+            }
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Table 3: Cofactor decomposition (key result) ───
+    println!("TABLE 3: COFACTOR DECOMPOSITION — SIEVE vs BEYOND-SIEVE");
+    println!("  pf_corr = partial-frac autocorrelation (sieve-explained)");
+    println!("  cf_corr = cofactor autocorrelation (beyond-sieve)");
+    println!("  resid   = cf_corr / pf_corr — near 0 means sieve captures all local structure.");
+    println!();
+    println!(
+        "  {:>4} {:>4} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}  {}",
+        "bits", "B", "pf(1)", "cf(1)", "resid1", "pf(5)", "cf(5)", "resid5", "verdict"
+    );
+    println!("  {}", "─".repeat(78));
+
+    for block in &result.blocks {
+        let get_lag = |d: usize| -> (f64, f64, f64) {
+            if d <= block.phase3.lag_comparisons.len() {
+                let (_, pf, cf, rr) = block.phase3.lag_comparisons[d - 1];
+                (pf, cf, rr)
+            } else {
+                (0.0, 0.0, 0.0)
+            }
+        };
+        let (pf1, cf1, rr1) = get_lag(1);
+        let (pf5, cf5, rr5) = get_lag(5);
+
+        let verdict = if cf1.abs() < 0.01 && cf5.abs() < 0.01 {
+            "sieve captures ALL"
+        } else if cf1.abs() < 0.05 {
+            "sieve captures ~all"
+        } else {
+            "residual structure!"
+        };
+
+        println!(
+            "  {:>4} {:>4} {:>8.5} {:>8.5} {:>8.4} {:>8.5} {:>8.5} {:>8.4}  {}",
+            block.n_bits, block.smooth_bound,
+            pf1, cf1, rr1, pf5, cf5, rr5,
+            verdict,
+        );
+    }
+    println!();
+
+    // ─── Table 4: Random control ───
+    println!("TABLE 4: RANDOM CONTROL (matched-size random integers)");
+    println!("  Expected: C(δ) ≈ 1.0, ρ(δ) ≈ 0.0 (no structure).");
+    println!();
+    println!(
+        "  {:>4} {:>4} {:>8} {:>8} {:>8} {:>8}",
+        "bits", "B", "smooth%", "C(1)", "ρ(1)", "ρ(5)"
+    );
+    println!("  {}", "─".repeat(48));
+
+    for block in &result.blocks {
+        let c1 = block.phase4.lags.first().map(|l| l.c_delta).unwrap_or(0.0);
+        let r1 = block.phase4.lag_correlations.first().map(|&(_, r)| r).unwrap_or(0.0);
+        let r5 = block.phase4.lag_correlations.get(4).map(|&(_, r)| r).unwrap_or(0.0);
+        println!(
+            "  {:>4} {:>4} {:>7.3}% {:>8.4} {:>8.5} {:>8.5}",
+            block.n_bits,
+            block.smooth_bound,
+            block.phase4.overall_smooth_rate * 100.0,
+            c1, r1, r5,
+        );
+    }
+    println!();
+
+    // ─── Overall verdict ───
+    let max_cofactor_corr = result
+        .blocks
+        .iter()
+        .flat_map(|b| b.phase3.lag_comparisons.iter())
+        .map(|&(_, _, cf, _)| cf.abs())
+        .fold(0.0f64, f64::max);
+
+    println!("OVERALL VERDICT:");
+    if max_cofactor_corr < 0.01 {
+        println!("  Max |cofactor_corr| = {max_cofactor_corr:.6} < 0.01");
+        println!("  → The QS sieve captures ALL local smoothness structure.");
+        println!("  → No room for improvement from local polynomial neighborhoods.");
+    } else if max_cofactor_corr < 0.05 {
+        println!("  Max |cofactor_corr| = {max_cofactor_corr:.6} < 0.05");
+        println!("  → Weak residual signal; likely noise at this sample size.");
+    } else {
+        println!("  Max |cofactor_corr| = {max_cofactor_corr:.6} >= 0.05");
+        println!("  → Potential beyond-sieve structure detected! Investigate further.");
     }
     println!();
 }
