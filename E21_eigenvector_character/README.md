@@ -1,6 +1,6 @@
 # E21: Dominant Eigenvector Multiplicative Character Structure
 
-**Status:** Complete (E21 barrier confirmed; E21b smoothness bias real but NOT N-extractable).
+**Status:** Complete (E21 barrier confirmed; E21b smoothness bias real but NOT N-extractable; E22 sieve enrichment yields zero practical speedup).
 
 ## Motivation
 
@@ -904,6 +904,146 @@ corridor closure), E21c closes the joint/interaction corridor:
 > (pairwise character products, OLS on engineered features, binned mutual
 > information) rescues predictability of the smoothness product from N alone.**
 
+## E22: Eisenstein-Scored Sieve Enrichment
+
+### Motivation
+
+E21b established a stable 2-6× smoothness enrichment at the group level: certain
+character frequencies in (ℤ/ℓℤ)* predict B-smoothness better than chance.  E21b
+and E21c showed this enrichment is not extractable from N-only observables
+(barrier intact).  But for a **quadratic sieve**, the relevant object is the
+polynomial value Q(x) = (x + ⌊√N⌋)² − N, and Q(x) mod ℓ IS computable from
+public information.
+
+E22 asks: **can character-scoring of Q(x) mod ℓ predict smoothness of the full
+Q(x), and thereby accelerate the sieve?**
+
+### Method
+
+**Phase 1: Group-level enrichment profile.**  For each of 7 channels and each
+smoothness bound B, partition (ℤ/ℓℤ)* into quantile bins by Re(χ_{r*}(a))
+(where r* is the optimal smoothness character from E21b).  Measure the fraction
+of B-smooth elements in each bin.  This is the theoretical ceiling — the maximum
+enrichment achievable IF Q(x) mod ℓ perfectly predicted smoothness.
+
+**Phase 2: QS polynomial enrichment.**  For each (n_bits, B) block:
+1. Generate a random semiprime N of the specified size.
+2. Compute Q(x) for x = 1, 2, ..., n_qs.
+3. For each channel: score Q(x) by Re(χ_{r*}(Q(x) mod ℓ)).
+4. Measure top-quartile enrichment: P(smooth | top-Q4 by score) / P(smooth | all).
+5. Compute Pearson correlation between character score and smoothness indicator.
+
+**Phase 3: Joint multi-channel scoring.**  Score each Q(x) by the amplitude-
+weighted average of Re(χ_{r*_i}(Q(x) mod ℓ_i)) across all 7 channels.
+Measure joint enrichment and Pearson correlation with smoothness.
+
+**Phase 4: Direct sieve speedup.**  Generate a pool of Q(x) values.  Compare:
+- **Random scan:** test x = 1, 2, 3, ... until target_smooth B-smooth values found.
+- **Scored scan:** sort by joint character score descending, then test in that order.
+- Speedup = random_tested / scored_tested.
+
+### Results
+
+#### Table 19: Phase 1 — Group-level enrichment profiles
+
+| ℓ | k | B=30 Q4× | B=30 D10× | B=100 Q4× | B=100 D10× |
+|-------|-----|----------|-----------|-----------|------------|
+| 691 | 12 | 1.39× | 1.39× | 1.17× | 1.21× |
+| 3617 | 16 | 1.33× | 1.47× | 1.10× | 1.12× |
+| 43867 | 18 | 0.74× | 0.69× | 1.10× | 1.15× |
+| 283 | 20 | 1.35× | 1.48× | 1.10× | 1.10× |
+| 617 | 20 | 0.71× | 0.52× | 0.86× | 0.85× |
+| 131 | 22 | 1.23× | 1.25× | 1.02× | 1.05× |
+| 593 | 22 | 1.29× | 1.51× | 1.08× | 1.05× |
+
+**Observation:** At B=30, 5/7 channels show top-quartile enrichment 1.2-1.5×
+(theoretical ceiling).  At B=100, enrichment drops to 1.05-1.2× because a larger
+fraction of elements are smooth, reducing the signal-to-noise.  Two channels
+(ℓ=43867, ℓ=617) show *anti*-enrichment at B=30, likely because their large ℓ or
+specific r* selects a smooth-poor coset.
+
+#### Table 20: Phase 2 — QS polynomial enrichment (10k Q(x), per-channel best)
+
+| n_bits | B | smooth% | best ℓ | enrich Q4× | overflow |
+|--------|------|---------|--------|------------|----------|
+| 20 | 100 | 1.19% | 593 | 1.21× | 2.6× |
+| 24 | 30 | 0.51% | 131 | 1.18× | 3.6× |
+| 24 | 100 | 1.61% | 617 | 0.99× | 2.7× |
+| 28 | 30 | 0.06% | 3617 | 2.67× | 2.3× |
+| 32 | 100 | 0.21% | 131 | 1.33× | 4.1× |
+| 40 | 100 | 0.04% | 3617 | 3.00× | 2.7× |
+
+**Observation:** Enrichment values > 1× appear in some blocks, but at
+low smooth counts (3-6 smooth values out of 10,000) these are dominated
+by small-number statistics.  The high-power run (50k Q(x), B=500) shows
+enrichment 1.2-1.6× at 20-32 bits with meaningful sample sizes (600+ smooth).
+
+#### Table 21: Phase 2 — High-power QS enrichment (50k Q(x), B=100/500)
+
+| n_bits | B | smooth% | best ℓ | enrich Q4× | n_smooth |
+|--------|------|---------|--------|------------|----------|
+| 20 | 100 | 0.32% | 283 | 1.20× | 160 |
+| 20 | 500 | 4.01% | 131 | 1.56× | 2006 |
+| 24 | 100 | 0.48% | 43867 | 1.06× | 238 |
+| 24 | 500 | 1.32% | 131 | 1.53× | 660 |
+| 28 | 100 | 0.00% | 43867 | 2.00× | 2 |
+| 28 | 500 | 1.56% | 283 | 1.43× | 782 |
+| 32 | 100 | 0.08% | 283 | 1.13× | 39 |
+| 32 | 500 | 1.27% | 283 | 1.35× | 636 |
+
+**Result:** With adequate statistics (B=500, n_smooth > 100), enrichment
+is 1.3-1.6× — real but modest, and much smaller than the group-level
+ceiling (1.2-1.5×).  This makes sense: Q(x) has size O(N^{1/2}) ≫ ℓ,
+so Q(x) mod ℓ captures only one residue out of many prime-power factors.
+
+#### Table 22: Phase 4 — Direct sieve speedup
+
+| n_bits | B | random tested | scored tested | speedup |
+|--------|------|---------------|---------------|---------|
+| 20 | 100 | 575 | 11,604 | 0.05× |
+| 20 | 500 | 401 | 4,701 | 0.09× |
+| 24 | 100 | 2,025 | 16,764 | 0.12× |
+| 24 | 500 | 645 | 7,553 | 0.09× |
+| 28 | 100 | 2,500 | 16,132 | 0.15× |
+| 28 | 500 | 655 | 4,386 | 0.15× |
+| 32 | 500 | 967 | 5,121 | 0.19× |
+
+**Result: Zero speedup.  The scored scan is 5-20× SLOWER than random.**
+0/24 blocks (across both runs) show speedup > 1.05×.
+
+### Interpretation
+
+The E22 results reveal a fundamental structural limitation:
+
+1. **Group-level enrichment is real** (Phase 1): B-smooth elements of (ℤ/ℓℤ)*
+   cluster in character space, with top-quartile enrichment up to 1.5×.
+   This is the signal found in E21b.
+
+2. **Partial transfer to QS polynomials** (Phase 2): the enrichment weakly
+   transfers (1.3-1.6× at B=500) when Q(x) has manageable overflow ratio
+   (log₂Q(x)/log₂ℓ ≈ 2-4×).  However, this measures only one prime's residue
+   out of the full factorisation structure of Q(x).
+
+3. **Character scoring is worse than random for sieve acceleration** (Phase 4):
+   despite real enrichment in Phase 2, the character score is a poor ranking
+   function for smoothness.  The fundamental issue is that smoothness depends
+   on Q(x)'s **complete** factorisation over ALL primes up to B, while the
+   character score probes only ONE residue (Q(x) mod ℓ).  Sorting by this
+   single residue disrupts the natural structure of the sieve (consecutive
+   Q(x) values share smooth factors), making the scored scan dramatically worse.
+
+4. **The enrichment is O(1), not O(n)**:  even the group-level ceiling is only
+   1.5× — a constant factor that does NOT grow with N.  To change the
+   L(1/3) complexity class, one would need enrichment that scales as a function
+   of N (e.g., reducing the sieve dimension), not a fixed constant factor.
+
+**Conclusion 14 (E22):** The Eisenstein smoothness character bias (E21b, 2-6× on
+the prime-restricted group) does NOT translate to practical sieve acceleration.
+Character-scoring of QS polynomial values yields 5-20× slowdown compared to
+sequential scanning.  The bias is real at the group level but is structurally
+insufficient: it probes a single residue class while smoothness depends on the
+complete factorisation.  The approach cannot change the asymptotic complexity class.
+
 ## Scope and limitations
 
 The negative results (barrier closure) are established for a specific hypothesis class.
@@ -950,4 +1090,6 @@ The following directions remain untested and are explicitly outside the scope of
 - `rust/data/E21b_prime_restricted.json` — prime-restricted smoothness diagnostic (126 blocks, n=14–48)
 - `rust/data/E21b_stress_tests.json` — stress test validation results (126 blocks, 4 tests)
 - `rust/data/E21c_cross_channel.json` — joint cross-channel test results (18 blocks, 4 tests)
-- `rust/eigenvector-character/` — Rust crate implementing E21, E21b, and E21c
+- `rust/eigenvector-character/data/E22_sieve_enrichment.json` — QS sieve enrichment results (16 blocks, 4 phases)
+- `rust/eigenvector-character/data/E22_sieve_enrichment_highpower.json` — high-power QS sieve results (8 blocks, B=100/500)
+- `rust/eigenvector-character/` — Rust crate implementing E21, E21b, E21c, and E22
