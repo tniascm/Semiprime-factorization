@@ -9,10 +9,14 @@
 //!   --mode=transfer --bits=150        Cross-size transfer test
 //!
 //! Options:
-//!   --cado-dir=<path>   Path to CADO-NFS installation (default: ~/cado-nfs)
-//!   --bits=<N>          Target semiprime bit size (default: 100)
-//!   --quick             Quick mode (fewer islands, shorter runs)
-//!   --generations=<N>   Override number of generations
+//!   --cado-dir=<path>         Path to CADO-NFS installation (default: ~/cado-nfs)
+//!   --bits=<N>                Target semiprime bit size (default: 100)
+//!   --quick                   Quick mode (fewer islands, shorter runs)
+//!   --generations=<N>         Override number of generations
+//!   --checkpoint-every=<N>    Save checkpoint every N generations (default: 5/10)
+//!   --timeout-secs=<N>        Override per-CADO-run timeout in seconds
+//!   --training-size=<N>       Override number of fixed training composites
+//!   --seed-params=<file>      Seed initial population from a .params file
 
 use std::time::{Duration, Instant};
 
@@ -34,6 +38,10 @@ struct CliConfig {
     n_bits: u32,
     quick: bool,
     num_generations: Option<u32>,
+    checkpoint_every: Option<u32>,
+    timeout_secs: Option<u64>,
+    training_size: Option<usize>,
+    seed_params_file: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,12 +101,36 @@ fn parse_args() -> CliConfig {
         .find(|a| a.starts_with("--generations="))
         .and_then(|a| a.strip_prefix("--generations=")?.parse::<u32>().ok());
 
+    let checkpoint_every = args
+        .iter()
+        .find(|a| a.starts_with("--checkpoint-every="))
+        .and_then(|a| a.strip_prefix("--checkpoint-every=")?.parse::<u32>().ok());
+
+    let timeout_secs = args
+        .iter()
+        .find(|a| a.starts_with("--timeout-secs="))
+        .and_then(|a| a.strip_prefix("--timeout-secs=")?.parse::<u64>().ok());
+
+    let training_size = args
+        .iter()
+        .find(|a| a.starts_with("--training-size="))
+        .and_then(|a| a.strip_prefix("--training-size=")?.parse::<usize>().ok());
+
+    let seed_params_file = args
+        .iter()
+        .find(|a| a.starts_with("--seed-params="))
+        .map(|a| a.strip_prefix("--seed-params=").unwrap().to_string());
+
     CliConfig {
         mode,
         cado_dir,
         n_bits,
         quick,
         num_generations,
+        checkpoint_every,
+        timeout_secs,
+        training_size,
+        seed_params_file,
     }
 }
 
@@ -234,23 +266,47 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
 
     let num_generations = config.num_generations.unwrap_or(if config.quick { 10 } else { 50 });
 
-    let mut model = ParamIslandModel::new(&island_config, &mut rng);
+    // Load seed params if specified
+    let seed_params = config.seed_params_file.as_ref().map(|path| {
+        let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+            eprintln!("Warning: failed to read seed params {}: {}", path, e);
+            String::new()
+        });
+        parse_params_file(&content, config.n_bits).unwrap_or_else(|| {
+            eprintln!("Warning: failed to parse seed params, using defaults");
+            CadoParams::default_for_bits(config.n_bits)
+        })
+    });
+
+    let mut model = if let Some(ref seed) = seed_params {
+        ParamIslandModel::new_seeded_from(&island_config, seed, &mut rng)
+    } else {
+        ParamIslandModel::new(&island_config, &mut rng)
+    };
     let mut cache = FitnessCache::new(if config.quick { 1_000 } else { 10_000 });
 
     let eval_config = if config.quick {
         let mut ec = EvalConfig::quick(config.n_bits);
         ec.baseline_time_secs = baseline_time;
+        if let Some(timeout) = config.timeout_secs {
+            ec.timeout = Duration::from_secs(timeout);
+        }
         ec
     } else {
         let mut ec = EvalConfig::full(config.n_bits);
         ec.baseline_time_secs = baseline_time;
+        if let Some(timeout) = config.timeout_secs {
+            ec.timeout = Duration::from_secs(timeout);
+        }
         ec
     };
 
     // Generate a fixed training set for all generations.
     // This ensures all individuals are compared on the same objective,
     // and the fitness cache (keyed by params only) is valid.
-    let training_set_size = if config.quick { 4 } else { 8 };
+    let training_set_size = config.training_size.unwrap_or(
+        if config.quick { 4 } else { 8 }
+    );
     let training_semiprimes = fitness::generate_test_semiprimes(
         config.n_bits,
         training_set_size,
@@ -266,12 +322,20 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
     println!("  Mutation rate: {:.0}%", island_config.mutation_rate * 100.0);
     println!("  Timeout per CADO run: {:?}", eval_config.timeout);
     println!("  Training set: {} fixed composites", training_set_size);
+    if seed_params.is_some() {
+        println!("  Seed: from provided params file");
+    }
     println!();
 
     let start = Instant::now();
     let report_interval = if config.quick { 1 } else { 5 };
-    let checkpoint_interval = if config.quick { 5 } else { 10 };
+    let checkpoint_interval = config.checkpoint_every.unwrap_or(
+        if config.quick { 5 } else { 10 }
+    );
     let mut convergence_history = Vec::new();
+    let stagnation_threshold: u32 = 5;
+    let mut global_best_fitness = 0.0_f64;
+    let mut stagnation_counter: u32 = 0;
 
     for gen in 0..num_generations {
         // Use the fixed training set for all generations.
@@ -292,6 +356,47 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
             }
         }
 
+        // Track stagnation at global level
+        let current_best = model.global_best().map(|b| b.fitness).unwrap_or(0.0);
+        if current_best > global_best_fitness + 1e-6 {
+            global_best_fitness = current_best;
+            stagnation_counter = 0;
+        } else {
+            stagnation_counter += 1;
+        }
+
+        // Diversity injection on stagnation: replace half of the worst
+        // island's population with fresh random individuals
+        if stagnation_counter >= stagnation_threshold && model.islands.len() > 1 {
+            let worst_idx = model.islands.iter().enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    let a_best = a.best().map(|i| i.fitness).unwrap_or(0.0);
+                    let b_best = b.best().map(|i| i.fitness).unwrap_or(0.0);
+                    a_best.partial_cmp(&b_best).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+
+            let island_size = model.islands[worst_idx].individuals.len();
+            let inject_count = island_size / 2;
+
+            // Replace worst individuals with fresh random ones
+            model.islands[worst_idx].individuals.sort_by(|a, b| {
+                b.fitness.partial_cmp(&a.fitness).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            for i in (island_size - inject_count)..island_size {
+                let new_params = CadoParams::random(&mut rng, config.n_bits);
+                model.islands[worst_idx].individuals[i] =
+                    cado_evolve::evolution::ParamIndividual::new(new_params);
+            }
+
+            println!(
+                "  [Stagnation at gen {}: injected {} fresh individuals into island {}]",
+                gen + 1, inject_count, worst_idx
+            );
+            stagnation_counter = 0;
+        }
+
         // Evolve
         model.evolve_generation(&mut rng);
 
@@ -300,7 +405,7 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
             convergence_history.push(best.fitness);
         }
 
-        // Report
+        // Report every generation
         if (gen + 1) % report_interval == 0 || gen == 0 {
             let elapsed = start.elapsed();
             if let Some(best) = model.global_best() {
@@ -311,19 +416,20 @@ fn run_evolve_mode(install: &CadoInstallation, config: &CliConfig) {
                     .collect();
 
                 println!(
-                    "  Gen {:>3}/{} | best: {:>8.3} | islands: [{}] | cache: {} | {:.1}s",
+                    "  Gen {:>3}/{} | best: {:>8.3} | islands: [{}] | cache: {} | stag: {} | {:.1}s",
                     gen + 1,
                     num_generations,
                     best.fitness,
                     island_bests.join(", "),
                     cache.len(),
+                    stagnation_counter,
                     elapsed.as_secs_f64(),
                 );
             }
         }
 
         // Checkpoint
-        if (gen + 1) % checkpoint_interval == 0 {
+        if (gen + 1) % checkpoint_interval == 0 || gen + 1 == num_generations {
             let checkpoint = EvolutionCheckpoint {
                 generation: gen + 1,
                 elapsed_secs: start.elapsed().as_secs_f64(),

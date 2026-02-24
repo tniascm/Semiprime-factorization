@@ -69,6 +69,35 @@ impl ParamPopulation {
         }
     }
 
+    /// Create a population seeded from specific parameters.
+    ///
+    /// First individual is the exact seed, next several are mutations,
+    /// remainder are random for diversity.
+    pub fn new_from_params(size: usize, n_bits: u32, seed: &CadoParams, rng: &mut impl Rng) -> Self {
+        let mut individuals = Vec::with_capacity(size);
+
+        // First individual: exact seed params
+        individuals.push(ParamIndividual::new(seed.clone()));
+
+        // Next half: mutations of seed (local neighborhood search)
+        let seed_mutations = std::cmp::min(size / 2, size - 1);
+        for _ in 0..seed_mutations {
+            individuals.push(ParamIndividual::new(seed.mutate(rng, n_bits)));
+        }
+
+        // Rest: random (for diversity)
+        while individuals.len() < size {
+            individuals.push(ParamIndividual::new(CadoParams::random(rng, n_bits)));
+        }
+
+        ParamPopulation {
+            individuals,
+            generation: 0,
+            best_ever_fitness: 0.0,
+            stagnation_count: 0,
+        }
+    }
+
     /// Create a population seeded with default + nearby configurations.
     pub fn new_seeded(size: usize, n_bits: u32, rng: &mut impl Rng) -> Self {
         let mut individuals = Vec::with_capacity(size);
@@ -261,6 +290,40 @@ impl ParamIslandModel {
                     // First island: seeded with defaults
                     ParamPopulation::new_seeded(config.island_size, config.n_bits, rng)
                 } else {
+                    ParamPopulation::new(config.island_size, config.n_bits, rng)
+                }
+            })
+            .collect();
+
+        ParamIslandModel {
+            islands,
+            generation: 0,
+            n_bits: config.n_bits,
+            migration_interval: config.migration_interval,
+            culling_interval: config.culling_interval,
+            tournament_size: config.tournament_size,
+            mutation_rate: config.mutation_rate,
+        }
+    }
+
+    /// Create a new island model seeded from specific parameters.
+    ///
+    /// Island 0: seeded with the provided params + mutations around it.
+    /// Island 1: seeded with default params for the target bit size.
+    /// Remaining islands: fully random for diversity.
+    pub fn new_seeded_from(config: &IslandConfig, seed: &CadoParams, rng: &mut impl Rng) -> Self {
+        let islands: Vec<ParamPopulation> = (0..config.num_islands)
+            .map(|i| {
+                if i == 0 {
+                    // First island: seeded from provided params
+                    ParamPopulation::new_from_params(
+                        config.island_size, config.n_bits, seed, rng,
+                    )
+                } else if i == 1 {
+                    // Second island: seeded from defaults
+                    ParamPopulation::new_seeded(config.island_size, config.n_bits, rng)
+                } else {
+                    // Rest: fully random for diversity
                     ParamPopulation::new(config.island_size, config.n_bits, rng)
                 }
             })
