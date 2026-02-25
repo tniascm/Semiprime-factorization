@@ -8,6 +8,7 @@
 //! Target range: 100–200 bit semiprimes.
 
 pub mod analysis;
+pub mod batch;
 pub mod benchmark;
 pub mod cado;
 pub mod evolution;
