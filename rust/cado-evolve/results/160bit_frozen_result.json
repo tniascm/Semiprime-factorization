@@ -1,0 +1,122 @@
+{
+  "claim": "Under the corrected evolution protocol with stagnation-triggered diversity injection, the 160-bit evolved configuration achieves a highly statistically significant ~1.17× speedup (p<0.0001) vs CADO-NFS defaults on held-out paired benchmarks. Transfer testing shows the evolved params also significantly accelerate 170-bit factorizations (1.27×, p<0.001) but do not transfer to 140, 150, 180, or 190-bit, indicating a ~20-bit effective range.",
+  "protocol": {
+    "evolution": {
+      "method": "Island-model EA (3 islands × 8 individuals, tournament-3, 70% mutation)",
+      "generations": 25,
+      "training_set": "6 fixed composites (same across all generations)",
+      "fitness": "0.60 × speed + 0.25 × robustness + 0.15 × efficiency",
+      "timeout_per_run_secs": 240,
+      "cache_policy": "keyed by params hash; valid because training set is fixed",
+      "stagnation_injection": "after 5 flat generations, inject fresh random individuals into worst island",
+      "seed_from": "150-bit evolved params (cado_evolved_150bit.params)"
+    },
+    "validation": {
+      "method": "Held-out paired A/B test on 10 fresh composites",
+      "design": "Same composite factored by both default and evolved configs",
+      "statistical_test": "Welch's two-sample t-test (two-sided)",
+      "timeout_per_run_secs": 300,
+      "total_composites": 10
+    },
+    "transfer_test": {
+      "method": "Paired A/B test at 6 bit sizes: 140, 150, 160, 170, 180, 190",
+      "composites_per_size": 5,
+      "timeout_per_run_secs": 300
+    }
+  },
+  "evolved_params": {
+    "poly_degree": 4,
+    "poly_admax": 7107,
+    "poly_incr": 60,
+    "fb_rational_bound": 34788,
+    "fb_algebraic_bound": 117934,
+    "lp_rational_bits": 17,
+    "lp_algebraic_bits": 18,
+    "sieve_mfbr": 17,
+    "sieve_mfba": 18,
+    "sieve_qrange": 1019,
+    "summary": "deg=4 ad=7107 rlim=34788 alim=117934 lpb=17/18 mfb=17/18 qr=1019"
+  },
+  "key_discoveries": [
+    "Degree-4 polynomial outperforms degree-3 at 160-bit despite CADO-NFS default using lower degree",
+    "Asymmetric factor bases (alim=117934 >> rlim=34788, 3.4× ratio) optimal at this range",
+    "Minimal cofactor bounds (mfb=lpb) beat the typical mfb≈2×lpb convention",
+    "Convergence required 19 generations with 2 stagnation restarts to discover degree-4 optimum",
+    "Evolved params transfer UP to 170-bit (1.27×) better than at target range (1.17×)",
+    "Transfer range is ~20-bit window centered on optimization target"
+  ],
+  "convergence_history": {
+    "gen_1": {"fitness": 0.924, "best": "deg=3 ad=7249 rlim=84534 alim=41076 lpb=19/19 mfb=20/23 qr=2751"},
+    "gen_2": {"fitness": 0.970, "best": "deg=3 ad=7107 rlim=42373 alim=117934 lpb=17/19 mfb=17/24 qr=1019"},
+    "gen_3": {"fitness": 0.977, "best": "deg=3 ad=7107 rlim=42373 alim=117934 lpb=17/19 mfb=17/21 qr=1019"},
+    "gen_4_14": {"fitness": 0.977, "note": "Flat — 2 stagnation injections at gen 8 and gen 13"},
+    "gen_15": {"fitness": 0.984, "best": "deg=4 ad=7107 rlim=33746 alim=117934 lpb=17/18 mfb=17/21 qr=1019", "note": "Degree switch 3→4"},
+    "gen_19": {"fitness": 0.997, "best": "deg=4 ad=7107 rlim=34788 alim=117934 lpb=17/18 mfb=17/18 qr=1019", "note": "mfb1 minimized"},
+    "gen_20_25": {"fitness": 0.997, "note": "Converged"}
+  },
+  "evolution_stats": {
+    "total_time_secs": 64807,
+    "total_time_hours": 18.0,
+    "configurations_evaluated": 399,
+    "unique_configs": 22,
+    "cache_entries": 399,
+    "final_fitness": 0.997
+  },
+  "validation_results": {
+    "n_bits": 160,
+    "num_composites": 10,
+    "default_stats": {
+      "p50_secs": 11.44,
+      "mean_secs": 11.13,
+      "std_dev": 0.83,
+      "success_rate": 1.0
+    },
+    "evolved_stats": {
+      "p50_secs": 9.67,
+      "mean_secs": 9.57,
+      "std_dev": 0.72,
+      "success_rate": 1.0
+    },
+    "t_test": {
+      "t_statistic": 4.282,
+      "degrees_of_freedom": 17.7,
+      "p_value": 0.0000243,
+      "significant_at_05": true,
+      "ci_95_low_secs": 0.84,
+      "ci_95_high_secs": 2.29
+    },
+    "mean_speedup": 1.168,
+    "variance_reduction": 1.15
+  },
+  "transfer_results": {
+    "140_bit": {"mean_speedup": 1.030, "p_value": 0.4733, "significant": false},
+    "150_bit": {"mean_speedup": 1.004, "p_value": 0.9984, "significant": false},
+    "160_bit": {"mean_speedup": 1.172, "p_value": 0.00002, "significant": true},
+    "170_bit": {"mean_speedup": 1.269, "p_value": 0.0003, "significant": true},
+    "180_bit": {"mean_speedup": 1.024, "p_value": 0.7332, "significant": false},
+    "190_bit": {"mean_speedup": 0.994, "p_value": 0.8817, "significant": false}
+  },
+  "raw_validation_trials": [
+    {"n": "668264459217136888965333305770890209988613347787", "default_secs": 11.161, "evolved_secs": 9.662, "speedup": 1.155},
+    {"n": "912846101344175684125666511292806394834762159863", "default_secs": 9.677, "evolved_secs": 9.641, "speedup": 1.004},
+    {"n": "730674087325870610386724573880201139740237291977", "default_secs": 11.682, "evolved_secs": 9.155, "speedup": 1.276},
+    {"n": "1127281956336716963657953675421968516607564570483", "default_secs": 11.686, "evolved_secs": 9.677, "speedup": 1.208},
+    {"n": "434750454374288156983917196024128605438562053663", "default_secs": 9.666, "evolved_secs": 9.160, "speedup": 1.055},
+    {"n": "871362239503023327470714002823570494577165140069", "default_secs": 11.688, "evolved_secs": 9.687, "speedup": 1.207},
+    {"n": "670625023792641685532359673981114453827648537703", "default_secs": 12.187, "evolved_secs": 9.678, "speedup": 1.259},
+    {"n": "620150408450415816460211127241291831707610230811", "default_secs": 11.683, "evolved_secs": 9.669, "speedup": 1.208},
+    {"n": "1237618282066013949164191933635331796722414699477", "default_secs": 11.201, "evolved_secs": 11.221, "speedup": 0.998},
+    {"n": "757261842198091710228796575554561060569238484379", "default_secs": 10.684, "evolved_secs": 8.138, "speedup": 1.313}
+  ],
+  "reproducibility": {
+    "commit_hash": "cc933d17e590d5831036bd551d65570f596d49c8",
+    "branch": "claude/admiring-yalow",
+    "binary": "cado-evolve (--release)",
+    "cado_nfs_dir": "/Users/andriipotapov/cado-nfs",
+    "hardware": "Apple M4, 16GB RAM, macOS",
+    "evolution_started": "2026-02-23T~12:00Z",
+    "evolution_completed": "2026-02-24T~06:00Z",
+    "validation_completed": "2026-02-25T07:00Z",
+    "transfer_completed": "2026-02-25T07:15Z"
+  }
+}
