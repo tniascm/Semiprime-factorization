@@ -4954,6 +4954,340 @@ fn generate_nfs_grid(
 }
 
 // ---------------------------------------------------------------------------
+// E24 Phase 1: 2D binary smoothness autocorrelation
+// ---------------------------------------------------------------------------
+
+/// Compute 2D binary smoothness autocorrelation for NFS algebraic norms.
+///
+/// For each displacement (Δa, Δb):
+///   C(Δa,Δb) = P(F(a+Δa, b+Δb) smooth | F(a,b) smooth) / P(smooth overall)
+///
+/// Values > 1 indicate positive local correlation.
+fn compute_nfs_2d_autocorrelation(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    smooth_flags: &[bool],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> NfsAutocorr2DResult {
+    let n_grid = grid.len();
+    let n_smooth: usize = smooth_flags.iter().filter(|&&s| s).count();
+    let overall_smooth_rate = n_smooth as f64 / n_grid as f64;
+
+    let displacements = standard_displacements();
+    let mut lags = Vec::new();
+
+    for disp in &displacements {
+        let mut n_base_smooth = 0usize;
+        let mut n_both_smooth = 0usize;
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            if !smooth_flags[i] {
+                continue;
+            }
+            n_base_smooth += 1;
+
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                if smooth_flags[j] {
+                    n_both_smooth += 1;
+                }
+            }
+        }
+
+        let c_delta = if n_base_smooth > 0 && overall_smooth_rate > 0.0 {
+            let cond_prob = n_both_smooth as f64 / n_base_smooth as f64;
+            cond_prob / overall_smooth_rate
+        } else {
+            0.0
+        };
+
+        lags.push(Autocorr2DLag {
+            da: disp.da,
+            db: disp.db,
+            label: disp.label.clone(),
+            n_both_smooth,
+            n_base_smooth,
+            c_delta,
+        });
+    }
+
+    NfsAutocorr2DResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        overall_smooth_rate,
+        lags,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E24 Phase 2: 2D partial-fraction Pearson autocorrelation
+// ---------------------------------------------------------------------------
+
+/// Compute 2D partial-fraction Pearson autocorrelation for NFS algebraic norms.
+///
+/// For each displacement, collects paired (partial_frac[base], partial_frac[displaced])
+/// vectors and computes their Pearson correlation.
+fn compute_nfs_2d_partial_frac(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    partial_fracs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> NfsPartialFrac2DResult {
+    let n_grid = grid.len();
+    let mean_partial_frac = if n_grid > 0 {
+        partial_fracs.iter().sum::<f64>() / n_grid as f64
+    } else {
+        0.0
+    };
+
+    let displacements = standard_displacements();
+    let mut displacement_correlations = Vec::new();
+
+    for disp in &displacements {
+        let mut base_vals = Vec::new();
+        let mut disp_vals = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_vals.push(partial_fracs[i]);
+                disp_vals.push(partial_fracs[j]);
+            }
+        }
+
+        let r = if base_vals.len() >= 3 {
+            algebra::pearson_corr(&base_vals, &disp_vals)
+        } else {
+            0.0
+        };
+
+        displacement_correlations.push((disp.label.clone(), r));
+    }
+
+    NfsPartialFrac2DResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        mean_partial_frac,
+        displacement_correlations,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E24 Phase 3: 2D cofactor decomposition (sieve-predicted null)
+// ---------------------------------------------------------------------------
+
+/// Compute 2D cofactor decomposition for NFS algebraic norms.
+///
+/// For each displacement:
+/// - partial_frac_corr = Pearson autocorrelation of partial_smooth_fraction (sieve-explained)
+/// - cofactor_corr = Pearson autocorrelation of cofactor_log (beyond-sieve)
+/// - residual_ratio = |cofactor_corr| / max(|partial_frac_corr|, ε)
+///
+/// If cofactor_corr ≈ 0, the NFS sieve captures all local structure.
+fn compute_nfs_2d_cofactor_decomposition(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    partial_fracs: &[f64],
+    cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> NfsCofactor2DResult {
+    let n_grid = grid.len();
+    let primes = sieve_primes(smooth_bound);
+    let n_sieve_primes = primes.len();
+
+    let displacements = standard_displacements();
+    let mut displacement_comparisons = Vec::new();
+
+    for disp in &displacements {
+        let mut base_pf = Vec::new();
+        let mut disp_pf = Vec::new();
+        let mut base_cf = Vec::new();
+        let mut disp_cf = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_pf.push(partial_fracs[i]);
+                disp_pf.push(partial_fracs[j]);
+                base_cf.push(cofactor_logs[i]);
+                disp_cf.push(cofactor_logs[j]);
+            }
+        }
+
+        let (pf_corr, cf_corr) = if base_pf.len() >= 3 {
+            (
+                algebra::pearson_corr(&base_pf, &disp_pf),
+                algebra::pearson_corr(&base_cf, &disp_cf),
+            )
+        } else {
+            (0.0, 0.0)
+        };
+
+        let residual_ratio = cf_corr.abs() / pf_corr.abs().max(1e-12);
+
+        displacement_comparisons.push((disp.label.clone(), pf_corr, cf_corr, residual_ratio));
+    }
+
+    NfsCofactor2DResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        displacement_comparisons,
+        n_sieve_primes,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E24 Phase 4: 2D random control
+// ---------------------------------------------------------------------------
+
+/// Compute 2D random control: random integers in the same magnitude range.
+///
+/// Generates random u128 values at the same (a,b) grid positions.
+/// Expected: C(Δa,Δb) ≈ 1.0 (no spatial structure).
+fn compute_nfs_2d_random_control(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    smooth_bound: u64,
+    n_bits: u32,
+    seed: u64,
+) -> NfsRandom2DResult {
+    let n_grid = grid.len();
+
+    // Determine magnitude range from actual algebraic norms
+    let max_norm = grid.iter().map(|&(_, _, a, _)| a).max().unwrap_or(1);
+    let min_norm = grid.iter().map(|&(_, _, a, _)| a).filter(|&v| v > 1).min().unwrap_or(1);
+
+    // Generate random values in [min_norm, max_norm]
+    let mut rng = StdRng::seed_from_u64(seed);
+    let range = if max_norm > min_norm { max_norm - min_norm } else { 1 };
+    let random_vals: Vec<u128> = (0..n_grid)
+        .map(|_| {
+            let r: u64 = rng.gen();
+            min_norm + (r as u128 % range).max(2)
+        })
+        .collect();
+
+    // Compute smooth flags for random values
+    let random_smooth: Vec<bool> = random_vals.iter()
+        .map(|&v| is_b_smooth_u128(v, smooth_bound))
+        .collect();
+
+    let n_smooth: usize = random_smooth.iter().filter(|&&s| s).count();
+    let overall_smooth_rate = n_smooth as f64 / n_grid as f64;
+
+    let displacements = standard_displacements();
+    let mut lags = Vec::new();
+
+    for disp in &displacements {
+        let mut n_base_smooth = 0usize;
+        let mut n_both_smooth = 0usize;
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            if !random_smooth[i] {
+                continue;
+            }
+            n_base_smooth += 1;
+
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                if random_smooth[j] {
+                    n_both_smooth += 1;
+                }
+            }
+        }
+
+        let c_delta = if n_base_smooth > 0 && overall_smooth_rate > 0.0 {
+            let cond_prob = n_both_smooth as f64 / n_base_smooth as f64;
+            cond_prob / overall_smooth_rate
+        } else {
+            0.0
+        };
+
+        lags.push(Autocorr2DLag {
+            da: disp.da,
+            db: disp.db,
+            label: disp.label.clone(),
+            n_both_smooth,
+            n_base_smooth,
+            c_delta,
+        });
+    }
+
+    NfsRandom2DResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        overall_smooth_rate,
+        lags,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E24 Phase 5: Joint dual-norm cofactor correlation (novel)
+// ---------------------------------------------------------------------------
+
+/// Compute cross-correlation between cofactors of algebraic and rational norms.
+///
+/// For each (a,b) pair, computes cofactor_log of the algebraic norm F(a,b)
+/// and cofactor_log of the rational norm |a+bm|. Tests whether these
+/// cofactors are correlated (which would imply dual-norm sieving could help).
+///
+/// This test is impossible in QS, which has only one polynomial.
+fn compute_nfs_dual_norm(
+    grid: &[(i64, i64, u128, u128)],
+    alg_partial_fracs: &[f64],
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> NfsDualNormResult {
+    let n_grid = grid.len();
+
+    // Compute rational-side partial fractions and cofactor logs
+    let rat_partial_fracs: Vec<f64> = grid.iter()
+        .map(|&(_, _, _, rat)| partial_smooth_fraction(rat, smooth_bound))
+        .collect();
+    let rat_cofactor_logs: Vec<f64> = grid.iter()
+        .map(|&(_, _, _, rat)| cofactor_log(rat, smooth_bound))
+        .collect();
+
+    let rational_alg_cofactor_corr = if n_grid >= 3 {
+        algebra::pearson_corr(alg_cofactor_logs, &rat_cofactor_logs)
+    } else {
+        0.0
+    };
+
+    let rational_mean_partial = if n_grid > 0 {
+        rat_partial_fracs.iter().sum::<f64>() / n_grid as f64
+    } else {
+        0.0
+    };
+    let algebraic_mean_partial = if n_grid > 0 {
+        alg_partial_fracs.iter().sum::<f64>() / n_grid as f64
+    } else {
+        0.0
+    };
+
+    NfsDualNormResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        rational_alg_cofactor_corr,
+        rational_mean_partial,
+        algebraic_mean_partial,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -5863,5 +6197,71 @@ mod tests {
 
         // Non-existent point should not be in index
         assert!(!index.contains_key(&(9999, 9999)));
+    }
+
+    #[test]
+    fn test_nfs_2d_autocorrelation_smoke() {
+        // Small NFS grid, verify Phase 1 produces meaningful output.
+        let (_, grid) = generate_nfs_grid(40, 0xE240_1000, 20, 5);
+        let index = build_grid_index(&grid);
+        let smooth_bound: u64 = 500;
+
+        let smooth_flags: Vec<bool> = grid.iter()
+            .map(|&(_, _, alg, _)| is_b_smooth_u128(alg, smooth_bound))
+            .collect();
+
+        let result = compute_nfs_2d_autocorrelation(
+            &grid, &index, &smooth_flags, smooth_bound, 40,
+        );
+
+        assert_eq!(result.lags.len(), 8); // 8 standard displacements
+        assert!(result.overall_smooth_rate >= 0.0);
+        assert!(result.n_grid > 0);
+
+        // All C(δ) should be non-negative
+        for lag in &result.lags {
+            assert!(lag.c_delta >= 0.0, "C({}) should be non-negative", lag.label);
+        }
+    }
+
+    #[test]
+    fn test_nfs_2d_partial_frac_finite() {
+        let (_, grid) = generate_nfs_grid(40, 0xE240_2000, 15, 3);
+        let index = build_grid_index(&grid);
+        let smooth_bound: u64 = 200;
+
+        let partial_fracs: Vec<f64> = grid.iter()
+            .map(|&(_, _, alg, _)| partial_smooth_fraction(alg, smooth_bound))
+            .collect();
+
+        let result = compute_nfs_2d_partial_frac(
+            &grid, &index, &partial_fracs, smooth_bound, 40,
+        );
+
+        assert_eq!(result.displacement_correlations.len(), 8);
+        // All correlations should be finite
+        for &(ref _label, r) in &result.displacement_correlations {
+            assert!(r.is_finite(), "Pearson correlation must be finite");
+        }
+        // Mean partial fraction should be in (0, 1]
+        assert!(result.mean_partial_frac > 0.0);
+        assert!(result.mean_partial_frac <= 1.0);
+    }
+
+    #[test]
+    fn test_nfs_2d_random_control() {
+        let (_, grid) = generate_nfs_grid(40, 0xE240_4000, 20, 5);
+        let index = build_grid_index(&grid);
+        let smooth_bound: u64 = 500;
+
+        let result = compute_nfs_2d_random_control(
+            &grid, &index, smooth_bound, 40, 0xE240_4001,
+        );
+
+        assert_eq!(result.lags.len(), 8);
+        // Random control: all C(δ) should be defined (though may be 0 if few smooth)
+        for lag in &result.lags {
+            assert!(lag.c_delta >= 0.0 || lag.c_delta == 0.0);
+        }
     }
 }
