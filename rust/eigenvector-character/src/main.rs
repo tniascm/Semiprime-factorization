@@ -21,13 +21,13 @@ use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
     run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
     run_cross_channel_tests, run_sieve_enrichment, run_local_smoothness, run_nfs_lattice,
-    run_nfs_validation,
+    run_nfs_validation, run_nfs_robustness,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
     PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
     PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
     CrossChannelResult, SieveEnrichmentResult, LocalSmoothnessResult, NfsLatticeResult,
-    NfsValidationResult,
+    NfsValidationResult, NfsRobustnessResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -50,8 +50,9 @@ fn main() {
         "local"     => run_local_mode(&opts),
         "nfs2d"     => run_nfs2d_mode(&opts),
         "nfs2d-validate" => run_nfs2d_validate_mode(&opts),
+        "nfs2d-robust" => run_nfs2d_robust_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local|nfs2d|nfs2d-validate");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local|nfs2d|nfs2d-validate|nfs2d-robust");
             std::process::exit(1);
         }
     }
@@ -2087,6 +2088,179 @@ fn print_nfs2d_validation_summary(result: &NfsValidationResult) {
     } else {
         println!("  → SIGNAL SURVIVES: {:.0}% of signal survives norm residualization.", collapse_ratio * 100.0);
         println!("    Genuine beyond-sieve local structure confirmed.");
+    }
+    println!();
+}
+
+fn run_nfs2d_robust_mode(opts: &HashMap<String, String>) {
+    let bit_sizes = parse_bit_sizes(opts, &[40, 48, 56, 64]);
+    let seed = parse_u64(opts, "seed", 0xE24C_5EED_0001);
+    let sieve_area = parse_usize(opts, "area", 500) as i64;
+    let max_b = parse_usize(opts, "maxb", 50) as i64;
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![100, 500, 1000]);
+
+    println!("E24c NFS 2D ROBUSTNESS: 4 checks on artifact validation");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Bounds B     : {:?}", bounds);
+    println!("Sieve area   : {}", sieve_area);
+    println!("Max b        : {max_b}");
+    println!("Seed         : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let result = run_nfs_robustness(&bit_sizes, &bounds, sieve_area, max_b, seed);
+
+    println!();
+    print_nfs2d_robustness_summary(&result);
+    write_json(&result, "data/E24c_nfs_robustness.json");
+}
+
+fn print_nfs2d_robustness_summary(result: &NfsRobustnessResult) {
+    println!("┌────────────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E24c ROBUSTNESS: 4 checks on NFS cofactor autocorrelation artifact validation  │");
+    println!("└────────────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Check 1: Nonlinear Residualization ───
+    println!("CHECK 1: NONLINEAR (BINNED) RESIDUALIZATION vs OLS");
+    println!("  If |bin_r| < |ols_r|, OLS linear assumption left nonlinear confounding.");
+    println!();
+    println!(
+        "  {:>4} {:>5} {:>5}  {:>8} {:>8} {:>8}  {:>8} {:>8} {:>8}",
+        "bits", "B", "bins", "raw(1,0)", "ols_r", "bin_r", "raw(0,1)", "ols_r", "bin_r"
+    );
+    println!("  {}", "─".repeat(80));
+
+    for block in &result.blocks {
+        let c1 = &block.check1_nonlinear;
+        print!("  {:>4} {:>5} {:>5}", c1.n_bits, c1.smooth_bound, c1.n_bins);
+        for &(ref _label, raw, ols_r, bin_r) in c1.displacement_comparisons.iter().take(2) {
+            print!("  {:>8.4} {:>8.4} {:>8.4}", raw, ols_r, bin_r);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Check 2: Cross-Validated Residualization ───
+    println!("CHECK 2: CROSS-VALIDATED RESIDUALIZATION (spatial halves a<0 vs a>=0)");
+    println!("  in_sample vs held_out_left vs held_out_right. Match → no overfitting.");
+    println!();
+    println!(
+        "  {:>4} {:>5}  {:>8} {:>8} {:>8}  {:>8} {:>8} {:>8}",
+        "bits", "B", "in(1,0)", "ho_L", "ho_R", "in(0,1)", "ho_L", "ho_R"
+    );
+    println!("  {}", "─".repeat(72));
+
+    for block in &result.blocks {
+        let c2 = &block.check2_crossval;
+        print!("  {:>4} {:>5}", c2.n_bits, c2.smooth_bound);
+        for &(ref _label, in_s, ho_l, ho_r) in c2.displacement_comparisons.iter().take(2) {
+            print!("  {:>8.4} {:>8.4} {:>8.4}", in_s, ho_l, ho_r);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Check 3: Partial Correlation (Both Norms) ───
+    println!("CHECK 3: PARTIAL CORRELATION (controlling both endpoint norms)");
+    println!("  1D = control base norm only; partial = control base + neighbor norms.");
+    println!();
+    println!(
+        "  {:>4} {:>5} {:>6} {:>6}  {:>8} {:>8} {:>8}  {:>8} {:>8} {:>8}",
+        "bits", "B", "R²_1d", "R²_2d", "raw(1,0)", "1d_r", "partial", "raw(0,1)", "1d_r", "partial"
+    );
+    println!("  {}", "─".repeat(88));
+
+    for block in &result.blocks {
+        let c3 = &block.check3_partial_corr;
+        print!("  {:>4} {:>5} {:>6.3} {:>6.3}", c3.n_bits, c3.smooth_bound, c3.r_squared_1d, c3.r_squared_2d);
+        for &(ref _label, raw, ols1d, partial) in c3.displacement_comparisons.iter().take(2) {
+            print!("  {:>8.4} {:>8.4} {:>8.4}", raw, ols1d, partial);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Check 4: Alternative Transforms ───
+    println!("CHECK 4: ALTERNATIVE TRANSFORMS (robustness to metric choice)");
+    println!("  Each transform is OLS-residualized against log2(norm).");
+    println!();
+
+    for block in &result.blocks {
+        let c4 = &block.check4_transforms;
+        println!("  Block: bits={}, B={}", c4.n_bits, c4.smooth_bound);
+        for variant in &c4.variants {
+            print!("    {:<24}", variant.transform_name);
+            for &(ref label, raw, resid) in variant.displacement_comparisons.iter().take(4) {
+                print!(" {}:{:.3}/{:.3}", label, raw, resid);
+            }
+            println!();
+        }
+        println!();
+    }
+
+    // ─── Overall Robustness Verdict ───
+    println!("ROBUSTNESS VERDICT:");
+    println!();
+
+    let mut max_bin_resid = 0.0f64;
+    let mut max_ols_resid = 0.0f64;
+    let mut max_ho_diff = 0.0f64;
+    let mut max_partial = 0.0f64;
+
+    for block in &result.blocks {
+        for &(_, _, ols_r, bin_r) in &block.check1_nonlinear.displacement_comparisons {
+            max_ols_resid = max_ols_resid.max(ols_r.abs());
+            max_bin_resid = max_bin_resid.max(bin_r.abs());
+        }
+        for &(_, in_s, ho_l, ho_r) in &block.check2_crossval.displacement_comparisons {
+            max_ho_diff = max_ho_diff.max((in_s - ho_l).abs()).max((in_s - ho_r).abs());
+        }
+        for &(_, _, _, partial) in &block.check3_partial_corr.displacement_comparisons {
+            max_partial = max_partial.max(partial.abs());
+        }
+    }
+
+    println!("  Check 1: max |OLS_resid| = {:.4}, max |bin_resid| = {:.4}", max_ols_resid, max_bin_resid);
+    if max_bin_resid < max_ols_resid * 0.8 {
+        println!("    → Nonlinear component detected: bin residualization improves by {:.0}%",
+            (1.0 - max_bin_resid / max_ols_resid) * 100.0);
+    } else {
+        println!("    → Linear OLS is adequate (bin residualization similar).");
+    }
+
+    println!("  Check 2: max |in_sample - held_out| = {:.4}", max_ho_diff);
+    if max_ho_diff < 0.03 {
+        println!("    → No overfitting detected (in-sample ≈ held-out).");
+    } else {
+        println!("    → Possible overfitting: in-sample and held-out differ by {:.4}.", max_ho_diff);
+    }
+
+    println!("  Check 3: max |partial_corr| = {:.4}", max_partial);
+    if max_partial < 0.05 {
+        println!("    → Both-norm control eliminates remaining signal.");
+    } else {
+        println!("    → Some signal survives dual-norm partial correlation ({:.4}).", max_partial);
+    }
+
+    // Check 4 verdict: compare across transforms
+    let mut all_resids: Vec<f64> = Vec::new();
+    for block in &result.blocks {
+        for variant in &block.check4_transforms.variants {
+            for &(_, _, resid) in &variant.displacement_comparisons {
+                all_resids.push(resid.abs());
+            }
+        }
+    }
+    let max_transform_resid = all_resids.iter().cloned().fold(0.0f64, f64::max);
+    println!("  Check 4: max |transform_resid| = {:.4}", max_transform_resid);
+    if max_transform_resid < 0.10 {
+        println!("    → Robust across transforms (rank, winsorized, bits all agree).");
+    } else {
+        println!("    → Transform sensitivity detected ({:.4}).", max_transform_resid);
     }
     println!();
 }
