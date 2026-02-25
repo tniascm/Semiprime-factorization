@@ -38,8 +38,12 @@ pub struct CadoResult {
     pub factors: Vec<String>,
     /// Total wall-clock time for the entire run.
     pub total_time: Duration,
-    /// Per-phase timing breakdown.
+    /// Per-phase wall-clock timing breakdown.
     pub phase_times: HashMap<String, Duration>,
+    /// Per-phase CPU timing breakdown (from "cpu/real" format lines).
+    /// Only populated for phases that report CPU time (Patterns 1 & 2).
+    /// Pattern 3 ("Total time: Xs") does not include CPU time.
+    pub phase_cpu_times: HashMap<String, Duration>,
     /// Number of relations found during sieving.
     pub relations_found: Option<u64>,
     /// Matrix dimensions (rows, cols) for linear algebra phase.
@@ -539,6 +543,7 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
         factors: Vec::new(),
         total_time: Duration::ZERO,
         phase_times: HashMap::new(),
+        phase_cpu_times: HashMap::new(),
         relations_found: None,
         matrix_size: None,
         unique_relations: None,
@@ -592,10 +597,15 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
             || clean_line.contains("Total cpu/elapsed time for ")
             || clean_line.contains("Total time:")
         {
-            if let Some((phase, real_secs)) = parse_phase_timing(&clean_line) {
+            if let Some((phase, real_secs, cpu_secs)) = parse_phase_timing(&clean_line) {
                 result
                     .phase_times
-                    .insert(phase, Duration::from_secs_f64(real_secs));
+                    .insert(phase.clone(), Duration::from_secs_f64(real_secs));
+                if let Some(cpu) = cpu_secs {
+                    result
+                        .phase_cpu_times
+                        .insert(phase, Duration::from_secs_f64(cpu));
+                }
             }
         }
 
@@ -713,10 +723,14 @@ fn extract_factors_from_line(line: &str) -> Option<Vec<String>> {
 ///    e.g. "Info:Lattice Sieving: Total time: 3.02s"
 ///    e.g. "Info:Polynomial Selection (root optimized): Total time: 1.9"
 ///
+/// Returns `(phase_name, real_seconds, Option<cpu_seconds>)`.
+/// Patterns 1 & 2 report both CPU and real time (cpu_seconds is `Some`).
+/// Pattern 3 reports only wall-clock time (cpu_seconds is `None`).
+///
 /// The phase name is extracted from the `Info:` prefix (the part between
 /// first "Info:" and the "Total" keyword), which is more reliable than
 /// parsing the sub-component name after "Total cpu/real time for".
-fn parse_phase_timing(line: &str) -> Option<(String, f64)> {
+fn parse_phase_timing(line: &str) -> Option<(String, f64, Option<f64>)> {
     // Extract phase name from the Info: prefix if present.
     // Format: "Info:<Phase>: Total ..."
     let phase_name = extract_cado_phase_name(line);
@@ -728,18 +742,18 @@ fn parse_phase_timing(line: &str) -> Option<(String, f64)> {
         // Sub-component may be followed by ": cpu/real" or just "cpu/real"
         if let Some(colon_pos) = after.find(':') {
             let timing = after[colon_pos + 1..].trim();
-            if let Some(secs) = extract_real_time(timing) {
+            if let Some((cpu, real)) = extract_cpu_and_real_time(timing) {
                 return Some((phase_name.unwrap_or_else(|| {
                     after[..colon_pos].trim().to_string()
-                }), secs));
+                }), real, Some(cpu)));
             }
         }
         // Fallback: look for last token with '/'
         let parts: Vec<&str> = after.split_whitespace().collect();
         for part in parts.iter().rev() {
             if part.contains('/') {
-                if let Some(secs) = extract_real_time(part) {
-                    return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs));
+                if let Some((cpu, real)) = extract_cpu_and_real_time(part) {
+                    return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), real, Some(cpu)));
                 }
             }
         }
@@ -751,19 +765,19 @@ fn parse_phase_timing(line: &str) -> Option<(String, f64)> {
         let parts: Vec<&str> = after.split_whitespace().collect();
         for part in parts.iter().rev() {
             if part.contains('/') {
-                if let Some(secs) = extract_real_time(part) {
+                if let Some((cpu, real)) = extract_cpu_and_real_time(part) {
                     let phase = phase_name.unwrap_or_else(|| "Complete Factorization".to_string());
-                    return Some((phase, secs));
+                    return Some((phase, real, Some(cpu)));
                 }
             }
         }
     }
 
-    // Pattern 3: "Total time: <secs>s"
+    // Pattern 3: "Total time: <secs>s" — no CPU time available
     if let Some(pos) = line.find("Total time:") {
         let after = &line[pos + "Total time:".len()..];
         if let Some(secs) = extract_seconds(after) {
-            return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs));
+            return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs, None));
         }
     }
 
@@ -798,17 +812,22 @@ fn extract_cado_phase_name(line: &str) -> Option<String> {
     Some(phase.to_string())
 }
 
-/// Extract real/wall-clock time from a timing string.
+/// Extract both CPU and real/wall-clock time from a "cpu/real" timing string.
 ///
-/// Handles "cpu/real" format and bare seconds.
-fn extract_real_time(timing: &str) -> Option<f64> {
+/// Returns `(cpu_seconds, real_seconds)`.
+/// Input format: "0.47/1.22" or "9.21/12.4287"
+fn extract_cpu_and_real_time(timing: &str) -> Option<(f64, f64)> {
     let trimmed = timing.trim().trim_matches('s');
-    if trimmed.contains('/') {
-        let parts: Vec<&str> = trimmed.split('/').collect();
-        parts.last()?.parse::<f64>().ok()
-    } else {
-        trimmed.parse::<f64>().ok()
+    if !trimmed.contains('/') {
+        return None;
     }
+    let parts: Vec<&str> = trimmed.split('/').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let cpu = parts[0].parse::<f64>().ok()?;
+    let real = parts[1].parse::<f64>().ok()?;
+    Some((cpu, real))
 }
 
 /// Extract a number from a line containing digits.
@@ -932,9 +951,11 @@ mod tests {
         let line = "Total cpu/real time for polyselect: 12.34/5.67";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "polyselect");
-        assert!((secs - 5.67).abs() < 0.01);
+        assert!((real - 5.67).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 12.34).abs() < 0.01);
     }
 
     #[test]
@@ -942,9 +963,11 @@ mod tests {
         let line = "Total cpu/real time for sieve: 100.5/25.3";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "sieve");
-        assert!((secs - 25.3).abs() < 0.01);
+        assert!((real - 25.3).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 100.5).abs() < 0.01);
     }
 
     #[test]
@@ -953,9 +976,11 @@ mod tests {
         let line = "Info:Linear Algebra: Total cpu/real time for bwc: 0.47/1.22";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Linear Algebra");
-        assert!((secs - 1.22).abs() < 0.01);
+        assert!((real - 1.22).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 0.47).abs() < 0.01);
     }
 
     #[test]
@@ -963,20 +988,23 @@ mod tests {
         let line = "Info:Square Root: Total cpu/real time for sqrt: 0.11/0.102183";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Square Root");
-        assert!((secs - 0.102).abs() < 0.01);
+        assert!((real - 0.102).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 0.11).abs() < 0.01);
     }
 
     #[test]
     fn test_parse_phase_timing_real_sieving_total_time() {
-        // "Total time:" format (no cpu/real)
+        // "Total time:" format (no cpu/real) — cpu_secs should be None
         let line = "Info:Lattice Sieving: Total time: 3.02s";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Lattice Sieving");
-        assert!((secs - 3.02).abs() < 0.01);
+        assert!((real - 3.02).abs() < 0.01);
+        assert!(cpu.is_none(), "Pattern 3 should not report CPU time");
     }
 
     #[test]
@@ -984,9 +1012,10 @@ mod tests {
         let line = "Info:Polynomial Selection (root optimized): Total time: 1.9";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Polynomial Selection (root optimized)");
-        assert!((secs - 1.9).abs() < 0.01);
+        assert!((real - 1.9).abs() < 0.01);
+        assert!(cpu.is_none(), "Pattern 3 should not report CPU time");
     }
 
     #[test]
@@ -994,9 +1023,11 @@ mod tests {
         let line = "Info:Filtering - Singleton removal: Total cpu/real time for purge: 0.29/0.157198";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Filtering - Singleton removal");
-        assert!((secs - 0.157).abs() < 0.01);
+        assert!((real - 0.157).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 0.29).abs() < 0.01);
     }
 
     #[test]
@@ -1004,9 +1035,11 @@ mod tests {
         let line = "Info:Complete Factorization / Discrete logarithm: Total cpu/elapsed time for entire Complete Factorization 9.21/12.4287";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert!(phase.contains("Complete Factorization"));
-        assert!((secs - 12.43).abs() < 0.01);
+        assert!((real - 12.43).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 9.21).abs() < 0.01);
     }
 
     #[test]
@@ -1043,10 +1076,25 @@ Info:Square Root: Total cpu/real time for sqrt: 0.8/0.3
         assert_eq!(result.relations_found, Some(50000));
         assert_eq!(result.unique_relations, Some(42000));
         assert_eq!(result.matrix_size, Some((3000, 3200)));
+        // Wall-clock times populated for all phases
         assert!(result.phase_times.contains_key("Polynomial Selection (root optimized)"));
         assert!(result.phase_times.contains_key("Lattice Sieving"));
         assert!(result.phase_times.contains_key("Linear Algebra"));
         assert!(result.phase_times.contains_key("Square Root"));
+        // CPU times only populated for Patterns 1 & 2 (cpu/real format)
+        assert!(!result.phase_cpu_times.contains_key("Polynomial Selection (root optimized)"),
+            "Pattern 3 phases should not have CPU time");
+        assert!(!result.phase_cpu_times.contains_key("Lattice Sieving"),
+            "Pattern 3 phases should not have CPU time");
+        assert!(result.phase_cpu_times.contains_key("Linear Algebra"),
+            "Pattern 1 phases should have CPU time");
+        assert!(result.phase_cpu_times.contains_key("Square Root"),
+            "Pattern 1 phases should have CPU time");
+        // Verify CPU time values
+        let linalg_cpu = result.phase_cpu_times["Linear Algebra"].as_secs_f64();
+        assert!((linalg_cpu - 5.4).abs() < 0.01);
+        let sqrt_cpu = result.phase_cpu_times["Square Root"].as_secs_f64();
+        assert!((sqrt_cpu - 0.8).abs() < 0.01);
     }
 
     #[test]
@@ -1104,9 +1152,11 @@ Info:Square Root: Total cpu/real time for sqrt: 0.8/0.3
         let line = "Total cpu/elapsed time for entire Complete Factorization 2.68/13.47";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
-        let (phase, secs) = result.unwrap();
+        let (phase, real, cpu) = result.unwrap();
         assert!(phase.contains("Complete Factorization"));
-        assert!((secs - 13.47).abs() < 0.01);
+        assert!((real - 13.47).abs() < 0.01);
+        assert!(cpu.is_some());
+        assert!((cpu.unwrap() - 2.68).abs() < 0.01);
     }
 
     #[test]
@@ -1125,5 +1175,31 @@ Info:Square Root: Total cpu/real time for sqrt: 0.8/0.3
         assert_eq!(result.factors[0], "824640114685687");
         assert_eq!(result.factors[1], "1030343599805129");
         assert_eq!(result.relations_found, Some(52609));
+
+        // Verify CPU times are populated for cpu/real format phases
+        assert!(result.phase_cpu_times.contains_key("Linear Algebra"));
+        assert!(result.phase_cpu_times.contains_key("Square Root"));
+        assert!(result.phase_cpu_times.contains_key("Complete Factorization / Discrete logarithm"));
+        // Lattice Sieving uses "Total time:" format — no CPU time
+        assert!(!result.phase_cpu_times.contains_key("Lattice Sieving"));
+
+        let linalg_cpu = result.phase_cpu_times["Linear Algebra"].as_secs_f64();
+        assert!((linalg_cpu - 0.38).abs() < 0.01);
+        let complete_cpu = result.phase_cpu_times["Complete Factorization / Discrete logarithm"].as_secs_f64();
+        assert!((complete_cpu - 2.68).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_extract_cpu_and_real_time() {
+        // Standard cpu/real format
+        assert_eq!(extract_cpu_and_real_time("0.47/1.22"), Some((0.47, 1.22)));
+        assert_eq!(extract_cpu_and_real_time("9.21/12.4287"), Some((9.21, 12.4287)));
+        // Bare seconds — not cpu/real format
+        assert_eq!(extract_cpu_and_real_time("3.02"), None);
+        assert_eq!(extract_cpu_and_real_time("3.02s"), None);
+        // Empty
+        assert_eq!(extract_cpu_and_real_time(""), None);
+        // Malformed
+        assert_eq!(extract_cpu_and_real_time("abc/def"), None);
     }
 }
