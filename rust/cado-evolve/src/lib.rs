@@ -13,4 +13,5 @@ pub mod cado;
 pub mod evolution;
 pub mod fitness;
 pub mod params;
+pub mod scaling;
 pub mod validation;
