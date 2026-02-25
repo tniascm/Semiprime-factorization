@@ -473,11 +473,37 @@ pub fn run_validation(
         println!("  {:>12} | {:>8} | {:>8} | {:>7} | {:>8} | {:>6}",
             "Phase", "Default", "Evolved", "Speedup", "Saved", "% Tot");
         println!("  {}", "-".repeat(65));
+        let mut stage_default_sum = 0.0_f64;
+        let mut stage_evolved_sum = 0.0_f64;
         for pc in &phase_comparison {
             println!("  {:>12} | {:>7.2}s | {:>7.2}s | {:>6.2}x | {:>7.2}s | {:>5.1}%",
                 pc.phase, pc.default_mean, pc.evolved_mean,
                 pc.speedup, pc.time_saved, pc.fraction_of_total * 100.0);
+            stage_default_sum += pc.default_mean;
+            stage_evolved_sum += pc.evolved_mean;
         }
+        // Show overhead (server/client orchestration not captured by stages)
+        let overhead_default = default_stats.mean - stage_default_sum;
+        let overhead_evolved = evolved_stats.mean - stage_evolved_sum;
+        let overhead_speedup = if overhead_evolved.abs() > 1e-6 {
+            overhead_default / overhead_evolved
+        } else {
+            0.0
+        };
+        let overhead_frac = if default_stats.mean > 1e-6 {
+            overhead_default / default_stats.mean
+        } else {
+            0.0
+        };
+        println!("  {}", "-".repeat(65));
+        println!("  {:>12} | {:>7.2}s | {:>7.2}s | {:>6.2}x | {:>7.2}s | {:>5.1}%",
+            "overhead", overhead_default, overhead_evolved,
+            overhead_speedup, overhead_default - overhead_evolved,
+            overhead_frac * 100.0);
+        println!("  {:>12} | {:>7.2}s | {:>7.2}s | {:>6.2}x | {:>7.2}s | 100.0%",
+            "TOTAL", default_stats.mean, evolved_stats.mean,
+            if evolved_stats.mean > 1e-6 { default_stats.mean / evolved_stats.mean } else { 0.0 },
+            default_stats.mean - evolved_stats.mean);
     }
 
     println!("  Total validation time: {:.1}s", total_time);
