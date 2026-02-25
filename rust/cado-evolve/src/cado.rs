@@ -580,24 +580,22 @@ pub fn parse_cado_output(log: &str) -> CadoResult {
             }
         }
 
-        // Phase timing: "Total cpu/real time for <phase>: ..."
-        // Example: "Total cpu/real time for polyselect: 12.3/4.5"
-        // CADO-NFS wraps these in ANSI color codes, so strip them
+        // Phase timing from CADO-NFS log lines.
+        // CADO-NFS wraps these in ANSI color codes, so strip them.
+        // Real format after stripping:
+        //   "Info:Lattice Sieving: Total time: 3.02s"
+        //   "Info:Filtering - Singleton removal: Total cpu/real time for purge: 0.29/0.157198"
+        //   "Info:Linear Algebra: Total cpu/real time for bwc: 0.47/1.22"
+        //   "Info:Complete Factorization / ...: Total cpu/elapsed time for entire ... 9.21/12.4287"
         let clean_line = strip_ansi(trimmed);
-        if clean_line.contains("Total cpu/real time for ") || clean_line.contains("Total cpu/elapsed time for ") {
+        if clean_line.contains("Total cpu/real time for ")
+            || clean_line.contains("Total cpu/elapsed time for ")
+            || clean_line.contains("Total time:")
+        {
             if let Some((phase, real_secs)) = parse_phase_timing(&clean_line) {
                 result
                     .phase_times
                     .insert(phase, Duration::from_secs_f64(real_secs));
-            }
-        }
-
-        // Alternative timing: "Total time: 123.4s"
-        if trimmed.contains("Total time:") {
-            if let Some(secs) = extract_seconds(trimmed) {
-                result
-                    .phase_times
-                    .insert("total_reported".to_string(), Duration::from_secs_f64(secs));
             }
         }
 
@@ -703,54 +701,101 @@ fn extract_factors_from_line(line: &str) -> Option<Vec<String>> {
 
 /// Parse phase timing from CADO-NFS timing lines.
 ///
-/// Handles formats:
-/// - "Total cpu/real time for polyselect: 12.34/5.67"
-/// - "Total cpu/elapsed time for entire Complete Factorization 2.68/13.47"
-/// - "Info:Lattice Sieving: Total time: 0.98s"
+/// Handles real CADO-NFS output formats (after ANSI stripping):
+///
+/// 1. `Info:<Phase>: Total cpu/real time for <sub>: cpu/real`
+///    e.g. "Info:Linear Algebra: Total cpu/real time for bwc: 0.47/1.22"
+///
+/// 2. `Info:<Phase>: Total cpu/elapsed time for ... cpu/real`
+///    e.g. "Info:Complete Factorization ...: Total cpu/elapsed time for entire ... 9.21/12.4287"
+///
+/// 3. `Info:<Phase>: Total time: <secs>s`
+///    e.g. "Info:Lattice Sieving: Total time: 3.02s"
+///    e.g. "Info:Polynomial Selection (root optimized): Total time: 1.9"
+///
+/// The phase name is extracted from the `Info:` prefix (the part between
+/// first "Info:" and the "Total" keyword), which is more reliable than
+/// parsing the sub-component name after "Total cpu/real time for".
 fn parse_phase_timing(line: &str) -> Option<(String, f64)> {
-    // Try "Total cpu/real time for <phase>: cpu/real"
-    if let Some(rest) = line.strip_prefix("Total cpu/real time for ") {
-        let colon_pos = rest.find(':')?;
-        let phase = rest[..colon_pos].trim().to_string();
-        let timing = rest[colon_pos + 1..].trim();
+    // Extract phase name from the Info: prefix if present.
+    // Format: "Info:<Phase>: Total ..."
+    let phase_name = extract_cado_phase_name(line);
 
-        let real_secs = extract_real_time(timing)?;
-        return Some((phase, real_secs));
-    }
-
-    // Try "Total cpu/elapsed time for <phase> cpu/real"
-    if let Some(rest) = line.strip_prefix("Total cpu/elapsed time for ") {
-        // This format doesn't have a colon before the timing
-        // "entire Complete Factorization 2.68/13.47"
-        // Find the last space-separated token that contains '/'
-        let parts: Vec<&str> = rest.split_whitespace().collect();
-        for (i, part) in parts.iter().enumerate().rev() {
+    // Pattern 1: "Total cpu/real time for <sub>: cpu/real"
+    if let Some(pos) = line.find("Total cpu/real time for ") {
+        let after = &line[pos + "Total cpu/real time for ".len()..];
+        // Find the timing value: look for "cpu/real" format after the sub-component
+        // Sub-component may be followed by ": cpu/real" or just "cpu/real"
+        if let Some(colon_pos) = after.find(':') {
+            let timing = after[colon_pos + 1..].trim();
+            if let Some(secs) = extract_real_time(timing) {
+                return Some((phase_name.unwrap_or_else(|| {
+                    after[..colon_pos].trim().to_string()
+                }), secs));
+            }
+        }
+        // Fallback: look for last token with '/'
+        let parts: Vec<&str> = after.split_whitespace().collect();
+        for part in parts.iter().rev() {
             if part.contains('/') {
-                let phase = parts[..i].join(" ");
-                let real_secs = extract_real_time(part)?;
-                return Some((phase, real_secs));
+                if let Some(secs) = extract_real_time(part) {
+                    return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs));
+                }
             }
         }
     }
 
-    // Try "Info:<phase>: Total time: <secs>s"
-    if line.contains("Total time:") {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() >= 3 {
-            // Look for a phase name in the Info: prefix
-            let phase = if parts.len() >= 4 {
-                parts[1].trim().to_string()
-            } else {
-                "unknown".to_string()
-            };
-
-            if let Some(secs) = extract_seconds(line) {
-                return Some((phase, secs));
+    // Pattern 2: "Total cpu/elapsed time for ... cpu/real"
+    if let Some(pos) = line.find("Total cpu/elapsed time for ") {
+        let after = &line[pos + "Total cpu/elapsed time for ".len()..];
+        let parts: Vec<&str> = after.split_whitespace().collect();
+        for part in parts.iter().rev() {
+            if part.contains('/') {
+                if let Some(secs) = extract_real_time(part) {
+                    let phase = phase_name.unwrap_or_else(|| "Complete Factorization".to_string());
+                    return Some((phase, secs));
+                }
             }
+        }
+    }
+
+    // Pattern 3: "Total time: <secs>s"
+    if let Some(pos) = line.find("Total time:") {
+        let after = &line[pos + "Total time:".len()..];
+        if let Some(secs) = extract_seconds(after) {
+            return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs));
         }
     }
 
     None
+}
+
+/// Extract the phase name from a CADO-NFS log line.
+///
+/// CADO-NFS prefixes lines with `Info:<PhaseGroup>:` or just the phase
+/// group directly. This extracts the phase group name.
+///
+/// Examples:
+/// - "Info:Lattice Sieving: Total time: 3.02s" → Some("Lattice Sieving")
+/// - "Info:Linear Algebra: Total cpu/real time for bwc: ..." → Some("Linear Algebra")
+/// - "Info:Filtering - Singleton removal: Total ..." → Some("Filtering - Singleton removal")
+fn extract_cado_phase_name(line: &str) -> Option<String> {
+    // Strip "Info:" prefix if present
+    let rest = line.strip_prefix("Info:").unwrap_or(line);
+
+    // Find where "Total" appears — phase name is everything before it
+    let total_pos = rest.find("Total ")?;
+    if total_pos == 0 {
+        return None;
+    }
+
+    // Phase name is the text before "Total", trimmed of trailing ": "
+    let phase = rest[..total_pos].trim().trim_end_matches(':').trim();
+    if phase.is_empty() {
+        return None;
+    }
+
+    Some(phase.to_string())
 }
 
 /// Extract real/wall-clock time from a timing string.
@@ -882,7 +927,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_phase_timing() {
+    fn test_parse_phase_timing_bare() {
+        // Old format: bare "Total cpu/real time for ..." without Info: prefix
         let line = "Total cpu/real time for polyselect: 12.34/5.67";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
@@ -892,13 +938,75 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_phase_timing_sieve() {
+    fn test_parse_phase_timing_sieve_bare() {
         let line = "Total cpu/real time for sieve: 100.5/25.3";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
         let (phase, secs) = result.unwrap();
         assert_eq!(phase, "sieve");
         assert!((secs - 25.3).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_phase_timing_real_linalg() {
+        // Real CADO-NFS format with Info: prefix
+        let line = "Info:Linear Algebra: Total cpu/real time for bwc: 0.47/1.22";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert_eq!(phase, "Linear Algebra");
+        assert!((secs - 1.22).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_phase_timing_real_sqrt() {
+        let line = "Info:Square Root: Total cpu/real time for sqrt: 0.11/0.102183";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert_eq!(phase, "Square Root");
+        assert!((secs - 0.102).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_phase_timing_real_sieving_total_time() {
+        // "Total time:" format (no cpu/real)
+        let line = "Info:Lattice Sieving: Total time: 3.02s";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert_eq!(phase, "Lattice Sieving");
+        assert!((secs - 3.02).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_phase_timing_real_polyselect() {
+        let line = "Info:Polynomial Selection (root optimized): Total time: 1.9";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert_eq!(phase, "Polynomial Selection (root optimized)");
+        assert!((secs - 1.9).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_phase_timing_real_filtering() {
+        let line = "Info:Filtering - Singleton removal: Total cpu/real time for purge: 0.29/0.157198";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert_eq!(phase, "Filtering - Singleton removal");
+        assert!((secs - 0.157).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_phase_timing_real_complete() {
+        let line = "Info:Complete Factorization / Discrete logarithm: Total cpu/elapsed time for entire Complete Factorization 9.21/12.4287";
+        let result = parse_phase_timing(line);
+        assert!(result.is_some());
+        let (phase, secs) = result.unwrap();
+        assert!(phase.contains("Complete Factorization"));
+        assert!((secs - 12.43).abs() < 0.01);
     }
 
     #[test]
@@ -920,13 +1028,13 @@ mod tests {
     fn test_parse_cado_output_success() {
         let log = r#"
 Info: Starting CADO-NFS
-Total cpu/real time for polyselect: 1.2/0.5
-Total cpu/real time for sieve: 45.6/12.3
+Info:Polynomial Selection (root optimized): Total time: 0.5
+Info:Lattice Sieving: Total time: 12.3s
 found 50000 relations
 unique relations: 42000
 matrix is 3000 x 3200
-Total cpu/real time for linalg: 5.4/2.1
-Total cpu/real time for sqrt: 0.8/0.3
+Info:Linear Algebra: Total cpu/real time for bwc: 5.4/2.1
+Info:Square Root: Total cpu/real time for sqrt: 0.8/0.3
 110503 = 233 * 474
 "#;
         let result = parse_cado_output(log);
@@ -935,10 +1043,10 @@ Total cpu/real time for sqrt: 0.8/0.3
         assert_eq!(result.relations_found, Some(50000));
         assert_eq!(result.unique_relations, Some(42000));
         assert_eq!(result.matrix_size, Some((3000, 3200)));
-        assert!(result.phase_times.contains_key("polyselect"));
-        assert!(result.phase_times.contains_key("sieve"));
-        assert!(result.phase_times.contains_key("linalg"));
-        assert!(result.phase_times.contains_key("sqrt"));
+        assert!(result.phase_times.contains_key("Polynomial Selection (root optimized)"));
+        assert!(result.phase_times.contains_key("Lattice Sieving"));
+        assert!(result.phase_times.contains_key("Linear Algebra"));
+        assert!(result.phase_times.contains_key("Square Root"));
     }
 
     #[test]

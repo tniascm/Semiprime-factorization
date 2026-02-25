@@ -7,6 +7,7 @@
 //! - Percentile reporting (p50, p75, p90, p95)
 //! - Cross-size transfer testing
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use rand::Rng;
@@ -15,6 +16,67 @@ use serde::{Deserialize, Serialize};
 use crate::benchmark::generate_test_suite;
 use crate::cado::CadoInstallation;
 use crate::params::CadoParams;
+
+/// Per-phase timing breakdown from a single CADO-NFS run (seconds).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PhaseBreakdown {
+    /// Polynomial selection time.
+    pub polyselect: Option<f64>,
+    /// Sieving (lattice sieving / relation collection) time.
+    pub sieve: Option<f64>,
+    /// Filtering time (dup removal, singleton, merge).
+    pub filter: Option<f64>,
+    /// Linear algebra time (block Wiedemann / Lanczos).
+    pub linalg: Option<f64>,
+    /// Square root time.
+    pub sqrt: Option<f64>,
+    /// Total reported by CADO-NFS (may differ from wall-clock).
+    pub total_reported: Option<f64>,
+}
+
+impl PhaseBreakdown {
+    /// Extract phase breakdown from CADO-NFS result's phase_times map.
+    pub fn from_phase_times(phase_times: &HashMap<String, Duration>) -> Self {
+        let mut pb = PhaseBreakdown::default();
+        for (phase, dur) in phase_times {
+            let secs = dur.as_secs_f64();
+            let key = phase.to_lowercase();
+            if key.contains("polyselect") || key.contains("polynomial selection") {
+                pb.polyselect = Some(pb.polyselect.unwrap_or(0.0) + secs);
+            } else if key.contains("sieve") || key.contains("lattice sieving") {
+                pb.sieve = Some(pb.sieve.unwrap_or(0.0) + secs);
+            } else if key.contains("filter") || key.contains("purge") || key.contains("dup")
+                || key.contains("merge") || key.contains("singleton")
+            {
+                pb.filter = Some(pb.filter.unwrap_or(0.0) + secs);
+            } else if key.contains("linalg") || key.contains("linear algebra") || key.contains("bwc") {
+                pb.linalg = Some(pb.linalg.unwrap_or(0.0) + secs);
+            } else if key.contains("sqrt") || key.contains("square root") {
+                pb.sqrt = Some(pb.sqrt.unwrap_or(0.0) + secs);
+            } else if key.contains("complete factorization") || key == "total_reported" {
+                pb.total_reported = Some(secs);
+            }
+        }
+        pb
+    }
+}
+
+/// Comparison of phase times between default and evolved across all trials.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhaseComparison {
+    /// Phase name.
+    pub phase: String,
+    /// Mean time for default config (seconds).
+    pub default_mean: f64,
+    /// Mean time for evolved config (seconds).
+    pub evolved_mean: f64,
+    /// Speedup ratio (default/evolved).
+    pub speedup: f64,
+    /// Absolute time saved (default - evolved).
+    pub time_saved: f64,
+    /// Fraction of total default time this phase represents.
+    pub fraction_of_total: f64,
+}
 
 /// Result of a single paired trial: same composite, default vs evolved.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +91,12 @@ pub struct PairedTrial {
     pub evolved_time: Option<f64>,
     /// Per-trial speedup (default/evolved), None if either failed.
     pub speedup: Option<f64>,
+    /// Per-phase timing for default config.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_phases: Option<PhaseBreakdown>,
+    /// Per-phase timing for evolved config.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evolved_phases: Option<PhaseBreakdown>,
 }
 
 /// Percentile statistics for a set of times.
@@ -268,6 +336,9 @@ pub struct ValidationResult {
     pub evolved_success_rate: f64,
     /// Total wall-clock time for this validation.
     pub total_time_secs: f64,
+    /// Per-phase timing comparison (empty if phase data unavailable).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub phase_comparison: Vec<PhaseComparison>,
 }
 
 /// Run a rigorous paired A/B validation.
@@ -304,29 +375,31 @@ pub fn run_validation(
         print!("    #{:>2}/{}: ", i + 1, num_composites);
 
         // Run default
-        let default_time = match install.run_default(&test.n, timeout) {
+        let (default_time, default_phases) = match install.run_default(&test.n, timeout) {
             Ok(result) if result.success => {
                 let t = result.total_time.as_secs_f64();
                 default_successes += 1;
                 default_times.push(t);
+                let phases = PhaseBreakdown::from_phase_times(&result.phase_times);
                 print!("default={:.1}s ", t);
-                Some(t)
+                (Some(t), Some(phases))
             }
-            Ok(_) => { print!("default=FAIL "); None }
-            Err(e) => { print!("default=ERR({}) ", e); None }
+            Ok(_) => { print!("default=FAIL "); (None, None) }
+            Err(e) => { print!("default=ERR({}) ", e); (None, None) }
         };
 
         // Run evolved
-        let evolved_time = match install.run_with_kill_timeout(&test.n, evolved_params, timeout) {
+        let (evolved_time, evolved_phases) = match install.run_with_kill_timeout(&test.n, evolved_params, timeout) {
             Ok(result) if result.success => {
                 let t = result.total_time.as_secs_f64();
                 evolved_successes += 1;
                 evolved_times.push(t);
+                let phases = PhaseBreakdown::from_phase_times(&result.phase_times);
                 print!("evolved={:.1}s ", t);
-                Some(t)
+                (Some(t), Some(phases))
             }
-            Ok(_) => { print!("evolved=FAIL "); None }
-            Err(e) => { print!("evolved=ERR({}) ", e); None }
+            Ok(_) => { print!("evolved=FAIL "); (None, None) }
+            Err(e) => { print!("evolved=ERR({}) ", e); (None, None) }
         };
 
         let speedup = match (default_time, evolved_time) {
@@ -346,6 +419,8 @@ pub fn run_validation(
             default_time,
             evolved_time,
             speedup,
+            default_phases,
+            evolved_phases,
         });
     }
 
@@ -363,6 +438,9 @@ pub fn run_validation(
     } else {
         speedups.iter().sum::<f64>() / speedups.len() as f64
     };
+
+    // Compute per-phase comparison
+    let phase_comparison = compute_phase_comparison(&trials, default_stats.mean);
 
     // Print summary
     println!();
@@ -387,6 +465,21 @@ pub fn run_validation(
         if t_test.significant_at_05 { "*** SIGNIFICANT ***" } else { "(not significant)" });
     println!("  95% CI for time difference: [{:.2}s, {:.2}s]",
         t_test.ci_95_low, t_test.ci_95_high);
+
+    // Print per-phase breakdown if available
+    if !phase_comparison.is_empty() {
+        println!();
+        println!("  --- Per-Stage Breakdown ---");
+        println!("  {:>12} | {:>8} | {:>8} | {:>7} | {:>8} | {:>6}",
+            "Phase", "Default", "Evolved", "Speedup", "Saved", "% Tot");
+        println!("  {}", "-".repeat(65));
+        for pc in &phase_comparison {
+            println!("  {:>12} | {:>7.2}s | {:>7.2}s | {:>6.2}x | {:>7.2}s | {:>5.1}%",
+                pc.phase, pc.default_mean, pc.evolved_mean,
+                pc.speedup, pc.time_saved, pc.fraction_of_total * 100.0);
+        }
+    }
+
     println!("  Total validation time: {:.1}s", total_time);
 
     ValidationResult {
@@ -401,7 +494,74 @@ pub fn run_validation(
         default_success_rate: default_successes as f64 / num_composites as f64,
         evolved_success_rate: evolved_successes as f64 / num_composites as f64,
         total_time_secs: total_time,
+        phase_comparison,
     }
+}
+
+/// Compute per-phase timing comparison from paired trials.
+///
+/// Aggregates phase times across all successful paired trials and computes
+/// mean times, speedups, and fraction of total for each NFS stage.
+fn compute_phase_comparison(trials: &[PairedTrial], default_total_mean: f64) -> Vec<PhaseComparison> {
+    // Collect per-phase times from trials that have both default and evolved phases
+    let phase_names = ["polyselect", "sieve", "filter", "linalg", "sqrt"];
+
+    let mut comparisons = Vec::new();
+
+    for &phase_name in &phase_names {
+        let mut default_vals = Vec::new();
+        let mut evolved_vals = Vec::new();
+
+        for trial in trials {
+            if let (Some(dp), Some(ep)) = (&trial.default_phases, &trial.evolved_phases) {
+                let d_val = match phase_name {
+                    "polyselect" => dp.polyselect,
+                    "sieve" => dp.sieve,
+                    "filter" => dp.filter,
+                    "linalg" => dp.linalg,
+                    "sqrt" => dp.sqrt,
+                    _ => None,
+                };
+                let e_val = match phase_name {
+                    "polyselect" => ep.polyselect,
+                    "sieve" => ep.sieve,
+                    "filter" => ep.filter,
+                    "linalg" => ep.linalg,
+                    "sqrt" => ep.sqrt,
+                    _ => None,
+                };
+                if let (Some(d), Some(e)) = (d_val, e_val) {
+                    default_vals.push(d);
+                    evolved_vals.push(e);
+                }
+            }
+        }
+
+        if default_vals.is_empty() {
+            continue;
+        }
+
+        let d_mean = default_vals.iter().sum::<f64>() / default_vals.len() as f64;
+        let e_mean = evolved_vals.iter().sum::<f64>() / evolved_vals.len() as f64;
+        let speedup = if e_mean > 1e-6 { d_mean / e_mean } else { 0.0 };
+        let time_saved = d_mean - e_mean;
+        let fraction_of_total = if default_total_mean > 1e-6 {
+            d_mean / default_total_mean
+        } else {
+            0.0
+        };
+
+        comparisons.push(PhaseComparison {
+            phase: phase_name.to_string(),
+            default_mean: d_mean,
+            evolved_mean: e_mean,
+            speedup,
+            time_saved,
+            fraction_of_total,
+        });
+    }
+
+    comparisons
 }
 
 /// Cross-size transfer test result.
