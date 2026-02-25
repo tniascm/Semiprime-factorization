@@ -36,8 +36,15 @@ use eisenstein_hunt::{
     Channel, Semiprime,
 };
 use algebra::im_char;
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::Serialize;
+use std::collections::HashMap;
+
+// E24 NFS imports
+use classical_nfs::polynomial::{select_polynomial, NfsPolynomial};
+use classical_nfs::sieve::{eval_homogeneous_abs, gcd_u64, sieve_primes};
+use num_bigint::BigUint;
+use num_traits::ToPrimitive;
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -4743,6 +4750,117 @@ pub fn run_local_smoothness(
     }
 
     LocalSmoothnessResult { blocks }
+}
+
+// ===========================================================================
+// E24: NFS 2D Lattice Locality — Cofactor Autocorrelation in Algebraic Norm
+//      Neighborhoods
+// ===========================================================================
+//
+// Extends E23 from 1D QS polynomials to 2D NFS lattice norms.
+// Tests whether cofactors of algebraic norms F(a,b) have 2D spatial
+// autocorrelation beyond what the lattice sieve already captures.
+//
+// Phase 1: 2D binary smoothness autocorrelation across displacement vectors
+// Phase 2: 2D continuous partial-smooth-fraction Pearson autocorrelation
+// Phase 3: 2D cofactor decomposition — does the sieve capture all structure?
+// Phase 4: 2D matched-size random control
+// Phase 5: Joint rational+algebraic cofactor correlation (novel dual-norm test)
+
+/// 2D displacement vector for lattice autocorrelation.
+#[derive(Debug, Clone, Serialize)]
+pub struct Displacement2D {
+    pub da: i64,
+    pub db: i64,
+    pub label: String,
+}
+
+/// One displacement entry for 2D binary smoothness autocorrelation (Phase 1).
+#[derive(Debug, Clone, Serialize)]
+pub struct Autocorr2DLag {
+    pub da: i64,
+    pub db: i64,
+    pub label: String,
+    /// Number of pairs where both base and displaced norms are B-smooth.
+    pub n_both_smooth: usize,
+    /// Number of pairs where the base norm is B-smooth.
+    pub n_base_smooth: usize,
+    /// C(Δa,Δb) = P(neighbor smooth | base smooth) / P(smooth overall).
+    pub c_delta: f64,
+}
+
+/// Phase 1 result: 2D binary smoothness autocorrelation.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsAutocorr2DResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub overall_smooth_rate: f64,
+    pub lags: Vec<Autocorr2DLag>,
+}
+
+/// Phase 2 result: 2D partial-fraction Pearson autocorrelation.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsPartialFrac2DResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub mean_partial_frac: f64,
+    /// (label, pearson_r) pairs per displacement.
+    pub displacement_correlations: Vec<(String, f64)>,
+}
+
+/// Phase 3 result: 2D cofactor decomposition.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsCofactor2DResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// (label, partial_frac_corr, cofactor_corr, residual_ratio) per displacement.
+    pub displacement_comparisons: Vec<(String, f64, f64, f64)>,
+    pub n_sieve_primes: usize,
+}
+
+/// Phase 4 result: 2D random control.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsRandom2DResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub overall_smooth_rate: f64,
+    pub lags: Vec<Autocorr2DLag>,
+}
+
+/// Phase 5 result: joint rational+algebraic cofactor correlation (novel).
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsDualNormResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// Pearson correlation between cofactor_log(algebraic) and cofactor_log(rational).
+    pub rational_alg_cofactor_corr: f64,
+    pub rational_mean_partial: f64,
+    pub algebraic_mean_partial: f64,
+}
+
+/// Combined result for one (n_bits, smooth_bound) block across all 5 phases.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsBlockResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub seed: u64,
+    pub n_grid: usize,
+    pub phase1: NfsAutocorr2DResult,
+    pub phase2: NfsPartialFrac2DResult,
+    pub phase3: NfsCofactor2DResult,
+    pub phase4: NfsRandom2DResult,
+    pub phase5: NfsDualNormResult,
+}
+
+/// Top-level E24 result aggregating all blocks.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsLatticeResult {
+    pub blocks: Vec<NfsBlockResult>,
 }
 
 // ---------------------------------------------------------------------------
