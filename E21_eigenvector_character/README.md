@@ -1,6 +1,6 @@
 # E21: Dominant Eigenvector Multiplicative Character Structure
 
-**Status:** Complete (E21 barrier confirmed; E21b smoothness bias real but NOT N-extractable; E22 sieve enrichment yields zero speedup; E23 confirms sieve captures all local structure).
+**Status:** Complete (E21 barrier confirmed; E21b smoothness bias real but NOT N-extractable; E22 sieve enrichment yields zero speedup; E23 confirms QS sieve captures all local structure; E24 finds NFS norms have significant beyond-sieve 2D cofactor structure).
 
 ## Motivation
 
@@ -1148,6 +1148,150 @@ Q(x) evaluations.  Combined with E21-E22 (character-based approaches yield no
 speedup), this closes the local polynomial structure corridor: the standard QS
 sieve is already optimal for this polynomial family.
 
+## E24: NFS 2D Lattice Locality — Cofactor Autocorrelation in Algebraic Norm Neighborhoods
+
+### Motivation
+
+E23 proved the QS sieve captures ALL local smoothness structure (cofactor corr < 0.02
+at 40+ bits).  E24 extends this to the qualitatively different NFS setting: 2D lattice
+sieving over (a,b) pairs with algebraic norms F(a,b) = |sum c_i * a^i * b^(d-i)|.
+
+NFS norms live in 2D (a,b)-space with richer structure than QS's 1D polynomial.
+Displacement vectors (da, db) probe different lattice directions.  Additionally, each
+(a,b) pair has TWO norms (algebraic + rational) whose cofactors might correlate — a
+novel "dual-norm" test impossible in QS.
+
+### Method
+
+Five phases, each applied to ~30,700 coprime (a,b) pairs per block across 4 bit sizes
+(40, 48, 56, 64) and 3 smoothness bounds (B = 100, 500, 1000).  Sieve area: a in
+[-500, 500], b in [1, 50].  Eight displacement vectors: (1,0), (0,1), (1,1), (1,-1),
+(2,0), (0,2), (2,1), (1,2).
+
+1. **2D Binary smoothness autocorrelation**: C(da,db) = P(neighbor smooth | base smooth) / P(smooth).
+2. **2D Partial-fraction Pearson autocorrelation**: Continuous metric with higher power.
+3. **2D Cofactor decomposition (KEY)**: Separates sieve-explained from beyond-sieve structure.
+4. **2D Random control**: Matched-magnitude random integers at same grid positions.
+5. **Dual-norm cofactor correlation (NOVEL)**: Cross-correlates algebraic and rational cofactors.
+
+### Results
+
+#### Table 26: 2D Binary smoothness autocorrelation C(da,db) — selected displacements
+
+| bits |   B  | smooth% |  C(1,0) |  C(0,1) |  C(1,1) | C(1,-1) |
+|------|------|---------|---------|---------|---------|---------|
+|   40 |  500 |  1.50%  |   1.89  |   2.04  |   2.33  |   1.46  |
+|   40 | 1000 |  1.24%  |   1.71  |   2.57  |   1.92  |   2.57  |
+|   48 | 1000 |  0.94%  |   5.88  |   1.84  |   4.04  |   1.84  |
+|   56 |  500 |  0.47%  |   5.92  |  11.84  |   2.96  |   4.44  |
+|   64 | 1000 |  0.47%  |   5.92  |   2.96  |   5.92  |   1.48  |
+
+Binary autocorrelation is consistently >> 1.0 across all configurations, confirming
+strong local clustering of smooth NFS norms.  At smaller B (100) or larger bit sizes,
+too few smooth values exist for meaningful C values (many C = 0).
+
+#### Table 27: 2D Partial-fraction Pearson autocorrelation rho(da,db)
+
+| bits |   B  | mean_pf | rho(1,0) | rho(0,1) | rho(1,1) | rho(1,-1) |
+|------|------|---------|----------|----------|----------|-----------|
+|   40 |  500 |  0.212  |  -0.000  |  -0.005  |   0.023  |   -0.012  |
+|   48 | 1000 |  0.208  |  -0.012  |  -0.007  |   0.006  |   -0.010  |
+|   56 | 1000 |  0.205  |  -0.065  |  -0.041  |   0.035  |   -0.011  |
+|   64 |  500 |  0.200  |  -0.016  |   0.018  |  -0.004  |    0.006  |
+|   64 | 1000 |  0.194  |  -0.017  |   0.068  |  -0.006  |   -0.001  |
+
+Partial-fraction autocorrelation is near zero (|rho| < 0.07), consistent with the sieve
+already capturing divisibility-based local structure.
+
+#### Table 28: 2D Cofactor decomposition — the critical result
+
+| bits |   B  | cf(1,0) | cf(0,1) | cf(1,1) | cf(1,-1) | cf(2,0) | cf(0,2) |
+|------|------|---------|---------|---------|----------|---------|---------|
+|   40 |  100 |  0.283  |  0.312  |  0.283  |   0.513  |  0.286  |  0.307  |
+|   40 |  500 |  0.205  |  0.202  |  0.221  |   0.196  |  0.207  |  0.205  |
+|   40 | 1000 |  0.204  |  0.220  |  0.234  |   0.222  |  0.222  |  0.213  |
+|   48 |  100 |  0.431  |  0.448  |  0.415  |   0.415  |  0.428  |  0.435  |
+|   48 |  500 |  0.249  |  0.268  |  0.230  |   0.259  |  0.240  |  0.269  |
+|   48 | 1000 |  0.169  |  0.176  |  0.184  |   0.178  |  0.168  |  0.163  |
+|   56 |  500 |  0.215  |  0.223  |  0.241  |   0.243  |  0.258  |  0.246  |
+|   56 | 1000 |  0.162  |  0.167  |  0.253  |   0.216  |  0.256  |  0.241  |
+|   64 |  500 |  0.232  |  0.244  |  0.231  |   0.235  |  0.232  |  0.225  |
+|   64 | 1000 |  0.212  |  0.273  |  0.206  |   0.210  |  0.218  |  0.247  |
+
+**This is the key finding.**  Unlike E23 (where cofactor corr was < 0.02 at 40+ bits),
+NFS algebraic norm cofactors show **persistent, significant spatial autocorrelation**
+(|cf| typically 0.15–0.50) across ALL bit sizes and ALL displacement directions.
+
+The residual ratios (|cf|/|pf|) are enormous (often > 10x), meaning the cofactor
+carries FAR more spatial structure than the partial-fraction (sieve-explained) component.
+
+#### Table 29: 2D Random control
+
+| bits |   B  | smooth% | C(1,0) | C(0,1) | C(1,1) |
+|------|------|---------|--------|--------|--------|
+|   40 | 1000 |  1.12%  |  1.305 |  0.261 |  0.522 |
+|   48 | 1000 |  0.83%  |  0.937 |  0.000 |  0.468 |
+|   56 | 1000 |  0.26%  |  4.679 |  0.000 |  0.000 |
+|   64 | 1000 |  0.21%  |  0.000 |  0.000 |  0.000 |
+
+Random control values are mostly near 0 or 1.0 (limited by very low smooth rates),
+confirming no spatial structure in random integers at matched magnitudes.
+
+#### Table 30: Dual-norm cofactor correlation (novel)
+
+| bits |   B  |  grid | alg_mean_pf | rat_mean_pf | dual_corr |
+|------|------|-------|-------------|-------------|-----------|
+|   40 |  100 | 30700 |   0.160     |   0.369     |   0.113   |
+|   40 |  500 | 30700 |   0.212     |   0.531     |   0.048   |
+|   48 |  500 | 30700 |   0.161     |   0.465     |   0.052   |
+|   48 | 1000 | 30700 |   0.208     |   0.525     |   0.006   |
+|   56 |  500 | 30700 |   0.178     |   0.416     |   0.050   |
+|   56 | 1000 | 30700 |   0.205     |   0.466     |   0.045   |
+|   64 |  500 | 30700 |   0.200     |   0.373     |   0.099   |
+|   64 | 1000 | 30700 |   0.194     |   0.421     |   0.063   |
+
+Dual-norm cofactor correlations are weak but nonzero (|rho| typically 0.05–0.11), suggesting
+a small coupling between algebraic and rational cofactors at NFS-relevant sizes.
+
+### Interpretation
+
+The E24 results reveal a **fundamental qualitative difference** between QS and NFS:
+
+1. **NFS cofactors have persistent 2D spatial structure**: Unlike QS where cofactor
+   autocorrelation vanishes at 40+ bits, NFS algebraic norm cofactors maintain
+   significant spatial autocorrelation (0.15–0.50) across all tested bit sizes (40–64).
+   This structure is isotropic — approximately equal in all displacement directions.
+
+2. **The sieve does NOT capture this structure**: The partial-fraction (sieve-explained)
+   correlations are near zero, while cofactor correlations remain large.  The residual
+   ratios (typically > 10x) confirm the sieve misses essentially all cofactor structure.
+
+3. **Root cause: polynomial norm continuity**: NFS algebraic norms F(a,b) are
+   polynomial evaluations that change smoothly with (a,b).  For nearby points, the
+   large prime factors of F(a,b) are correlated — not because of shared small-prime
+   divisibility (which the sieve already captures), but because the norm values
+   themselves are close.  This is a fundamentally different mechanism from QS, where
+   Q(x+1) - Q(x) ~ 2*sqrt(N) grows fast enough to destroy cofactor correlation.
+
+4. **Dual-norm weak coupling**: Algebraic and rational cofactors show weak correlation
+   (0.05–0.11), suggesting the two norms are nearly but not perfectly independent.
+
+5. **Exploitability caveat**: While cofactor spatial structure is real, it may not
+   directly translate to a sieve speedup.  The sieve needs values where cofactors are
+   SMALL (ideally 1), and correlation in cofactor SIZE doesn't guarantee that smoothness
+   events cluster more than the binary autocorrelation (Table 26) already shows.
+   However, the large residual ratios suggest there IS information beyond the sieve
+   that a more sophisticated algorithm could potentially exploit.
+
+**Conclusion 16 (E24):** NFS algebraic norms exhibit significant beyond-sieve 2D
+cofactor autocorrelation (0.15–0.50) that persists across bit sizes 40–64 and all
+lattice displacement directions.  This fundamentally contrasts with QS (E23), where
+cofactor correlation vanishes at cryptographic scales.  The polynomial continuity of
+NFS norms creates genuine beyond-sieve local structure that the standard lattice sieve
+does not capture.  Whether this structure is exploitable for a sieve speedup remains
+an open question — it represents the most promising direction for potential NFS
+improvement identified in this investigation.
+
 ## Scope and limitations
 
 The negative results (barrier closure) are established for a specific hypothesis class.
@@ -1170,11 +1314,13 @@ The following directions remain untested and are explicitly outside the scope of
    density), higher-dimensional MI (3+ channels jointly), or conditional MI
    conditioned on auxiliary variables are not tested.
 
-4. **NFS-structured norm distributions.**  All tests use generic balanced
-   semiprimes N = pq.  The NFS setting involves polynomial norms
-   |F(m)| = |f(m)| where m ≈ N^{1/d}, introducing algebraic structure
-   (lattice locality, polynomial evaluation) absent from the product-test
-   framework.  This is a qualitatively different hypothesis class.
+4. **NFS-structured norm distributions.**  E24 partially addresses this direction
+   by testing 2D lattice locality of NFS algebraic norms, finding significant
+   beyond-sieve cofactor autocorrelation (0.15–0.50).  However, translating this
+   structural finding into an actual sieve speedup remains untested.  Specific
+   open questions: (a) adaptive sieve strategies that exploit cofactor continuity,
+   (b) multi-large-prime variations guided by spatial clustering, (c) lattice
+   sieving algorithms that incorporate cofactor predictions from neighbors.
 
 5. **Representation-level features beyond character basis.**  The Eisenstein
    channels use 1-dimensional Galois representations (Dirichlet characters).
@@ -1197,4 +1343,5 @@ The following directions remain untested and are explicitly outside the scope of
 - `rust/eigenvector-character/data/E22_sieve_enrichment.json` — QS sieve enrichment results (16 blocks, 4 phases)
 - `rust/eigenvector-character/data/E22_sieve_enrichment_highpower.json` — high-power QS sieve results (8 blocks, B=100/500)
 - `rust/eigenvector-character/data/E23_local_smoothness.json` — local smoothness autocorrelation results (15 blocks, 4 phases)
-- `rust/eigenvector-character/` — Rust crate implementing E21, E21b, E21c, E22, and E23
+- `rust/data/E24_nfs_lattice.json` — NFS 2D lattice locality results (12 blocks, 5 phases)
+- `rust/eigenvector-character/` — Rust crate implementing E21, E21b, E21c, E22, E23, and E24
