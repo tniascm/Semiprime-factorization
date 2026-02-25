@@ -21,11 +21,13 @@ use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
     run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
     run_cross_channel_tests, run_sieve_enrichment, run_local_smoothness, run_nfs_lattice,
+    run_nfs_validation,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
     PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
     PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
     CrossChannelResult, SieveEnrichmentResult, LocalSmoothnessResult, NfsLatticeResult,
+    NfsValidationResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -47,8 +49,9 @@ fn main() {
         "sieve"     => run_sieve_mode(&opts),
         "local"     => run_local_mode(&opts),
         "nfs2d"     => run_nfs2d_mode(&opts),
+        "nfs2d-validate" => run_nfs2d_validate_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local|nfs2d");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local|nfs2d|nfs2d-validate");
             std::process::exit(1);
         }
     }
@@ -1889,6 +1892,201 @@ fn print_nfs2d_summary(result: &NfsLatticeResult) {
     } else {
         println!("    Max |dual_corr| = {max_dual_norm_corr:.6} >= 0.05");
         println!("    → Dual-norm cofactor correlation detected! Investigate further.");
+    }
+    println!();
+}
+
+// ---------------------------------------------------------------------------
+// E24b: NFS 2D validation mode
+// ---------------------------------------------------------------------------
+
+fn run_nfs2d_validate_mode(opts: &HashMap<String, String>) {
+    let bit_sizes = parse_bit_sizes(opts, &[40, 48, 56, 64]);
+    let seed = parse_u64(opts, "seed", 0xE24B_5EED_0001);
+    let sieve_area = parse_usize(opts, "area", 500) as i64;
+    let max_b = parse_usize(opts, "maxb", 50) as i64;
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![100, 500, 1000]);
+
+    println!("E24b NFS 2D VALIDATION: artifact controls for cofactor autocorrelation");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Bounds B     : {:?}", bounds);
+    println!("Sieve area   : {}", sieve_area);
+    println!("Max b        : {max_b}");
+    println!("Seed         : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let result = run_nfs_validation(&bit_sizes, &bounds, sieve_area, max_b, seed);
+
+    println!();
+    print_nfs2d_validation_summary(&result);
+    write_json(&result, "data/E24b_nfs_validation.json");
+}
+
+fn print_nfs2d_validation_summary(result: &NfsValidationResult) {
+    println!("┌───────────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E24b VALIDATION: Artifact controls for NFS 2D cofactor autocorrelation         │");
+    println!("└───────────────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Control A: Norm-residualized ───
+    println!("CONTROL A: NORM-RESIDUALIZED COFACTOR AUTOCORRELATION");
+    println!("  Regresses cofactor_log against log2(norm); uses residuals.");
+    println!("  If signal is just norm magnitude gradient, residualized → 0.");
+    println!();
+    println!(
+        "  {:>4} {:>5} {:>6}  {:>7} {:>7}  {:>7} {:>7}  {:>7} {:>7}  {:>7} {:>7}",
+        "bits", "B", "R²", "raw(1,0)", "res", "raw(0,1)", "res", "raw(1,1)", "res", "raw(1,-1)", "res"
+    );
+    println!("  {}", "─".repeat(100));
+
+    for block in &result.blocks {
+        let ca = &block.control_a;
+        print!("  {:>4} {:>5} {:>6.4}", ca.n_bits, ca.smooth_bound, ca.norm_r_squared);
+        for &(ref _label, raw, resid) in ca.displacement_comparisons.iter().take(4) {
+            print!("  {:>7.4} {:>7.4}", raw, resid);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Control B: Per-side ───
+    println!("CONTROL B: PER-SIDE COFACTOR AUTOCORRELATION (raw + residualized)");
+    println!("  alg = algebraic norm, rat = rational norm, _r = residualized.");
+    println!();
+    println!(
+        "  {:>4} {:>5}  {:>7} {:>7} {:>7} {:>7}  {:>7} {:>7} {:>7} {:>7}",
+        "bits", "B", "alg(1,0)", "alg_r", "rat(1,0)", "rat_r", "alg(0,1)", "alg_r", "rat(0,1)", "rat_r"
+    );
+    println!("  {}", "─".repeat(88));
+
+    for block in &result.blocks {
+        let cb = &block.control_b;
+        if cb.displacement_comparisons.len() >= 2 {
+            let d0 = &cb.displacement_comparisons[0]; // (1,0)
+            let d1 = &cb.displacement_comparisons[1]; // (0,1)
+            println!(
+                "  {:>4} {:>5}  {:>7.4} {:>7.4} {:>7.4} {:>7.4}  {:>7.4} {:>7.4} {:>7.4} {:>7.4}",
+                cb.n_bits, cb.smooth_bound,
+                d0.1, d0.3, d0.2, d0.4,
+                d1.1, d1.3, d1.2, d1.4,
+            );
+        }
+    }
+    println!();
+
+    // ─── Control C: Magnitude-bin shuffle ───
+    println!("CONTROL C: MAGNITUDE-BIN SHUFFLE NULL (geometry-preserving)");
+    println!("  Shuffles cofactor_logs within bins of similar norm magnitude.");
+    println!("  If original >> shuffled mean, signal is genuine local structure.");
+    println!();
+    println!(
+        "  {:>4} {:>5}  {:>7} {:>7} {:>7}  {:>7} {:>7} {:>7}  {:>7} {:>7} {:>7}",
+        "bits", "B", "orig(1,0)", "shuf_μ", "shuf_σ", "orig(0,1)", "shuf_μ", "shuf_σ", "orig(1,1)", "shuf_μ", "shuf_σ"
+    );
+    println!("  {}", "─".repeat(100));
+
+    for block in &result.blocks {
+        let cc = &block.control_c;
+        print!("  {:>4} {:>5}", cc.n_bits, cc.smooth_bound);
+        for &(ref _label, orig, shuf_m, shuf_s) in cc.displacement_comparisons.iter().take(3) {
+            print!("  {:>7.4} {:>7.4} {:>7.4}", orig, shuf_m, shuf_s);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Control D: Displacement decay ───
+    println!("CONTROL D: DISPLACEMENT DECAY (correlation vs |δ|)");
+    println!("  How does cofactor autocorrelation (raw + residualized) decay with distance?");
+    println!();
+
+    // Show decay for first block as representative
+    if let Some(block) = result.blocks.first() {
+        println!("  Representative block: bits={}, B={}", block.control_d.n_bits, block.control_d.smooth_bound);
+        println!("  {:>6} {:>7} {:>7} {:>5}", "radius", "raw_cf", "resid_cf", "n_disp");
+        println!("  {}", "─".repeat(30));
+        for &(radius, raw, resid, n) in &block.control_d.decay_by_radius {
+            println!("  {:>6.2} {:>7.4} {:>7.4} {:>5}", radius, raw, resid, n);
+        }
+        println!();
+    }
+
+    // Summary table for all blocks: radius 1 vs radius 5 vs radius 10
+    println!("  All blocks: residualized cf_corr at radius ~1.0 vs ~5.0");
+    println!("  {:>4} {:>5} {:>9} {:>9}", "bits", "B", "resid@r≈1", "resid@r≈5");
+    println!("  {}", "─".repeat(32));
+    for block in &result.blocks {
+        let cd = &block.control_d;
+        let r1 = cd.decay_by_radius.iter()
+            .find(|&&(r, _, _, _)| r >= 0.9 && r <= 1.1)
+            .map(|&(_, _, resid, _)| resid)
+            .unwrap_or(f64::NAN);
+        let r5 = cd.decay_by_radius.iter()
+            .find(|&&(r, _, _, _)| r >= 4.5 && r <= 5.5)
+            .map(|&(_, _, resid, _)| resid)
+            .unwrap_or(f64::NAN);
+        println!("  {:>4} {:>5} {:>9.4} {:>9.4}", cd.n_bits, cd.smooth_bound, r1, r5);
+    }
+    println!();
+
+    // ─── Control E: Conditional cofactor ───
+    println!("CONTROL E: CONDITIONAL COFACTOR CORRELATION (binned by sieve score)");
+    println!("  Among points with similar partial_smooth_fraction, does cf_corr persist?");
+    println!("  conditional_cf = weighted mean of within-bin cf_corr for displacement (1,0).");
+    println!();
+    println!(
+        "  {:>4} {:>5} {:>10} {:>10}",
+        "bits", "B", "uncond_cf", "cond_cf"
+    );
+    println!("  {}", "─".repeat(34));
+    for block in &result.blocks {
+        let ce = &block.control_e;
+        // Get unconditional cf_corr for (1,0) from control_a
+        let uncond = block.control_a.displacement_comparisons
+            .first()
+            .map(|&(_, raw, _)| raw)
+            .unwrap_or(0.0);
+        println!(
+            "  {:>4} {:>5} {:>10.6} {:>10.6}",
+            ce.n_bits, ce.smooth_bound, uncond, ce.conditional_cf_corr,
+        );
+    }
+    println!();
+
+    // ─── Overall validation verdict ───
+    println!("VALIDATION VERDICT:");
+
+    // Check if residualized signals collapse
+    let max_resid_corr = result.blocks.iter()
+        .flat_map(|b| b.control_a.displacement_comparisons.iter())
+        .map(|&(_, _, resid)| resid.abs())
+        .fold(0.0f64, f64::max);
+
+    let max_raw_corr = result.blocks.iter()
+        .flat_map(|b| b.control_a.displacement_comparisons.iter())
+        .map(|&(_, raw, _)| raw.abs())
+        .fold(0.0f64, f64::max);
+
+    let collapse_ratio = if max_raw_corr > 0.01 { max_resid_corr / max_raw_corr } else { 0.0 };
+
+    println!("  Max |raw_cofactor_corr| = {:.4}", max_raw_corr);
+    println!("  Max |residualized_corr| = {:.4}", max_resid_corr);
+    println!("  Collapse ratio (resid/raw) = {:.4}", collapse_ratio);
+    println!();
+
+    if collapse_ratio < 0.3 {
+        println!("  → ARTIFACT CONFIRMED: Residualization eliminates >70% of signal.");
+        println!("    The cofactor autocorrelation was primarily a norm magnitude gradient.");
+    } else if collapse_ratio < 0.6 {
+        println!("  → PARTIAL ARTIFACT: ~{:.0}% of signal survives residualization.", collapse_ratio * 100.0);
+        println!("    Mixed: some magnitude artifact, some genuine local structure.");
+    } else {
+        println!("  → SIGNAL SURVIVES: {:.0}% of signal survives norm residualization.", collapse_ratio * 100.0);
+        println!("    Genuine beyond-sieve local structure confirmed.");
     }
     println!();
 }
