@@ -137,6 +137,15 @@ impl CadoInstallation {
         ]
     }
 
+    /// Return server address argument to avoid hostname resolution issues.
+    ///
+    /// CADO-NFS resolves the machine's hostname for its certificate/SSL setup.
+    /// On macOS, .local hostnames require mDNS (Bonjour) which may not always
+    /// be available. Using `server.address=localhost` bypasses this issue.
+    fn server_address_args(&self) -> Vec<String> {
+        vec!["server.address=localhost".to_string()]
+    }
+
     /// Find the nearest available CADO-NFS parameter file for a number with
     /// the given number of decimal digits.
     ///
@@ -236,6 +245,9 @@ impl CadoInstallation {
             args.extend(self.server_client_args());
         }
 
+        // Always use localhost to avoid .local hostname resolution issues on macOS
+        args.extend(self.server_address_args());
+
         // Set working directory
         args.push(format!(
             "tasks.workdir={}",
@@ -324,6 +336,9 @@ impl CadoInstallation {
             args.extend(self.server_client_args());
         }
 
+        // Always use localhost to avoid .local hostname resolution issues on macOS
+        args.extend(self.server_address_args());
+
         args.push(format!(
             "tasks.workdir={}",
             workdir.path().to_string_lossy()
@@ -372,6 +387,9 @@ impl CadoInstallation {
         if using_explicit_params {
             args.extend(self.server_client_args());
         }
+
+        // Always use localhost to avoid .local hostname resolution issues on macOS
+        args.extend(self.server_address_args());
 
         args.push(format!(
             "tasks.workdir={}",
