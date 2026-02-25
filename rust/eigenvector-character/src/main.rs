@@ -20,12 +20,12 @@
 use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
     run_permutation_null, run_cross_n_transfer, run_multi_character_score, run_bootstrap_ci,
-    run_cross_channel_tests, run_sieve_enrichment, run_local_smoothness,
+    run_cross_channel_tests, run_sieve_enrichment, run_local_smoothness, run_nfs_lattice,
     scaling_primes, smoothness_spectrum,
     CharacterAuditResult, FullGroupControlResult, FourierScalingAnalysis,
     PrimeRestrictedResult, SmoothnessScalingAnalysis, StressTestResult,
     PermutationNullResult, CrossNTransferResult, MultiCharacterScoreResult, BootstrapCIResult,
-    CrossChannelResult, SieveEnrichmentResult, LocalSmoothnessResult,
+    CrossChannelResult, SieveEnrichmentResult, LocalSmoothnessResult, NfsLatticeResult,
 };
 use eisenstein_hunt::CHANNELS;
 use std::collections::HashMap;
@@ -46,8 +46,9 @@ fn main() {
         "crosschan" => run_crosschan_mode(&opts),
         "sieve"     => run_sieve_mode(&opts),
         "local"     => run_local_mode(&opts),
+        "nfs2d"     => run_nfs2d_mode(&opts),
         other => {
-            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local");
+            eprintln!("Unknown mode: {other}. Use --mode=audit|control|scaling|smooth|restrict|stress|crosschan|sieve|local|nfs2d");
             std::process::exit(1);
         }
     }
@@ -1665,6 +1666,231 @@ fn run_local_mode(opts: &HashMap<String, String>) {
     println!();
     print_local_summary(&result);
     write_json(&result, "data/E23_local_smoothness.json");
+}
+
+// ---------------------------------------------------------------------------
+// E24: NFS 2D lattice locality mode
+// ---------------------------------------------------------------------------
+
+fn run_nfs2d_mode(opts: &HashMap<String, String>) {
+    let bit_sizes = parse_bit_sizes(opts, &[40, 48, 56, 64]);
+    let seed = parse_u64(opts, "seed", 0xE240_5EED_0001);
+    let sieve_area = parse_usize(opts, "area", 500) as i64;
+    let max_b = parse_usize(opts, "maxb", 50) as i64;
+
+    let bounds: Vec<u64> = opts
+        .get("bounds")
+        .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_else(|| vec![100, 500, 1000]);
+
+    println!("E24 NFS 2D LATTICE LOCALITY: cofactor autocorrelation in algebraic norm neighborhoods");
+    println!("Bit sizes    : {:?}", bit_sizes);
+    println!("Bounds B     : {:?}", bounds);
+    println!("Sieve area   : {} (a in [-{}, {}])", sieve_area, sieve_area, sieve_area);
+    println!("Max b        : {max_b}");
+    println!("Seed         : 0x{seed:016x}");
+    println!("{}", "─".repeat(72));
+
+    let result = run_nfs_lattice(&bit_sizes, &bounds, sieve_area, max_b, seed);
+
+    println!();
+    print_nfs2d_summary(&result);
+    write_json(&result, "data/E24_nfs_lattice.json");
+}
+
+fn print_nfs2d_summary(result: &NfsLatticeResult) {
+    println!("┌───────────────────────────────────────────────────────────────────────────┐");
+    println!("│ E24 NFS 2D LATTICE LOCALITY: cofactor autocorrelation in norm neighbors   │");
+    println!("└───────────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // ─── Table 1: 2D binary smoothness autocorrelation ───
+    println!("TABLE 1: 2D BINARY SMOOTHNESS AUTOCORRELATION C(Δa,Δb)");
+    println!("  C > 1.0 → positive local correlation; C ≈ 1.0 → independence.");
+    println!();
+
+    // Column headers: displacements
+    print!("  {:>4} {:>5} {:>5} {:>8}", "bits", "B", "grid", "smooth%");
+    let disp_labels = ["(1,0)", "(0,1)", "(1,1)", "(1,-1)", "(2,0)", "(0,2)", "(2,1)", "(1,2)"];
+    for label in &disp_labels {
+        print!(" {:>7}", label);
+    }
+    println!();
+    println!("  {}", "─".repeat(4 + 1 + 5 + 1 + 5 + 1 + 8 + disp_labels.len() * 8));
+
+    for block in &result.blocks {
+        print!(
+            "  {:>4} {:>5} {:>5} {:>7.3}%",
+            block.n_bits,
+            block.smooth_bound,
+            block.n_grid,
+            block.phase1.overall_smooth_rate * 100.0,
+        );
+        for lag in &block.phase1.lags {
+            print!(" {:>7.3}", lag.c_delta);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Table 2: 2D partial-fraction Pearson autocorrelation ───
+    println!("TABLE 2: 2D PARTIAL-FRACTION PEARSON AUTOCORRELATION ρ(Δa,Δb)");
+    println!("  Continuous metric; higher statistical power than binary.");
+    println!();
+
+    print!("  {:>4} {:>5} {:>8}", "bits", "B", "mean_pf");
+    for label in &disp_labels {
+        print!(" {:>7}", label);
+    }
+    println!();
+    println!("  {}", "─".repeat(4 + 1 + 5 + 1 + 8 + disp_labels.len() * 8));
+
+    for block in &result.blocks {
+        print!(
+            "  {:>4} {:>5} {:>8.4}",
+            block.n_bits,
+            block.smooth_bound,
+            block.phase2.mean_partial_frac,
+        );
+        for &(ref _label, r) in &block.phase2.displacement_correlations {
+            print!(" {:>7.4}", r);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Table 3: 2D cofactor decomposition (key result) ───
+    println!("TABLE 3: 2D COFACTOR DECOMPOSITION — SIEVE vs BEYOND-SIEVE");
+    println!("  pf = partial-frac corr (sieve-explained), cf = cofactor corr (beyond-sieve)");
+    println!("  resid = |cf|/|pf| — near 0 means sieve captures all local structure.");
+    println!();
+
+    print!("  {:>4} {:>5}", "bits", "B");
+    for label in &disp_labels[..4] {
+        print!(" {:>6}pf {:>6}cf {:>6}rr", label, "", "");
+    }
+    println!();
+    println!("  {}", "─".repeat(4 + 1 + 5 + 4 * 24));
+
+    for block in &result.blocks {
+        print!("  {:>4} {:>5}", block.n_bits, block.smooth_bound);
+        for &(ref _label, pf, cf, rr) in block.phase3.displacement_comparisons.iter().take(4) {
+            print!(" {:>7.4} {:>7.4} {:>7.3}", pf, cf, rr);
+        }
+        println!();
+    }
+    println!();
+
+    // Extended cofactor table for remaining displacements
+    if result.blocks.first().map_or(false, |b| b.phase3.displacement_comparisons.len() > 4) {
+        print!("  {:>4} {:>5}", "bits", "B");
+        for label in &disp_labels[4..] {
+            print!(" {:>6}pf {:>6}cf {:>6}rr", label, "", "");
+        }
+        println!();
+        println!("  {}", "─".repeat(4 + 1 + 5 + 4 * 24));
+
+        for block in &result.blocks {
+            print!("  {:>4} {:>5}", block.n_bits, block.smooth_bound);
+            for &(ref _label, pf, cf, rr) in block.phase3.displacement_comparisons.iter().skip(4) {
+                print!(" {:>7.4} {:>7.4} {:>7.3}", pf, cf, rr);
+            }
+            println!();
+        }
+        println!();
+    }
+
+    // ─── Table 4: Random control ───
+    println!("TABLE 4: 2D RANDOM CONTROL (matched-magnitude random integers)");
+    println!("  Expected: C(Δa,Δb) ≈ 1.0 (no spatial structure).");
+    println!();
+
+    print!("  {:>4} {:>5} {:>8}", "bits", "B", "smooth%");
+    for label in &disp_labels[..4] {
+        print!(" {:>7}", label);
+    }
+    println!();
+    println!("  {}", "─".repeat(4 + 1 + 5 + 1 + 8 + 4 * 8));
+
+    for block in &result.blocks {
+        print!(
+            "  {:>4} {:>5} {:>7.3}%",
+            block.n_bits,
+            block.smooth_bound,
+            block.phase4.overall_smooth_rate * 100.0,
+        );
+        for lag in block.phase4.lags.iter().take(4) {
+            print!(" {:>7.3}", lag.c_delta);
+        }
+        println!();
+    }
+    println!();
+
+    // ─── Table 5: Dual-norm cofactor correlation (novel) ───
+    println!("TABLE 5: DUAL-NORM COFACTOR CORRELATION (novel — impossible in QS)");
+    println!("  Tests whether cofactor(F(a,b)) correlates with cofactor(|a+bm|).");
+    println!("  ρ ≈ 0 → cofactors independent → standard NFS assumption confirmed.");
+    println!();
+
+    println!(
+        "  {:>4} {:>5} {:>5} {:>10} {:>10} {:>10}",
+        "bits", "B", "grid", "alg_mean_pf", "rat_mean_pf", "dual_corr"
+    );
+    println!("  {}", "─".repeat(4 + 1 + 5 + 1 + 5 + 1 + 10 + 1 + 10 + 1 + 10));
+
+    for block in &result.blocks {
+        println!(
+            "  {:>4} {:>5} {:>5} {:>10.4} {:>10.4} {:>10.6}",
+            block.n_bits,
+            block.smooth_bound,
+            block.n_grid,
+            block.phase5.algebraic_mean_partial,
+            block.phase5.rational_mean_partial,
+            block.phase5.rational_alg_cofactor_corr,
+        );
+    }
+    println!();
+
+    // ─── Overall verdict ───
+    let max_cofactor_corr = result
+        .blocks
+        .iter()
+        .flat_map(|b| b.phase3.displacement_comparisons.iter())
+        .map(|&(_, _, cf, _)| cf.abs())
+        .fold(0.0f64, f64::max);
+
+    let max_dual_norm_corr = result
+        .blocks
+        .iter()
+        .map(|b| b.phase5.rational_alg_cofactor_corr.abs())
+        .fold(0.0f64, f64::max);
+
+    println!("OVERALL VERDICT:");
+    println!("  2D cofactor autocorrelation:");
+    if max_cofactor_corr < 0.02 {
+        println!("    Max |cofactor_corr| = {max_cofactor_corr:.6} < 0.02");
+        println!("    → NFS lattice sieve captures ALL 2D local smoothness structure.");
+    } else if max_cofactor_corr < 0.05 {
+        println!("    Max |cofactor_corr| = {max_cofactor_corr:.6} < 0.05");
+        println!("    → Weak residual signal; likely noise at this grid size.");
+    } else {
+        println!("    Max |cofactor_corr| = {max_cofactor_corr:.6} >= 0.05");
+        println!("    → Potential beyond-sieve 2D structure detected!");
+    }
+    println!();
+    println!("  Dual-norm cofactor correlation:");
+    if max_dual_norm_corr < 0.02 {
+        println!("    Max |dual_corr| = {max_dual_norm_corr:.6} < 0.02");
+        println!("    → Algebraic and rational cofactors are independent.");
+        println!("    → Standard NFS dual-norm independence assumption confirmed.");
+    } else if max_dual_norm_corr < 0.05 {
+        println!("    Max |dual_corr| = {max_dual_norm_corr:.6} < 0.05");
+        println!("    → Weak dual-norm signal; likely noise.");
+    } else {
+        println!("    Max |dual_corr| = {max_dual_norm_corr:.6} >= 0.05");
+        println!("    → Dual-norm cofactor correlation detected! Investigate further.");
+    }
+    println!();
 }
 
 fn print_local_summary(result: &LocalSmoothnessResult) {
