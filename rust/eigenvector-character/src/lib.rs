@@ -5288,6 +5288,146 @@ fn compute_nfs_dual_norm(
 }
 
 // ---------------------------------------------------------------------------
+// E24 block computation + runner
+// ---------------------------------------------------------------------------
+
+/// Compute a single NFS lattice locality block for one (n_bits, smooth_bound) pair.
+///
+/// Generates the NFS grid ONCE, precomputes all per-point data, then runs
+/// all 5 phases on the shared precomputed data.
+fn compute_nfs_block(
+    n_bits: u32,
+    smooth_bound: u64,
+    sieve_area: i64,
+    max_b: i64,
+    seed: u64,
+) -> NfsBlockResult {
+    eprintln!(
+        "  E24 block: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
+        n_bits, smooth_bound, sieve_area, max_b, seed
+    );
+
+    // Step 1: Generate NFS grid once
+    let (_poly, grid) = generate_nfs_grid(n_bits, seed, sieve_area, max_b);
+    let n_grid = grid.len();
+    eprintln!("    grid size: {} coprime (a,b) pairs", n_grid);
+
+    // Step 2: Build spatial index
+    let index = build_grid_index(&grid);
+
+    // Step 3: Precompute per-point algebraic norm data
+    let alg_smooth_flags: Vec<bool> = grid.iter()
+        .map(|&(_, _, alg, _)| is_b_smooth_u128(alg, smooth_bound))
+        .collect();
+    let alg_partial_fracs: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| partial_smooth_fraction(alg, smooth_bound))
+        .collect();
+    let alg_cofactor_logs: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| cofactor_log(alg, smooth_bound))
+        .collect();
+
+    let n_smooth: usize = alg_smooth_flags.iter().filter(|&&s| s).count();
+    eprintln!(
+        "    smooth rate: {:.4} ({}/{})",
+        n_smooth as f64 / n_grid as f64,
+        n_smooth,
+        n_grid
+    );
+
+    // Phase 1: 2D binary smoothness autocorrelation
+    let phase1 = compute_nfs_2d_autocorrelation(
+        &grid, &index, &alg_smooth_flags, smooth_bound, n_bits,
+    );
+    eprintln!("    Phase 1 done: {} displacements", phase1.lags.len());
+
+    // Phase 2: 2D partial-fraction Pearson autocorrelation
+    let phase2 = compute_nfs_2d_partial_frac(
+        &grid, &index, &alg_partial_fracs, smooth_bound, n_bits,
+    );
+    eprintln!("    Phase 2 done: mean_pf={:.4}", phase2.mean_partial_frac);
+
+    // Phase 3: 2D cofactor decomposition
+    let phase3 = compute_nfs_2d_cofactor_decomposition(
+        &grid, &index, &alg_partial_fracs, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!("    Phase 3 done: {} sieve primes", phase3.n_sieve_primes);
+
+    // Phase 4: 2D random control
+    let phase4 = compute_nfs_2d_random_control(
+        &grid, &index, smooth_bound, n_bits, seed.wrapping_add(0x1000),
+    );
+    eprintln!("    Phase 4 done: random smooth rate={:.4}", phase4.overall_smooth_rate);
+
+    // Phase 5: Joint dual-norm cofactor correlation
+    let phase5 = compute_nfs_dual_norm(
+        &grid, &alg_partial_fracs, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!(
+        "    Phase 5 done: dual-norm cofactor corr={:.6}",
+        phase5.rational_alg_cofactor_corr
+    );
+
+    NfsBlockResult {
+        n_bits,
+        smooth_bound,
+        seed,
+        n_grid,
+        phase1,
+        phase2,
+        phase3,
+        phase4,
+        phase5,
+    }
+}
+
+/// Write E24 checkpoint to JSON file.
+fn write_nfs_checkpoint(path: &str, result: &NfsLatticeResult) {
+    let json = serde_json::to_string_pretty(result).expect("serialize nfs lattice result");
+    std::fs::write(path, json).expect("write nfs checkpoint");
+}
+
+/// Run the full E24 NFS 2D lattice locality experiment.
+///
+/// Iterates over all (bit_size, bound) combinations, computes a block for each,
+/// and writes a checkpoint after every block completes.
+pub fn run_nfs_lattice(
+    bit_sizes: &[u32],
+    bounds: &[u64],
+    sieve_area: i64,
+    max_b: i64,
+    seed: u64,
+) -> NfsLatticeResult {
+    let checkpoint_path = "data/E24_nfs_lattice.json";
+    let mut blocks = Vec::new();
+
+    let total = bit_sizes.len() * bounds.len();
+    let mut count = 0;
+
+    for &n_bits in bit_sizes {
+        for &bound in bounds {
+            count += 1;
+            eprintln!(
+                "\n=== E24 block {}/{}: n_bits={}, B={} ===",
+                count, total, n_bits, bound
+            );
+
+            let block_seed = seed
+                .wrapping_add(n_bits as u64 * 0x1_0000)
+                .wrapping_add(bound);
+            let block = compute_nfs_block(n_bits, bound, sieve_area, max_b, block_seed);
+            blocks.push(block);
+
+            // Checkpoint after each block
+            let partial = NfsLatticeResult { blocks: blocks.clone() };
+            write_nfs_checkpoint(checkpoint_path, &partial);
+            eprintln!("  checkpoint saved ({}/{})", count, total);
+        }
+    }
+
+    NfsLatticeResult { blocks }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -6263,5 +6403,40 @@ mod tests {
         for lag in &result.lags {
             assert!(lag.c_delta >= 0.0 || lag.c_delta == 0.0);
         }
+    }
+
+    #[test]
+    fn test_nfs_block_smoke() {
+        // Quick smoke test: 40-bit, B=200, small area, verify all 5 phases run.
+        let block = compute_nfs_block(40, 200, 15, 3, 0xE240_B000);
+
+        assert_eq!(block.n_bits, 40);
+        assert_eq!(block.smooth_bound, 200);
+        assert!(block.n_grid > 0);
+
+        // Phase 1: 8 displacement lags
+        assert_eq!(block.phase1.lags.len(), 8);
+        assert!(block.phase1.overall_smooth_rate >= 0.0);
+
+        // Phase 2: 8 displacement correlations, all finite
+        assert_eq!(block.phase2.displacement_correlations.len(), 8);
+        for &(ref _label, r) in &block.phase2.displacement_correlations {
+            assert!(r.is_finite());
+        }
+
+        // Phase 3: 8 displacement comparisons, all finite
+        assert_eq!(block.phase3.displacement_comparisons.len(), 8);
+        for &(ref _label, pf, cf, _rr) in &block.phase3.displacement_comparisons {
+            assert!(pf.is_finite());
+            assert!(cf.is_finite());
+        }
+
+        // Phase 4: random control has 8 lags
+        assert_eq!(block.phase4.lags.len(), 8);
+
+        // Phase 5: dual-norm correlation is finite
+        assert!(block.phase5.rational_alg_cofactor_corr.is_finite());
+        assert!(block.phase5.rational_mean_partial >= 0.0);
+        assert!(block.phase5.algebraic_mean_partial >= 0.0);
     }
 }
