@@ -1,12 +1,13 @@
 //! cado-evolve CLI: Evolutionary GNFS parameter optimization.
 //!
 //! Modes:
-//!   --mode=baseline --bits=120        Run baseline measurements
-//!   --mode=evolve --bits=120 --quick  Evolutionary parameter search (quick)
-//!   --mode=evolve --bits=120          Evolutionary parameter search (full)
-//!   --mode=compare --bits=120         Compare evolved params vs defaults
-//!   --mode=validate --bits=150        A/B validation with CI and p-values
-//!   --mode=transfer --bits=150        Cross-size transfer test
+//!   --mode=baseline --bits=120            Run baseline measurements
+//!   --mode=evolve --bits=120 --quick      Evolutionary parameter search (quick)
+//!   --mode=evolve --bits=120              Evolutionary parameter search (full)
+//!   --mode=compare --bits=120             Compare evolved params vs defaults
+//!   --mode=validate --bits=150            A/B validation with CI and p-values
+//!   --mode=transfer --bits=150            Cross-size transfer test
+//!   --mode=scaling-protocol               Classical baseline scaling collection
 //!
 //! Options:
 //!   --cado-dir=<path>         Path to CADO-NFS installation (default: ~/cado-nfs)
@@ -17,6 +18,8 @@
 //!   --timeout-secs=<N>        Override per-CADO-run timeout in seconds
 //!   --training-size=<N>       Override number of fixed training composites
 //!   --seed-params=<file>      Seed initial population from a .params file
+//!   --scaling-sizes=30,40,50  Comma-separated digit counts for scaling protocol
+//!   --scaling-dir=<path>      Output directory for scaling protocol (default: results/scaling)
 
 use std::time::{Duration, Instant};
 
@@ -42,6 +45,10 @@ struct CliConfig {
     timeout_secs: Option<u64>,
     training_size: Option<usize>,
     seed_params_file: Option<String>,
+    /// Digit counts for scaling protocol (e.g., [30, 40, 50]).
+    scaling_sizes: Vec<u32>,
+    /// Output directory for scaling protocol.
+    scaling_dir: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +58,7 @@ enum Mode {
     Compare,
     Validate,
     Transfer,
+    ScalingProtocol,
 }
 
 /// Checkpoint data for evolution runs.
@@ -67,7 +75,9 @@ struct EvolutionCheckpoint {
 fn parse_args() -> CliConfig {
     let args: Vec<String> = std::env::args().collect();
 
-    let mode = if args.iter().any(|a| a.contains("baseline")) {
+    let mode = if args.iter().any(|a| a.contains("scaling-protocol")) {
+        Mode::ScalingProtocol
+    } else if args.iter().any(|a| a.contains("baseline")) {
         Mode::Baseline
     } else if args.iter().any(|a| a.contains("transfer")) {
         Mode::Transfer
@@ -121,6 +131,24 @@ fn parse_args() -> CliConfig {
         .find(|a| a.starts_with("--seed-params="))
         .map(|a| a.strip_prefix("--seed-params=").unwrap().to_string());
 
+    let scaling_sizes: Vec<u32> = args
+        .iter()
+        .find(|a| a.starts_with("--scaling-sizes="))
+        .map(|a| {
+            a.strip_prefix("--scaling-sizes=")
+                .unwrap()
+                .split(',')
+                .filter_map(|s| s.trim().parse::<u32>().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let scaling_dir = args
+        .iter()
+        .find(|a| a.starts_with("--scaling-dir="))
+        .map(|a| a.strip_prefix("--scaling-dir=").unwrap().to_string())
+        .unwrap_or_else(|| "results/scaling".to_string());
+
     CliConfig {
         mode,
         cado_dir,
@@ -131,6 +159,8 @@ fn parse_args() -> CliConfig {
         timeout_secs,
         training_size,
         seed_params_file,
+        scaling_sizes,
+        scaling_dir,
     }
 }
 
@@ -171,6 +201,7 @@ fn main() {
         Mode::Compare => run_compare_mode(&install, &config),
         Mode::Validate => run_validate_mode(&install, &config),
         Mode::Transfer => run_transfer_mode(&install, &config),
+        Mode::ScalingProtocol => run_scaling_protocol_mode(&install, &config),
     }
 
     println!();
@@ -670,6 +701,56 @@ fn run_transfer_mode(install: &CadoInstallation, config: &CliConfig) {
         "  Transfer results saved: cado_transfer_{}bit.json",
         config.n_bits
     );
+}
+
+/// Run scaling protocol mode: classical baselines at multiple sizes.
+fn run_scaling_protocol_mode(install: &CadoInstallation, config: &CliConfig) {
+    println!("--- Scaling Protocol Mode ---");
+    println!(
+        "  Sizes: {}",
+        if config.scaling_sizes.is_empty() {
+            "all defaults (c30, c40, c50, c60, c80, c100)".to_string()
+        } else {
+            config
+                .scaling_sizes
+                .iter()
+                .map(|s| format!("c{}", s))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    );
+    println!("  Output: {}", config.scaling_dir);
+    println!();
+
+    let mut rng = thread_rng();
+    let output_dir = std::path::Path::new(&config.scaling_dir);
+
+    match cado_evolve::scaling::run_scaling_protocol(
+        install,
+        output_dir,
+        &config.scaling_sizes,
+        &mut rng,
+    ) {
+        Ok(result) => {
+            let total_trials: usize = result.sizes.iter().map(|s| s.trials.len()).sum();
+            let total_success: usize = result
+                .sizes
+                .iter()
+                .map(|s| s.trials.iter().filter(|t| t.success).count())
+                .sum();
+            println!();
+            println!(
+                "Scaling protocol complete: {} sizes, {} trials ({} succeeded)",
+                result.sizes.len(),
+                total_trials,
+                total_success
+            );
+        }
+        Err(e) => {
+            eprintln!("Error running scaling protocol: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Load evolved parameters from a previously saved file.
