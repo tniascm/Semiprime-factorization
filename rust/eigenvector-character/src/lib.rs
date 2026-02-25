@@ -4964,6 +4964,85 @@ pub struct NfsValidationResult {
     pub blocks: Vec<NfsValidationBlockResult>,
 }
 
+// ===========================================================================
+// E24c: Robustness Check Result Structs
+// ===========================================================================
+
+/// Check 1 result: nonlinear (binned) residualization vs OLS residualization.
+#[derive(Debug, Clone, Serialize)]
+pub struct NonlinearResidResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub n_bins: usize,
+    /// (label, raw_corr, ols_resid_corr, bin_resid_corr) per displacement.
+    pub displacement_comparisons: Vec<(String, f64, f64, f64)>,
+}
+
+/// Check 2 result: cross-validated residualization.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossValidatedResidResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// Number of points in left half (a < 0).
+    pub n_left: usize,
+    /// Number of points in right half (a >= 0).
+    pub n_right: usize,
+    /// (label, in_sample_resid_corr, held_out_left_resid_corr, held_out_right_resid_corr)
+    pub displacement_comparisons: Vec<(String, f64, f64, f64)>,
+}
+
+/// Check 3 result: partial correlation controlling both endpoint norms.
+#[derive(Debug, Clone, Serialize)]
+pub struct PartialCorrelationResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// Mean R² of 2-predictor model (cf ~ log_norm_base + log_norm_neighbor).
+    pub r_squared_2d: f64,
+    /// Mean R² of 1-predictor model (cf ~ log_norm_base) for comparison.
+    pub r_squared_1d: f64,
+    /// (label, raw_corr, ols_1d_resid_corr, partial_corr_both_norms) per displacement.
+    pub displacement_comparisons: Vec<(String, f64, f64, f64)>,
+}
+
+/// One transform variant result for Check 4.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransformVariantResult {
+    pub transform_name: String,
+    /// (label, raw_corr, resid_corr) per displacement.
+    pub displacement_comparisons: Vec<(String, f64, f64)>,
+}
+
+/// Check 4 result: alternative transforms of cofactor_log.
+#[derive(Debug, Clone, Serialize)]
+pub struct AlternativeTransformResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub variants: Vec<TransformVariantResult>,
+}
+
+/// Combined E24c robustness result for one (n_bits, smooth_bound) block.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsRobustnessBlockResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub seed: u64,
+    pub n_grid: usize,
+    pub check1_nonlinear: NonlinearResidResult,
+    pub check2_crossval: CrossValidatedResidResult,
+    pub check3_partial_corr: PartialCorrelationResult,
+    pub check4_transforms: AlternativeTransformResult,
+}
+
+/// Top-level E24c robustness result.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsRobustnessResult {
+    pub blocks: Vec<NfsRobustnessBlockResult>,
+}
+
 // ---------------------------------------------------------------------------
 // E24 helper functions
 // ---------------------------------------------------------------------------
