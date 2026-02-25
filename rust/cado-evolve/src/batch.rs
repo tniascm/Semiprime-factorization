@@ -451,45 +451,60 @@ impl std::fmt::Display for BatchBenchmark {
     }
 }
 
-/// Run benchmarks across multiple parameter scales matching the scaling protocol.
+/// Run benchmarks across multiple parameter scales.
+///
+/// Tests both product-tree and trial-division at progressively larger
+/// smoothness bounds and candidate sizes to measure scaling behavior.
 pub fn run_scaling_benchmarks() -> Vec<BatchBenchmark> {
-    // Match the classical baseline parameter scales
+    // Progressive scaling: from small (fast, validates correctness) to
+    // large (measures scaling behavior). The product P = Π(p^k) grows
+    // rapidly with B, so we use moderate bounds that complete in
+    // reasonable time while still showing the scaling signal.
     let configs = vec![
-        // c60 (199-bit): lim0=~200K, candidates ~100-bit norms
+        // Small: B=1000, 32-bit candidates, 1000 batch
         (
             BatchConfig {
-                smoothness_bound: 200_000,
-                batch_size: 10_000,
+                smoothness_bound: 1_000,
+                batch_size: 1_000,
                 use_product_tree: true,
             },
-            100, // candidate norm bits
+            32,
         ),
-        // c80 (266-bit): lim0=~310K, candidates ~130-bit norms
+        // Medium: B=5000, 64-bit candidates, 1000 batch
         (
             BatchConfig {
-                smoothness_bound: 310_000,
-                batch_size: 10_000,
+                smoothness_bound: 5_000,
+                batch_size: 1_000,
                 use_product_tree: true,
             },
-            130,
+            64,
         ),
-        // c80 larger batch
+        // Larger: B=10000, 80-bit candidates, 1000 batch
         (
             BatchConfig {
-                smoothness_bound: 310_000,
-                batch_size: 50_000,
+                smoothness_bound: 10_000,
+                batch_size: 1_000,
                 use_product_tree: true,
             },
-            130,
+            80,
         ),
-        // c100 (332-bit): projected lim0=~500K, candidates ~166-bit norms
+        // NFS-scale: B=50000, 100-bit candidates, 500 batch
         (
             BatchConfig {
-                smoothness_bound: 500_000,
-                batch_size: 10_000,
+                smoothness_bound: 50_000,
+                batch_size: 500,
                 use_product_tree: true,
             },
-            166,
+            100,
+        ),
+        // NFS c60-scale: B=100000, 100-bit candidates, 200 batch
+        (
+            BatchConfig {
+                smoothness_bound: 100_000,
+                batch_size: 200,
+                use_product_tree: true,
+            },
+            100,
         ),
     ];
 

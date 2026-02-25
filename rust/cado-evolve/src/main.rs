@@ -59,6 +59,7 @@ enum Mode {
     Validate,
     Transfer,
     ScalingProtocol,
+    BatchBenchmark,
 }
 
 /// Checkpoint data for evolution runs.
@@ -75,7 +76,9 @@ struct EvolutionCheckpoint {
 fn parse_args() -> CliConfig {
     let args: Vec<String> = std::env::args().collect();
 
-    let mode = if args.iter().any(|a| a.contains("scaling-protocol")) {
+    let mode = if args.iter().any(|a| a.contains("batch-benchmark")) {
+        Mode::BatchBenchmark
+    } else if args.iter().any(|a| a.contains("scaling-protocol")) {
         Mode::ScalingProtocol
     } else if args.iter().any(|a| a.contains("baseline")) {
         Mode::Baseline
@@ -202,6 +205,7 @@ fn main() {
         Mode::Validate => run_validate_mode(&install, &config),
         Mode::Transfer => run_transfer_mode(&install, &config),
         Mode::ScalingProtocol => run_scaling_protocol_mode(&install, &config),
+        Mode::BatchBenchmark => run_batch_benchmark_mode(),
     }
 
     println!();
@@ -847,4 +851,46 @@ fn save_json<T: Serialize>(path: &str, data: &T) {
             eprintln!("  Warning: failed to serialize {}: {}", path, e);
         }
     }
+}
+
+fn run_batch_benchmark_mode() {
+    println!();
+    println!("--- Batch Smoothness Benchmark Mode ---");
+    println!();
+
+    use cado_evolve::batch;
+
+    println!("╔══════════════════════════════════════════════════╗");
+    println!("║    Batch Smoothness: Product Tree vs Trial Div   ║");
+    println!("╚══════════════════════════════════════════════════╝");
+    println!();
+
+    let results = batch::run_scaling_benchmarks();
+
+    // Summary table
+    println!();
+    println!("┌──────────┬───────┬─────────┬──────────────┬──────────────┬─────────┐");
+    println!("│   B      │ bits  │  batch  │  product/s   │   trial/s    │ speedup │");
+    println!("├──────────┼───────┼─────────┼──────────────┼──────────────┼─────────┤");
+    for r in &results {
+        println!(
+            "│ {:>8} │ {:>5} │ {:>7} │ {:>12.0} │ {:>12.0} │ {:>6.2}× │",
+            r.config.smoothness_bound,
+            r.candidate_bits,
+            r.config.batch_size,
+            r.product_tree.throughput,
+            r.trial_division.throughput,
+            r.speedup,
+        );
+    }
+    println!("└──────────┴───────┴─────────┴──────────────┴──────────────┴─────────┘");
+
+    // Compare against CADO-NFS sieve throughput
+    println!();
+    println!("CADO-NFS classical sieve throughput (from scaling protocol):");
+    println!("  c60 (199-bit): ~5,663 relations/sec");
+    println!("  c80 (266-bit): ~5,663 relations/sec (estimated from aggregate CPU)");
+    println!();
+    println!("Note: Batch smoothness tests raw candidates, not NFS lattice candidates.");
+    println!("The throughput comparison is indicative but not directly substitutable.");
 }
