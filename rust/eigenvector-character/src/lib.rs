@@ -6668,6 +6668,106 @@ pub fn run_nfs_validation(
     NfsValidationResult { blocks }
 }
 
+// ===========================================================================
+// E24c: Block Computation and Runner
+// ===========================================================================
+
+/// Compute full E24c robustness block for one (n_bits, smooth_bound) configuration.
+fn compute_nfs_robustness_block(
+    n_bits: u32,
+    smooth_bound: u64,
+    sieve_area: i64,
+    max_b: i64,
+    seed: u64,
+) -> NfsRobustnessBlockResult {
+    eprintln!(
+        "  E24c robustness: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
+        n_bits, smooth_bound, sieve_area, max_b, seed
+    );
+
+    let (_poly, grid) = generate_nfs_grid(n_bits, seed, sieve_area, max_b);
+    let n_grid = grid.len();
+    let index = build_grid_index(&grid);
+    eprintln!("    grid size: {} coprime pairs", n_grid);
+
+    let alg_cofactor_logs: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| cofactor_log(alg, smooth_bound))
+        .collect();
+
+    // Check 1: nonlinear residualization (50 bins)
+    let check1 = compute_nonlinear_resid(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits, 50,
+    );
+    eprintln!("    Check 1 (nonlinear resid) done");
+
+    // Check 2: cross-validated residualization
+    let check2 = compute_crossval_resid(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!("    Check 2 (cross-val) done: n_left={}, n_right={}", check2.n_left, check2.n_right);
+
+    // Check 3: partial correlation (both norms)
+    let check3 = compute_partial_correlation(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!("    Check 3 (partial corr) done: R²_1d={:.4}, R²_2d={:.4}", check3.r_squared_1d, check3.r_squared_2d);
+
+    // Check 4: alternative transforms
+    let check4 = compute_alternative_transforms(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!("    Check 4 (alt transforms) done: {} variants", check4.variants.len());
+
+    NfsRobustnessBlockResult {
+        n_bits,
+        smooth_bound,
+        seed,
+        n_grid,
+        check1_nonlinear: check1,
+        check2_crossval: check2,
+        check3_partial_corr: check3,
+        check4_transforms: check4,
+    }
+}
+
+/// Run the full E24c robustness experiment.
+pub fn run_nfs_robustness(
+    bit_sizes: &[u32],
+    bounds: &[u64],
+    sieve_area: i64,
+    max_b: i64,
+    seed: u64,
+) -> NfsRobustnessResult {
+    let checkpoint_path = "data/E24c_nfs_robustness.json";
+    let mut blocks = Vec::new();
+
+    let total = bit_sizes.len() * bounds.len();
+    let mut count = 0;
+
+    for &n_bits in bit_sizes {
+        for &bound in bounds {
+            count += 1;
+            eprintln!(
+                "\n=== E24c robustness {}/{}: n_bits={}, B={} ===",
+                count, total, n_bits, bound
+            );
+
+            let block_seed = seed
+                .wrapping_add(n_bits as u64 * 0x1_0000)
+                .wrapping_add(bound);
+            let block = compute_nfs_robustness_block(n_bits, bound, sieve_area, max_b, block_seed);
+            blocks.push(block);
+
+            let partial = NfsRobustnessResult { blocks: blocks.clone() };
+            let json = serde_json::to_string_pretty(&partial).expect("serialize");
+            std::fs::write(checkpoint_path, json).expect("write checkpoint");
+            eprintln!("  checkpoint saved ({}/{})", count, total);
+        }
+    }
+
+    NfsRobustnessResult { blocks }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
