@@ -4863,6 +4863,107 @@ pub struct NfsLatticeResult {
     pub blocks: Vec<NfsBlockResult>,
 }
 
+// ===========================================================================
+// E24b: Artifact Validation Controls
+// ===========================================================================
+//
+// Five controls to verify whether E24's cofactor autocorrelation is genuine
+// or an artifact of norm magnitude gradients across the (a,b) grid.
+//
+// Control A: Norm-residualized cofactor autocorrelation
+//   Regress cofactor_log against log2(alg_norm), use residuals.
+//   If signal survives → not a magnitude gradient artifact.
+//
+// Control B: Per-side (rational vs algebraic) cofactor analysis
+//   Separate analysis for each norm side.
+//
+// Control C: Magnitude-bin shuffle null (geometry-preserving)
+//   Shuffle cofactor_logs within bins of similar log2(norm).
+//   Preserves magnitude profile, destroys genuine local structure.
+//
+// Control D: Displacement decay analysis
+//   Extended displacements at multiple radii to test if correlation
+//   decays smoothly with |δ|.
+//
+// Control E: Conditional cofactor corr (binned by partial_smooth_fraction)
+//   Among points with similar sieve scores, does cofactor corr persist?
+
+/// Control A result: norm-residualized cofactor autocorrelation.
+#[derive(Debug, Clone, Serialize)]
+pub struct NormResidualizedResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// R² of cofactor_log ~ log2(norm) regression.
+    pub norm_r_squared: f64,
+    /// Displacement comparisons using norm-residualized cofactor_log.
+    /// (label, raw_cofactor_corr, residualized_cofactor_corr)
+    pub displacement_comparisons: Vec<(String, f64, f64)>,
+}
+
+/// Control B result: per-side cofactor autocorrelation.
+#[derive(Debug, Clone, Serialize)]
+pub struct PerSideCofactorResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// (label, alg_cf_corr, rat_cf_corr, alg_residualized, rat_residualized)
+    pub displacement_comparisons: Vec<(String, f64, f64, f64, f64)>,
+}
+
+/// Control C result: magnitude-bin shuffle null.
+#[derive(Debug, Clone, Serialize)]
+pub struct MagnitudeBinShuffleResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub n_bins: usize,
+    /// (label, original_cf_corr, shuffled_cf_corr_mean, shuffled_cf_corr_std)
+    pub displacement_comparisons: Vec<(String, f64, f64, f64)>,
+}
+
+/// Control D result: displacement decay analysis.
+#[derive(Debug, Clone, Serialize)]
+pub struct DisplacementDecayResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    /// (displacement_norm, mean_cf_corr, mean_residualized_cf_corr, n_displacements)
+    pub decay_by_radius: Vec<(f64, f64, f64, usize)>,
+}
+
+/// Control E result: conditional cofactor correlation.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConditionalCofactorResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub n_grid: usize,
+    pub n_bins: usize,
+    /// (pf_bin_center, n_in_bin, mean_cf_corr_within_bin) for displacement (1,0).
+    pub bin_results: Vec<(f64, usize, f64)>,
+    /// Overall weighted mean cofactor corr across bins.
+    pub conditional_cf_corr: f64,
+}
+
+/// Combined validation result for one block.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsValidationBlockResult {
+    pub n_bits: u32,
+    pub smooth_bound: u64,
+    pub seed: u64,
+    pub control_a: NormResidualizedResult,
+    pub control_b: PerSideCofactorResult,
+    pub control_c: MagnitudeBinShuffleResult,
+    pub control_d: DisplacementDecayResult,
+    pub control_e: ConditionalCofactorResult,
+}
+
+/// Top-level E24b validation result.
+#[derive(Debug, Clone, Serialize)]
+pub struct NfsValidationResult {
+    pub blocks: Vec<NfsValidationBlockResult>,
+}
+
 // ---------------------------------------------------------------------------
 // E24 helper functions
 // ---------------------------------------------------------------------------
@@ -5425,6 +5526,591 @@ pub fn run_nfs_lattice(
     }
 
     NfsLatticeResult { blocks }
+}
+
+// ===========================================================================
+// E24b: Artifact Validation Control Functions
+// ===========================================================================
+
+/// Simple OLS regression: y = a + b*x, returns (intercept, slope, r_squared).
+fn simple_ols(x: &[f64], y: &[f64]) -> (f64, f64, f64) {
+    let n = x.len() as f64;
+    if x.len() < 3 {
+        return (0.0, 0.0, 0.0);
+    }
+    let mean_x = x.iter().sum::<f64>() / n;
+    let mean_y = y.iter().sum::<f64>() / n;
+    let mut ss_xy = 0.0;
+    let mut ss_xx = 0.0;
+    let mut ss_yy = 0.0;
+    for i in 0..x.len() {
+        let dx = x[i] - mean_x;
+        let dy = y[i] - mean_y;
+        ss_xy += dx * dy;
+        ss_xx += dx * dx;
+        ss_yy += dy * dy;
+    }
+    if ss_xx < 1e-30 {
+        return (mean_y, 0.0, 0.0);
+    }
+    let slope = ss_xy / ss_xx;
+    let intercept = mean_y - slope * mean_x;
+    let r_squared = if ss_yy > 1e-30 { (ss_xy * ss_xy) / (ss_xx * ss_yy) } else { 0.0 };
+    (intercept, slope, r_squared)
+}
+
+/// Compute OLS residuals: y - (intercept + slope * x).
+fn ols_residuals(x: &[f64], y: &[f64], intercept: f64, slope: f64) -> Vec<f64> {
+    x.iter().zip(y.iter())
+        .map(|(&xi, &yi)| yi - (intercept + slope * xi))
+        .collect()
+}
+
+/// Control A: Norm-residualized cofactor autocorrelation.
+///
+/// Regresses cofactor_log against log2(alg_norm) to remove the magnitude
+/// gradient. If the cofactor autocorrelation signal is just from nearby points
+/// having similar norm sizes, residualized autocorrelation → 0.
+fn compute_norm_residualized(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> NormResidualizedResult {
+    let n_grid = grid.len();
+
+    // Regress cofactor_log against log2(alg_norm)
+    let log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+
+    let (intercept, slope, norm_r_squared) = simple_ols(&log_norms, alg_cofactor_logs);
+    let residualized = ols_residuals(&log_norms, alg_cofactor_logs, intercept, slope);
+
+    let displacements = standard_displacements();
+    let mut displacement_comparisons = Vec::new();
+
+    for disp in &displacements {
+        let mut base_raw = Vec::new();
+        let mut disp_raw = Vec::new();
+        let mut base_resid = Vec::new();
+        let mut disp_resid = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_raw.push(alg_cofactor_logs[i]);
+                disp_raw.push(alg_cofactor_logs[j]);
+                base_resid.push(residualized[i]);
+                disp_resid.push(residualized[j]);
+            }
+        }
+
+        let raw_corr = if base_raw.len() >= 3 {
+            algebra::pearson_corr(&base_raw, &disp_raw)
+        } else {
+            0.0
+        };
+        let resid_corr = if base_resid.len() >= 3 {
+            algebra::pearson_corr(&base_resid, &disp_resid)
+        } else {
+            0.0
+        };
+
+        displacement_comparisons.push((disp.label.clone(), raw_corr, resid_corr));
+    }
+
+    NormResidualizedResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        norm_r_squared,
+        displacement_comparisons,
+    }
+}
+
+/// Control B: Per-side (rational vs algebraic) cofactor analysis with residualization.
+fn compute_per_side_cofactor(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    smooth_bound: u64,
+    n_bits: u32,
+) -> PerSideCofactorResult {
+    let n_grid = grid.len();
+
+    // Algebraic side
+    let alg_cf: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| cofactor_log(alg, smooth_bound))
+        .collect();
+    let alg_log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+    let (ai, as_, _) = simple_ols(&alg_log_norms, &alg_cf);
+    let alg_resid = ols_residuals(&alg_log_norms, &alg_cf, ai, as_);
+
+    // Rational side
+    let rat_cf: Vec<f64> = grid.iter()
+        .map(|&(_, _, _, rat)| cofactor_log(rat, smooth_bound))
+        .collect();
+    let rat_log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, _, rat)| if rat > 1 { (rat as f64).log2() } else { 0.0 })
+        .collect();
+    let (ri, rs_, _) = simple_ols(&rat_log_norms, &rat_cf);
+    let rat_resid = ols_residuals(&rat_log_norms, &rat_cf, ri, rs_);
+
+    let displacements = standard_displacements();
+    let mut displacement_comparisons = Vec::new();
+
+    for disp in &displacements {
+        let mut base_alg = Vec::new();
+        let mut disp_alg = Vec::new();
+        let mut base_rat = Vec::new();
+        let mut disp_rat = Vec::new();
+        let mut base_alg_r = Vec::new();
+        let mut disp_alg_r = Vec::new();
+        let mut base_rat_r = Vec::new();
+        let mut disp_rat_r = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_alg.push(alg_cf[i]);
+                disp_alg.push(alg_cf[j]);
+                base_rat.push(rat_cf[i]);
+                disp_rat.push(rat_cf[j]);
+                base_alg_r.push(alg_resid[i]);
+                disp_alg_r.push(alg_resid[j]);
+                base_rat_r.push(rat_resid[i]);
+                disp_rat_r.push(rat_resid[j]);
+            }
+        }
+
+        let alg_corr = if base_alg.len() >= 3 { algebra::pearson_corr(&base_alg, &disp_alg) } else { 0.0 };
+        let rat_corr = if base_rat.len() >= 3 { algebra::pearson_corr(&base_rat, &disp_rat) } else { 0.0 };
+        let alg_resid_corr = if base_alg_r.len() >= 3 { algebra::pearson_corr(&base_alg_r, &disp_alg_r) } else { 0.0 };
+        let rat_resid_corr = if base_rat_r.len() >= 3 { algebra::pearson_corr(&base_rat_r, &disp_rat_r) } else { 0.0 };
+
+        displacement_comparisons.push((disp.label.clone(), alg_corr, rat_corr, alg_resid_corr, rat_resid_corr));
+    }
+
+    PerSideCofactorResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        displacement_comparisons,
+    }
+}
+
+/// Control C: Magnitude-bin shuffle null.
+///
+/// Bins grid points by log2(alg_norm) into equal-frequency bins, then shuffles
+/// cofactor_logs within each bin. This preserves the magnitude profile while
+/// destroying any genuine local structure. Repeated n_shuffles times.
+fn compute_magnitude_bin_shuffle(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+    n_bins: usize,
+    n_shuffles: usize,
+    seed: u64,
+) -> MagnitudeBinShuffleResult {
+    let n_grid = grid.len();
+
+    // Compute log norms and sort indices by log norm
+    let mut indexed_log_norms: Vec<(usize, f64)> = grid.iter()
+        .enumerate()
+        .map(|(i, &(_, _, alg, _))| (i, if alg > 1 { (alg as f64).log2() } else { 0.0 }))
+        .collect();
+    indexed_log_norms.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Assign each point to a bin (equal-frequency bins)
+    let bin_size = n_grid / n_bins.max(1);
+    let mut bin_assignments = vec![0usize; n_grid];
+    for (rank, &(orig_idx, _)) in indexed_log_norms.iter().enumerate() {
+        bin_assignments[orig_idx] = (rank / bin_size.max(1)).min(n_bins - 1);
+    }
+
+    // Build bin → indices mapping
+    let mut bin_indices: Vec<Vec<usize>> = vec![Vec::new(); n_bins];
+    for (i, &bin) in bin_assignments.iter().enumerate() {
+        bin_indices[bin].push(i);
+    }
+
+    let displacements = standard_displacements();
+
+    // Compute original cofactor autocorrelations
+    let mut orig_corrs = Vec::new();
+    for disp in &displacements {
+        let mut base_cf = Vec::new();
+        let mut disp_cf = Vec::new();
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_cf.push(alg_cofactor_logs[i]);
+                disp_cf.push(alg_cofactor_logs[j]);
+            }
+        }
+        let corr = if base_cf.len() >= 3 { algebra::pearson_corr(&base_cf, &disp_cf) } else { 0.0 };
+        orig_corrs.push(corr);
+    }
+
+    // Shuffle within bins and recompute autocorrelations
+    let mut shuffled_corrs: Vec<Vec<f64>> = vec![Vec::new(); displacements.len()];
+
+    for s in 0..n_shuffles {
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(s as u64));
+        let mut shuffled_cf = alg_cofactor_logs.to_vec();
+
+        // Fisher-Yates shuffle within each bin
+        for bin_idxs in &bin_indices {
+            let n = bin_idxs.len();
+            if n <= 1 { continue; }
+            for k in (1..n).rev() {
+                let j: usize = rng.gen::<usize>() % (k + 1);
+                let idx_k = bin_idxs[k];
+                let idx_j = bin_idxs[j];
+                shuffled_cf.swap(idx_k, idx_j);
+            }
+        }
+
+        for (d_idx, disp) in displacements.iter().enumerate() {
+            let mut base_cf = Vec::new();
+            let mut disp_cf = Vec::new();
+            for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+                let na = a + disp.da;
+                let nb = b + disp.db;
+                if let Some(&j) = index.get(&(na, nb)) {
+                    base_cf.push(shuffled_cf[i]);
+                    disp_cf.push(shuffled_cf[j]);
+                }
+            }
+            let corr = if base_cf.len() >= 3 { algebra::pearson_corr(&base_cf, &disp_cf) } else { 0.0 };
+            shuffled_corrs[d_idx].push(corr);
+        }
+    }
+
+    let mut displacement_comparisons = Vec::new();
+    for (d_idx, disp) in displacements.iter().enumerate() {
+        let mean_shuffled = if !shuffled_corrs[d_idx].is_empty() {
+            shuffled_corrs[d_idx].iter().sum::<f64>() / shuffled_corrs[d_idx].len() as f64
+        } else { 0.0 };
+        let std_shuffled = if shuffled_corrs[d_idx].len() >= 2 {
+            let var: f64 = shuffled_corrs[d_idx].iter()
+                .map(|&c| (c - mean_shuffled).powi(2))
+                .sum::<f64>() / (shuffled_corrs[d_idx].len() - 1) as f64;
+            var.sqrt()
+        } else { 0.0 };
+
+        displacement_comparisons.push((disp.label.clone(), orig_corrs[d_idx], mean_shuffled, std_shuffled));
+    }
+
+    MagnitudeBinShuffleResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        n_bins,
+        displacement_comparisons,
+    }
+}
+
+/// Control D: Displacement decay analysis.
+///
+/// Generates displacements at multiple radii (1, sqrt(2), 2, sqrt(5), ..., 10)
+/// and measures how cofactor autocorrelation (raw + residualized) decays with
+/// displacement distance.
+fn compute_displacement_decay(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> DisplacementDecayResult {
+    let n_grid = grid.len();
+
+    // Residualize cofactor_log against log2(norm)
+    let log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+    let (intercept, slope, _) = simple_ols(&log_norms, alg_cofactor_logs);
+    let residualized = ols_residuals(&log_norms, alg_cofactor_logs, intercept, slope);
+
+    // Generate displacements at various radii
+    // Group by approximate radius and average
+    let max_r = 10i64;
+    let mut all_disps: Vec<(i64, i64, f64)> = Vec::new(); // (da, db, norm)
+    for da in -max_r..=max_r {
+        for db in -max_r..=max_r {
+            if da == 0 && db == 0 { continue; }
+            let norm = ((da * da + db * db) as f64).sqrt();
+            if norm <= max_r as f64 {
+                all_disps.push((da, db, norm));
+            }
+        }
+    }
+
+    // Group by binned radius (0.5-wide bins)
+    let mut radius_bins: HashMap<u32, Vec<(i64, i64, f64)>> = HashMap::new();
+    for &(da, db, norm) in &all_disps {
+        let bin = (norm * 2.0).round() as u32; // 0.5-wide bins
+        radius_bins.entry(bin).or_default().push((da, db, norm));
+    }
+
+    let mut decay_by_radius: Vec<(f64, f64, f64, usize)> = Vec::new();
+
+    let mut sorted_bins: Vec<u32> = radius_bins.keys().cloned().collect();
+    sorted_bins.sort();
+
+    for bin in sorted_bins {
+        let disps = &radius_bins[&bin];
+        let mean_radius = disps.iter().map(|&(_, _, r)| r).sum::<f64>() / disps.len() as f64;
+
+        let mut raw_corrs = Vec::new();
+        let mut resid_corrs = Vec::new();
+
+        for &(da, db, _) in disps {
+            let mut base_raw = Vec::new();
+            let mut disp_raw = Vec::new();
+            let mut base_res = Vec::new();
+            let mut disp_res = Vec::new();
+
+            for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+                let na = a + da;
+                let nb = b + db;
+                if let Some(&j) = index.get(&(na, nb)) {
+                    base_raw.push(alg_cofactor_logs[i]);
+                    disp_raw.push(alg_cofactor_logs[j]);
+                    base_res.push(residualized[i]);
+                    disp_res.push(residualized[j]);
+                }
+            }
+
+            if base_raw.len() >= 3 {
+                raw_corrs.push(algebra::pearson_corr(&base_raw, &disp_raw));
+                resid_corrs.push(algebra::pearson_corr(&base_res, &disp_res));
+            }
+        }
+
+        if !raw_corrs.is_empty() {
+            let mean_raw = raw_corrs.iter().sum::<f64>() / raw_corrs.len() as f64;
+            let mean_resid = resid_corrs.iter().sum::<f64>() / resid_corrs.len() as f64;
+            decay_by_radius.push((mean_radius, mean_raw, mean_resid, raw_corrs.len()));
+        }
+    }
+
+    DisplacementDecayResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        decay_by_radius,
+    }
+}
+
+/// Control E: Conditional cofactor correlation (binned by partial_smooth_fraction).
+///
+/// Among points with similar sieve scores (partial_smooth_fraction), does
+/// cofactor autocorrelation still persist? Tests displacement (1,0) specifically.
+fn compute_conditional_cofactor(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_partial_fracs: &[f64],
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+    n_bins: usize,
+) -> ConditionalCofactorResult {
+    let n_grid = grid.len();
+
+    // Sort partial fracs to determine bin edges (equal-frequency bins)
+    let mut sorted_pf: Vec<f64> = alg_partial_fracs.to_vec();
+    sorted_pf.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let bin_size = n_grid / n_bins.max(1);
+    let bin_edges: Vec<f64> = (0..n_bins)
+        .map(|i| sorted_pf[(i * bin_size).min(n_grid - 1)])
+        .collect();
+
+    // Assign each point to a pf bin
+    let get_bin = |pf: f64| -> usize {
+        for i in (0..n_bins).rev() {
+            if pf >= bin_edges[i] {
+                return i;
+            }
+        }
+        0
+    };
+
+    let pf_bins: Vec<usize> = alg_partial_fracs.iter().map(|&pf| get_bin(pf)).collect();
+
+    // Build bin → indices
+    let mut bin_indices: Vec<Vec<usize>> = vec![Vec::new(); n_bins];
+    for (i, &bin) in pf_bins.iter().enumerate() {
+        bin_indices[bin].push(i);
+    }
+
+    // For displacement (1,0), compute cofactor autocorrelation WITHIN each pf bin
+    let da = 1i64;
+    let db = 0i64;
+
+    let mut bin_results = Vec::new();
+    let mut total_weight = 0.0;
+    let mut weighted_sum = 0.0;
+
+    for bin in 0..n_bins {
+        let idxs = &bin_indices[bin];
+        let n_in_bin = idxs.len();
+        if n_in_bin < 3 { continue; }
+
+        let bin_center = idxs.iter().map(|&i| alg_partial_fracs[i]).sum::<f64>() / n_in_bin as f64;
+
+        // Collect cofactor pairs where BOTH base and displaced are in this bin
+        let mut base_cf = Vec::new();
+        let mut disp_cf = Vec::new();
+
+        for &i in idxs {
+            let (a, b, _, _) = grid[i];
+            let na = a + da;
+            let nb = b + db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                if pf_bins[j] == bin {
+                    base_cf.push(alg_cofactor_logs[i]);
+                    disp_cf.push(alg_cofactor_logs[j]);
+                }
+            }
+        }
+
+        let cf_corr = if base_cf.len() >= 3 {
+            algebra::pearson_corr(&base_cf, &disp_cf)
+        } else {
+            f64::NAN
+        };
+
+        bin_results.push((bin_center, n_in_bin, cf_corr));
+        if cf_corr.is_finite() && base_cf.len() >= 3 {
+            weighted_sum += cf_corr * base_cf.len() as f64;
+            total_weight += base_cf.len() as f64;
+        }
+    }
+
+    let conditional_cf_corr = if total_weight > 0.0 { weighted_sum / total_weight } else { 0.0 };
+
+    ConditionalCofactorResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        n_bins,
+        bin_results,
+        conditional_cf_corr,
+    }
+}
+
+/// Compute full validation block for one (n_bits, smooth_bound) configuration.
+fn compute_nfs_validation_block(
+    n_bits: u32,
+    smooth_bound: u64,
+    sieve_area: i64,
+    max_b: i64,
+    seed: u64,
+) -> NfsValidationBlockResult {
+    eprintln!(
+        "  E24b validation: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
+        n_bits, smooth_bound, sieve_area, max_b, seed
+    );
+
+    let (_poly, grid) = generate_nfs_grid(n_bits, seed, sieve_area, max_b);
+    let n_grid = grid.len();
+    let index = build_grid_index(&grid);
+    eprintln!("    grid size: {} coprime pairs", n_grid);
+
+    let alg_partial_fracs: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| partial_smooth_fraction(alg, smooth_bound))
+        .collect();
+    let alg_cofactor_logs: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| cofactor_log(alg, smooth_bound))
+        .collect();
+
+    // Control A: norm-residualized
+    let control_a = compute_norm_residualized(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!("    Control A done: R²(cf~log_norm) = {:.4}", control_a.norm_r_squared);
+
+    // Control B: per-side
+    let control_b = compute_per_side_cofactor(&grid, &index, smooth_bound, n_bits);
+    eprintln!("    Control B done: per-side analysis complete");
+
+    // Control C: magnitude-bin shuffle (20 bins, 50 shuffles)
+    let control_c = compute_magnitude_bin_shuffle(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits,
+        20, 50, seed.wrapping_add(0xC000),
+    );
+    eprintln!("    Control C done: {} bins, 50 shuffles", control_c.n_bins);
+
+    // Control D: displacement decay
+    let control_d = compute_displacement_decay(
+        &grid, &index, &alg_cofactor_logs, smooth_bound, n_bits,
+    );
+    eprintln!("    Control D done: {} radius bins", control_d.decay_by_radius.len());
+
+    // Control E: conditional cofactor (10 pf-bins)
+    let control_e = compute_conditional_cofactor(
+        &grid, &index, &alg_partial_fracs, &alg_cofactor_logs, smooth_bound, n_bits, 10,
+    );
+    eprintln!("    Control E done: conditional cf_corr = {:.6}", control_e.conditional_cf_corr);
+
+    NfsValidationBlockResult {
+        n_bits,
+        smooth_bound,
+        seed,
+        control_a,
+        control_b,
+        control_c,
+        control_d,
+        control_e,
+    }
+}
+
+/// Run the full E24b validation experiment.
+pub fn run_nfs_validation(
+    bit_sizes: &[u32],
+    bounds: &[u64],
+    sieve_area: i64,
+    max_b: i64,
+    seed: u64,
+) -> NfsValidationResult {
+    let checkpoint_path = "data/E24b_nfs_validation.json";
+    let mut blocks = Vec::new();
+
+    let total = bit_sizes.len() * bounds.len();
+    let mut count = 0;
+
+    for &n_bits in bit_sizes {
+        for &bound in bounds {
+            count += 1;
+            eprintln!(
+                "\n=== E24b validation {}/{}: n_bits={}, B={} ===",
+                count, total, n_bits, bound
+            );
+
+            let block_seed = seed
+                .wrapping_add(n_bits as u64 * 0x1_0000)
+                .wrapping_add(bound);
+            let block = compute_nfs_validation_block(n_bits, bound, sieve_area, max_b, block_seed);
+            blocks.push(block);
+
+            let partial = NfsValidationResult { blocks: blocks.clone() };
+            let json = serde_json::to_string_pretty(&partial).expect("serialize");
+            std::fs::write(checkpoint_path, json).expect("write checkpoint");
+            eprintln!("  checkpoint saved ({}/{})", count, total);
+        }
+    }
+
+    NfsValidationResult { blocks }
 }
 
 // ---------------------------------------------------------------------------
@@ -6438,5 +7124,47 @@ mod tests {
         assert!(block.phase5.rational_alg_cofactor_corr.is_finite());
         assert!(block.phase5.rational_mean_partial >= 0.0);
         assert!(block.phase5.algebraic_mean_partial >= 0.0);
+    }
+
+    #[test]
+    fn test_simple_ols() {
+        // Perfect linear: y = 2 + 3x
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let y = vec![5.0, 8.0, 11.0, 14.0, 17.0];
+        let (intercept, slope, r_sq) = simple_ols(&x, &y);
+        assert!((slope - 3.0).abs() < 1e-10);
+        assert!((intercept - 2.0).abs() < 1e-10);
+        assert!((r_sq - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_nfs_validation_block_smoke() {
+        // Quick validation smoke: small grid, verify all 5 controls run.
+        let block = compute_nfs_validation_block(40, 200, 15, 3, 0xE24B_0000);
+
+        // Control A: norm-residualized
+        assert!(block.control_a.norm_r_squared >= 0.0);
+        assert_eq!(block.control_a.displacement_comparisons.len(), 8);
+        for &(ref _label, raw, resid) in &block.control_a.displacement_comparisons {
+            assert!(raw.is_finite());
+            assert!(resid.is_finite());
+        }
+
+        // Control B: per-side
+        assert_eq!(block.control_b.displacement_comparisons.len(), 8);
+
+        // Control C: magnitude-bin shuffle
+        assert_eq!(block.control_c.displacement_comparisons.len(), 8);
+        for &(ref _label, orig, shuf_mean, shuf_std) in &block.control_c.displacement_comparisons {
+            assert!(orig.is_finite());
+            assert!(shuf_mean.is_finite());
+            assert!(shuf_std.is_finite());
+        }
+
+        // Control D: displacement decay
+        assert!(!block.control_d.decay_by_radius.is_empty());
+
+        // Control E: conditional cofactor
+        assert!(block.control_e.conditional_cf_corr.is_finite());
     }
 }
