@@ -413,8 +413,10 @@ impl CadoInstallation {
 
     /// Spawn CADO-NFS process, wait with timeout, parse output.
     ///
-    /// Uses process group signalling on Unix to ensure all child processes
-    /// (server, clients, workers) are killed on timeout.
+    /// Reads stdout/stderr in background threads to prevent pipe buffer
+    /// deadlocks (CADO-NFS can produce >64KB of output at c80+).
+    /// On timeout, kills the process tree. After completion, cleans up
+    /// any orphaned cado-nfs-client.py daemon processes.
     fn spawn_and_wait(
         &self,
         args: &[String],
@@ -426,7 +428,6 @@ impl CadoInstallation {
 
         let start = Instant::now();
 
-        // Create a new process group so we can kill all CADO-NFS subprocesses.
         let mut cmd = Command::new(&self.python);
         cmd.args(args)
             .current_dir(&self.root_dir)
@@ -434,63 +435,49 @@ impl CadoInstallation {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
-        // On Unix, start in a new process group for clean kill
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            cmd.process_group(0);
-        }
-
         let mut child = cmd
             .spawn()
             .map_err(|e| CadoError::ExecutionFailed(e.to_string()))?;
 
-        // Take stdout/stderr handles before polling, so we can read them
-        // after the process exits. wait_with_output() can fail if try_wait()
-        // already consumed the exit status.
-        let child_stdout = child.stdout.take();
-        let child_stderr = child.stderr.take();
+        let child_pid = child.id();
+
+        // Read stdout/stderr in background threads to prevent pipe buffer
+        // deadlocks. CADO-NFS can produce hundreds of KB of output at c80+,
+        // exceeding the OS pipe buffer (~64KB on macOS). Without concurrent
+        // reads, the child blocks on write() and never completes.
+        let stdout_handle = child.stdout.take();
+        let stderr_handle = child.stderr.take();
+
+        let stdout_thread = std::thread::spawn(move || {
+            use std::io::Read;
+            let mut s = String::new();
+            if let Some(mut out) = stdout_handle {
+                let _ = out.read_to_string(&mut s);
+            }
+            s
+        });
+        let stderr_thread = std::thread::spawn(move || {
+            use std::io::Read;
+            let mut s = String::new();
+            if let Some(mut err) = stderr_handle {
+                let _ = err.read_to_string(&mut s);
+            }
+            s
+        });
 
         // Poll for completion with timeout
         let poll_interval = Duration::from_millis(500);
-        let child_pid = child.id() as i32;
         loop {
             match child.try_wait() {
                 Ok(Some(_status)) => {
-                    // Process finished — kill the process group to clean up
-                    // daemon client processes that CADO-NFS leaves behind.
-                    #[cfg(unix)]
-                    {
-                        unsafe {
-                            libc::kill(-child_pid, libc::SIGTERM);
-                        }
-                        std::thread::sleep(Duration::from_millis(200));
-                        unsafe {
-                            libc::kill(-child_pid, libc::SIGKILL);
-                        }
-                    }
                     break;
                 }
                 Ok(None) => {
-                    // Still running
                     if start.elapsed() > timeout {
-                        log::warn!("CADO-NFS timed out, killing process group");
-                        // Kill the entire process group (server + clients)
-                        #[cfg(unix)]
-                        {
-                            unsafe {
-                                libc::kill(-child_pid, libc::SIGTERM);
-                            }
-                            std::thread::sleep(Duration::from_millis(500));
-                            unsafe {
-                                libc::kill(-child_pid, libc::SIGKILL);
-                            }
-                        }
-                        #[cfg(not(unix))]
-                        {
-                            let _ = child.kill();
-                        }
+                        log::warn!("CADO-NFS timed out after {:?}, killing process", timeout);
+                        let _ = child.kill();
                         let _ = child.wait();
+                        Self::cleanup_cado_clients();
                         return Err(CadoError::Timeout(timeout));
                     }
                     std::thread::sleep(poll_interval);
@@ -503,22 +490,13 @@ impl CadoInstallation {
 
         let elapsed = start.elapsed();
 
-        // Read stdout/stderr from the handles we took earlier
-        use std::io::Read;
-        let stdout = if let Some(mut out) = child_stdout {
-            let mut s = String::new();
-            let _ = out.read_to_string(&mut s);
-            s
-        } else {
-            String::new()
-        };
-        let stderr = if let Some(mut err) = child_stderr {
-            let mut s = String::new();
-            let _ = err.read_to_string(&mut s);
-            s
-        } else {
-            String::new()
-        };
+        // Clean up orphaned cado-nfs-client.py daemons spawned by this run.
+        // CADO-NFS leaves these behind even after the main process exits.
+        Self::cleanup_cado_clients();
+
+        // Join reader threads (process exited, so pipes are closed)
+        let stdout = stdout_thread.join().unwrap_or_default();
+        let stderr = stderr_thread.join().unwrap_or_default();
         let combined_log = format!("{}\n{}", stdout, stderr);
 
         log::debug!(
@@ -537,6 +515,28 @@ impl CadoInstallation {
         result.log_tail = log_lines[tail_start..].join("\n");
 
         Ok(result)
+    }
+
+    /// Kill orphaned cado-nfs-client.py daemon processes.
+    ///
+    /// CADO-NFS spawns client daemons that persist after the main process
+    /// exits. Without cleanup, these accumulate across trials and can cause
+    /// resource exhaustion.
+    fn cleanup_cado_clients() {
+        #[cfg(unix)]
+        {
+            let output = Command::new("pkill")
+                .args(["-f", "cado-nfs-client.py"])
+                .output();
+            match output {
+                Ok(o) if o.status.success() => {
+                    log::debug!("Cleaned up orphaned cado-nfs-client.py processes");
+                }
+                _ => {
+                    // No clients to kill, or pkill not available — fine
+                }
+            }
+        }
     }
 }
 
