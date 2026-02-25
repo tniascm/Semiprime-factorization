@@ -1,0 +1,98 @@
+{
+  "claim": "Under the corrected evolution protocol, the 150-bit evolved configuration achieves a statistically significant ~1.06× speedup and reduced runtime variance vs default on held-out paired benchmarks.",
+  "protocol": {
+    "evolution": {
+      "method": "Island-model EA (3 islands × 8 individuals, tournament-3, 70% mutation)",
+      "generations": 10,
+      "training_set": "4 fixed composites (same across all generations)",
+      "fitness": "0.60 × speed + 0.25 × robustness + 0.15 × efficiency",
+      "timeout_per_run_secs": 120,
+      "cache_policy": "keyed by params hash; valid because training set is fixed"
+    },
+    "validation": {
+      "method": "Held-out paired A/B test on 10 fresh composites",
+      "design": "Same composite factored by both default and evolved configs",
+      "statistical_test": "Welch's two-sample t-test (two-sided)",
+      "timeout_per_run_secs": 300,
+      "total_composites": 10
+    }
+  },
+  "evolved_params": {
+    "poly_degree": 3,
+    "poly_admax": 5585,
+    "poly_incr": 60,
+    "fb_rational_bound": 42373,
+    "fb_algebraic_bound": 123279,
+    "lp_rational_bits": 17,
+    "lp_algebraic_bits": 18,
+    "sieve_mfbr": 17,
+    "sieve_mfba": 28,
+    "sieve_qrange": 1019,
+    "summary": "deg=3 ad=5585 rlim=42373 alim=123279 lpb=17/18 mfb=17/28 qr=1019"
+  },
+  "default_params_source": "CADO-NFS params.c45 (interpolated for 150-bit ≈ 46 digits)",
+  "validation_results": {
+    "default": {
+      "p50_secs": 10.333,
+      "p90_secs": 11.599,
+      "mean_secs": 10.535,
+      "std_dev_secs": 0.658,
+      "success_rate": 1.0
+    },
+    "evolved": {
+      "p50_secs": 10.068,
+      "p90_secs": 10.081,
+      "mean_secs": 9.925,
+      "std_dev_secs": 0.226,
+      "success_rate": 1.0
+    },
+    "speedup": {
+      "mean": 1.062,
+      "p50": 1.051,
+      "p90": 1.158,
+      "range": [0.950, 1.212]
+    },
+    "statistical_significance": {
+      "t_statistic": 2.628,
+      "degrees_of_freedom": 11.09,
+      "p_value": 0.0102,
+      "significant_at_05": true,
+      "ci_95_low_secs": 0.145,
+      "ci_95_high_secs": 1.075
+    }
+  },
+  "raw_paired_trials": [
+    {"n": "506945104745397386533616401333681289861304727", "default_secs": 10.585, "evolved_secs": 10.067, "speedup": 1.051},
+    {"n": "1141747841650230442493097629309104619324589533", "default_secs": 10.074, "evolved_secs": 10.072, "speedup": 1.000},
+    {"n": "649169570585630736560540166351396701660835661", "default_secs": 11.087, "evolved_secs": 10.071, "speedup": 1.101},
+    {"n": "624705612830783777474146555939043790038653609", "default_secs": 10.073, "evolved_secs": 9.587, "speedup": 1.051},
+    {"n": "511428050095468799985075833779843320587269961", "default_secs": 10.081, "evolved_secs": 10.067, "speedup": 1.001},
+    {"n": "608235557858656317373283967656810331174751169", "default_secs": 9.580, "evolved_secs": 10.081, "speedup": 0.950},
+    {"n": "530144875675697771061315126946264908588219457", "default_secs": 10.076, "evolved_secs": 9.578, "speedup": 1.052},
+    {"n": "953932125129291233078408573689067401914514211", "default_secs": 11.601, "evolved_secs": 9.576, "speedup": 1.212},
+    {"n": "717684595155872364172901228554904216432654963", "default_secs": 10.588, "evolved_secs": 10.082, "speedup": 1.050},
+    {"n": "805344810197082497331106106283185267488160861", "default_secs": 11.599, "evolved_secs": 10.068, "speedup": 1.152}
+  ],
+  "reproducibility": {
+    "binary_commit": "d89f0fafdca8d32ed4c0a0b5ec08efdd7ef476c7",
+    "branch": "claude/admiring-yalow",
+    "evolution_commit": "039979f (fixed training set protocol)",
+    "cado_nfs_path": "/Users/andriipotapov/cado-nfs",
+    "hardware": {
+      "os": "Darwin 25.2.0 (macOS Sequoia)",
+      "arch": "arm64",
+      "cpu": "Apple M4",
+      "ram_bytes": 17179869184
+    },
+    "timestamp_utc": "2026-02-24T03:15:00Z",
+    "run_order": "paired: for each composite, default first then evolved",
+    "rng": "thread_rng (not seeded; composites logged in raw_paired_trials)"
+  },
+  "key_observations": [
+    "Evolved params achieve 3.2× lower runtime variance (σ=0.226 vs σ=0.658)",
+    "Asymmetric factor bases: alim=123279 ≫ rlim=42373 (3× ratio)",
+    "Minimal mfb0=lpb0=17 (sieve cofactor bound at its floor)",
+    "Fitness plateaued at generation 1; no improvement through gen 10",
+    "All 3 islands converged to same best individual"
+  ]
+}

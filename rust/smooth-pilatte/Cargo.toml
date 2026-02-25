@@ -1,0 +1,21 @@
+[package]
+name = "smooth-pilatte"
+version = "0.1.0"
+edition = "2021"
+description = "Pilatte lattice-geometric smooth relation finder (Prong 2)"
+
+[dependencies]
+factoring-core = { path = "../factoring-core" }
+lattice-reduction = { path = "../lattice-reduction" }
+classical-nfs = { path = "../classical-nfs" }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+num-prime = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "smooth-pilatte"
+path = "src/main.rs"

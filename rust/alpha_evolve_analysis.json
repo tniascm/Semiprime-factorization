@@ -1,0 +1,827 @@
+{
+  "primitive_frequency": [
+    {
+      "primitive": "EcmCurve",
+      "count": 50,
+      "fraction": 1.0
+    }
+  ],
+  "macro_frequency": [],
+  "structural_motifs": [
+    {
+      "pattern": "EcmCurve",
+      "count": 50,
+      "avg_fitness": 1233156.4149627278
+    }
+  ],
+  "scaling_curves": [
+    {
+      "program": "ECM(6296)",
+      "fitness": 1880400.6060606057,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 3.8
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.8
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 5.0
+        },
+        {
+          "bit_size": 40,
+          "successes": 3,
+          "attempts": 5,
+          "success_rate": 0.6,
+          "avg_time_ms": 77.2
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 17.0
+        }
+      ]
+    },
+    {
+      "program": "ECM(5255)",
+      "fitness": 1625099.9999999998,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.2
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 14.4
+        },
+        {
+          "bit_size": 40,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 51.4
+        },
+        {
+          "bit_size": 48,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 35.2
+        }
+      ]
+    },
+    {
+      "program": "ECM(7250)",
+      "fitness": 1495095.3484162895,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 47.6
+        },
+        {
+          "bit_size": 40,
+          "successes": 3,
+          "attempts": 5,
+          "success_rate": 0.6,
+          "avg_time_ms": 65.2
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 20.8
+        }
+      ]
+    },
+    {
+      "program": "ECM(7669)",
+      "fitness": 1473832.0355683728,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 36.2
+        },
+        {
+          "bit_size": 40,
+          "successes": 3,
+          "attempts": 5,
+          "success_rate": 0.6,
+          "avg_time_ms": 83.8
+        },
+        {
+          "bit_size": 48,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 27.8
+        }
+      ]
+    },
+    {
+      "program": "ECM(7486)",
+      "fitness": 1427908.4444444443,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 1.6
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 2.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 52.0
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.8
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 6.2
+        }
+      ]
+    },
+    {
+      "program": "ECM(6179)",
+      "fitness": 1421531.1649580612,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 2,
+          "attempts": 5,
+          "success_rate": 0.4,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.8
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 17.0
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 14.4
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 25.6
+        }
+      ]
+    },
+    {
+      "program": "ECM(5357)",
+      "fitness": 1421420.0,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.8
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 44.4
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 12.0
+        },
+        {
+          "bit_size": 48,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 54.2
+        }
+      ]
+    },
+    {
+      "program": "ECM(7961)",
+      "fitness": 1354693.3333333333,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.6
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 28.4
+        },
+        {
+          "bit_size": 40,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.4
+        },
+        {
+          "bit_size": 48,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 36.2
+        }
+      ]
+    },
+    {
+      "program": "ECM(7810)",
+      "fitness": 1328293.6936936937,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 36,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 28.6
+        },
+        {
+          "bit_size": 40,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 49.8
+        },
+        {
+          "bit_size": 48,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 58.4
+        }
+      ]
+    },
+    {
+      "program": "ECM(6170)",
+      "fitness": 1300684.4444444445,
+      "bit_results": [
+        {
+          "bit_size": 16,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 20,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.0
+        },
+        {
+          "bit_size": 24,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 1.4
+        },
+        {
+          "bit_size": 28,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 32,
+          "successes": 5,
+          "attempts": 5,
+          "success_rate": 1.0,
+          "avg_time_ms": 0.2
+        },
+        {
+          "bit_size": 36,
+          "successes": 3,
+          "attempts": 5,
+          "success_rate": 0.6,
+          "avg_time_ms": 81.8
+        },
+        {
+          "bit_size": 40,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 37.0
+        },
+        {
+          "bit_size": 48,
+          "successes": 4,
+          "attempts": 5,
+          "success_rate": 0.8,
+          "avg_time_ms": 46.4
+        }
+      ]
+    }
+  ],
+  "co_occurrence": [],
+  "baseline_comparison": [
+    {
+      "bit_size": 16,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 1.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": false
+    },
+    {
+      "bit_size": 16,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 1.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": false
+    },
+    {
+      "bit_size": 16,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 1.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": false
+    },
+    {
+      "bit_size": 16,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.4,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.6,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.2,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 24,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.2,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.2,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.2,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 32,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 0.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 51.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 51.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 51.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 40,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 0.8,
+      "evolved_avg_time_ms": 51.2,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Pollard Rho",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 5.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Fermat",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 5.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Hart",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 5.0,
+      "evolved_is_better": true
+    },
+    {
+      "bit_size": 48,
+      "baseline_name": "Lehman",
+      "baseline_success_rate": 0.0,
+      "baseline_avg_time_ms": 0.0,
+      "evolved_success_rate": 1.0,
+      "evolved_avg_time_ms": 5.0,
+      "evolved_is_better": true
+    }
+  ],
+  "novel_compositions": [],
+  "novelty_stats": {
+    "archive_size": 594,
+    "unique_behaviors": 594
+  }
+}

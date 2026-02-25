@@ -5,21 +5,86 @@
 //! migration and FunSearch-style island culling.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use rand::Rng;
+use rayon::prelude::*;
 
 use crate::{
-    seed_fermat_like, seed_hart_like, seed_lehman_like, seed_pollard_rho, seed_trial_like,
-    Individual, PrimitiveOp, Program, ProgramNode,
+    macros::{MacroKind, MacroParams},
+    seed_cf_regulator_jump, seed_dixon_smooth, seed_ecm_cf_hybrid, seed_fermat_like,
+    seed_hart_like, seed_lattice_gcd, seed_lehman_like, seed_pm1_rho_hybrid,
+    seed_pollard_rho, seed_trial_like, Individual, PrimitiveOp, Program, ProgramNode,
 };
+
+// ---------------------------------------------------------------------------
+// Fitness cache (hash program structure → cached score)
+// ---------------------------------------------------------------------------
+
+/// Simple hash of a program's string representation for fitness caching.
+fn program_hash(program: &Program) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let repr = format!("{}", program);
+    repr.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// LRU fitness cache to avoid re-evaluating structurally identical programs.
+pub struct FitnessCache {
+    cache: HashMap<u64, f64>,
+    max_size: usize,
+}
+
+impl FitnessCache {
+    /// Create a new fitness cache with the given maximum size.
+    pub fn new(max_size: usize) -> Self {
+        FitnessCache {
+            cache: HashMap::new(),
+            max_size,
+        }
+    }
+
+    /// Look up a cached fitness score for the given program.
+    pub fn get(&self, program: &Program) -> Option<f64> {
+        let hash = program_hash(program);
+        self.cache.get(&hash).copied()
+    }
+
+    /// Store a fitness score for the given program.
+    pub fn insert(&mut self, program: &Program, fitness: f64) {
+        let hash = program_hash(program);
+        self.cache.insert(hash, fitness);
+
+        // Simple eviction: if over capacity, clear half
+        if self.cache.len() > self.max_size {
+            let keys: Vec<u64> = self.cache.keys().take(self.max_size / 2).cloned().collect();
+            for key in keys {
+                self.cache.remove(&key);
+            }
+        }
+    }
+
+    /// Number of cached entries.
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
+
+    /// Cache hit rate estimation (not precise, just for reporting).
+    pub fn is_empty(&self) -> bool {
+        self.cache.is_empty()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Random program generation
 // ---------------------------------------------------------------------------
 
 /// Generate a random primitive operation.
+///
+/// Covers all 25 primitive variants: 14 original + 11 new crate-wrapping operations.
 fn random_op(rng: &mut impl Rng) -> PrimitiveOp {
-    match rng.gen_range(0..14) {
+    match rng.gen_range(0..25) {
         0 => PrimitiveOp::ModPow,
         1 => PrimitiveOp::Gcd,
         2 => PrimitiveOp::RandomElement,
@@ -43,31 +108,134 @@ fn random_op(rng: &mut impl Rng) -> PrimitiveOp {
             bound: rng.gen_range(100..=10000),
         },
         12 => PrimitiveOp::ISqrt,
-        _ => PrimitiveOp::IsPerfectSquare,
+        13 => PrimitiveOp::IsPerfectSquare,
+        // --- New crate-wrapping primitives ---
+        14 => PrimitiveOp::CfConvergent {
+            k: rng.gen_range(1..=50),
+        },
+        15 => PrimitiveOp::SqufofStep,
+        16 => PrimitiveOp::RhoFormStep,
+        17 => PrimitiveOp::EcmCurve {
+            b1: rng.gen_range(100..=10000),
+        },
+        18 => PrimitiveOp::LllShortVector,
+        19 => PrimitiveOp::SmoothTest {
+            bound: rng.gen_range(50..=5000),
+        },
+        20 => PrimitiveOp::PilatteVector,
+        21 => PrimitiveOp::QuadraticResidue,
+        22 => PrimitiveOp::PollardPm1 {
+            bound: rng.gen_range(50..=5000),
+        },
+        23 => PrimitiveOp::DixonAccumulate,
+        _ => PrimitiveOp::DixonCombine,
+    }
+}
+
+/// Generate a random macro block kind.
+fn random_macro_kind(rng: &mut impl Rng) -> MacroKind {
+    match rng.gen_range(0..6) {
+        0 => MacroKind::Squfof,
+        1 => MacroKind::Ecm,
+        2 => MacroKind::PollardRho,
+        3 => MacroKind::FermatScan,
+        4 => MacroKind::LatticeSmooth,
+        _ => MacroKind::ClassWalk,
+    }
+}
+
+/// Generate random macro parameters appropriate for the given kind.
+fn random_macro_params(kind: &MacroKind, rng: &mut impl Rng) -> MacroParams {
+    match kind {
+        MacroKind::Squfof => MacroParams::default(),
+        MacroKind::Ecm => MacroParams {
+            param1: rng.gen_range(100..=2000), // B1
+            param2: rng.gen_range(1..=3),      // curves
+        },
+        MacroKind::PollardRho => MacroParams {
+            param1: rng.gen_range(100..=10000), // max_iters
+            param2: 1,
+        },
+        MacroKind::FermatScan => MacroParams {
+            param1: rng.gen_range(1..=100),    // k_start
+            param2: rng.gen_range(100..=1000), // k_end
+        },
+        MacroKind::LatticeSmooth => MacroParams {
+            param1: rng.gen_range(4..=10), // dimension
+            param2: 1,
+        },
+        MacroKind::ClassWalk => MacroParams {
+            param1: rng.gen_range(10..=2000), // steps
+            param2: 1,
+        },
     }
 }
 
 /// Generate a random program node with bounded depth.
+///
+/// Includes all 9 node types: Leaf, Sequence, IterateNode, GcdCheck,
+/// ConditionalGt, MemoryOp, MacroBlock, and Hybrid.
 fn random_node(rng: &mut impl Rng, max_depth: u32) -> ProgramNode {
     if max_depth <= 1 {
-        return ProgramNode::Leaf(random_op(rng));
+        // At max depth, only generate terminal nodes (Leaf, MemoryOp, or MacroBlock)
+        match rng.gen_range(0..10) {
+            0 => {
+                return ProgramNode::MemoryOp {
+                    store: rng.gen_bool(0.5),
+                    slot: rng.gen_range(0..4),
+                };
+            }
+            1 => {
+                let kind = random_macro_kind(rng);
+                let params = random_macro_params(&kind, rng);
+                return ProgramNode::MacroBlock { kind, params };
+            }
+            _ => return ProgramNode::Leaf(random_op(rng)),
+        }
     }
 
-    match rng.gen_range(0..4) {
-        0 => ProgramNode::Leaf(random_op(rng)),
-        1 => {
+    match rng.gen_range(0..11) {
+        0 | 1 => ProgramNode::Leaf(random_op(rng)),
+        2 => {
             let len = rng.gen_range(2..=4);
             let children: Vec<ProgramNode> =
                 (0..len).map(|_| random_node(rng, max_depth - 1)).collect();
             ProgramNode::Sequence(children)
         }
-        2 => ProgramNode::IterateNode {
+        3 => ProgramNode::IterateNode {
             body: Box::new(random_node(rng, max_depth - 1)),
             steps: rng.gen_range(5..=100),
         },
-        _ => ProgramNode::GcdCheck {
+        4 => ProgramNode::GcdCheck {
             setup: Box::new(random_node(rng, max_depth - 1)),
         },
+        5 => ProgramNode::ConditionalGt {
+            threshold: rng.gen_range(1..=1000),
+            if_true: Box::new(random_node(rng, max_depth - 1)),
+            if_false: Box::new(random_node(rng, max_depth - 1)),
+        },
+        6 => ProgramNode::MemoryOp {
+            store: true,
+            slot: rng.gen_range(0..4),
+        },
+        7 => ProgramNode::MemoryOp {
+            store: false,
+            slot: rng.gen_range(0..4),
+        },
+        8 => {
+            // MacroBlock
+            let kind = random_macro_kind(rng);
+            let params = random_macro_params(&kind, rng);
+            ProgramNode::MacroBlock { kind, params }
+        }
+        9 => {
+            // Hybrid: run first, then feed state to second
+            ProgramNode::Hybrid {
+                first: Box::new(random_node(rng, max_depth - 1)),
+                second: Box::new(random_node(rng, max_depth - 1)),
+            }
+        }
+        _ => ProgramNode::Leaf(random_op(rng)),
     }
 }
 
@@ -139,6 +307,27 @@ fn mutate_node(node: &ProgramNode, rng: &mut impl Rng) -> ProgramNode {
                         let new_bound = (*bound as i64 + delta).max(10) as u64;
                         ProgramNode::Leaf(PrimitiveOp::WilliamsStep { bound: new_bound })
                     }
+                    // --- New parameterized primitives ---
+                    PrimitiveOp::CfConvergent { k } => {
+                        let delta: i32 = rng.gen_range(-10..=10);
+                        let new_k = (*k as i32 + delta).max(1) as u32;
+                        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: new_k })
+                    }
+                    PrimitiveOp::EcmCurve { b1 } => {
+                        let delta: i64 = rng.gen_range(-2000..=2000);
+                        let new_b1 = (*b1 as i64 + delta).max(50) as u64;
+                        ProgramNode::Leaf(PrimitiveOp::EcmCurve { b1: new_b1 })
+                    }
+                    PrimitiveOp::SmoothTest { bound } => {
+                        let delta: i64 = rng.gen_range(-500..=500);
+                        let new_bound = (*bound as i64 + delta).max(10) as u64;
+                        ProgramNode::Leaf(PrimitiveOp::SmoothTest { bound: new_bound })
+                    }
+                    PrimitiveOp::PollardPm1 { bound } => {
+                        let delta: i64 = rng.gen_range(-500..=500);
+                        let new_bound = (*bound as i64 + delta).max(10) as u64;
+                        ProgramNode::Leaf(PrimitiveOp::PollardPm1 { bound: new_bound })
+                    }
                     _ => ProgramNode::Leaf(random_op(rng)),
                 }
             }
@@ -166,6 +355,98 @@ fn mutate_node(node: &ProgramNode, rng: &mut impl Rng) -> ProgramNode {
             // Replace setup with a new random node
             ProgramNode::GcdCheck {
                 setup: Box::new(random_node(rng, 2)),
+            }
+        }
+        ProgramNode::ConditionalGt {
+            threshold,
+            if_true,
+            if_false,
+        } => {
+            // Either tweak the threshold, or replace one branch
+            match rng.gen_range(0..3) {
+                0 => {
+                    // Tweak threshold
+                    let delta: i64 = rng.gen_range(-100..=100);
+                    let new_threshold = (*threshold as i64 + delta).max(1) as u64;
+                    ProgramNode::ConditionalGt {
+                        threshold: new_threshold,
+                        if_true: if_true.clone(),
+                        if_false: if_false.clone(),
+                    }
+                }
+                1 => {
+                    // Replace if_true branch
+                    ProgramNode::ConditionalGt {
+                        threshold: *threshold,
+                        if_true: Box::new(random_node(rng, 2)),
+                        if_false: if_false.clone(),
+                    }
+                }
+                _ => {
+                    // Replace if_false branch
+                    ProgramNode::ConditionalGt {
+                        threshold: *threshold,
+                        if_true: if_true.clone(),
+                        if_false: Box::new(random_node(rng, 2)),
+                    }
+                }
+            }
+        }
+        ProgramNode::MemoryOp { store, slot } => {
+            // Either toggle store/load, or change slot
+            if rng.gen_bool(0.5) {
+                ProgramNode::MemoryOp {
+                    store: !store,
+                    slot: *slot,
+                }
+            } else {
+                ProgramNode::MemoryOp {
+                    store: *store,
+                    slot: rng.gen_range(0..4),
+                }
+            }
+        }
+        ProgramNode::MacroBlock { kind, params } => {
+            // Either change the macro kind entirely, or tweak parameters
+            if rng.gen_bool(0.3) {
+                // Change macro kind
+                let new_kind = random_macro_kind(rng);
+                let new_params = random_macro_params(&new_kind, rng);
+                ProgramNode::MacroBlock {
+                    kind: new_kind,
+                    params: new_params,
+                }
+            } else {
+                // Tweak parameters
+                let delta1: i64 = rng.gen_range(-200..=200);
+                let delta2: i64 = rng.gen_range(-2..=2);
+                ProgramNode::MacroBlock {
+                    kind: kind.clone(),
+                    params: MacroParams {
+                        param1: (params.param1 as i64 + delta1).max(1) as u64,
+                        param2: (params.param2 as i64 + delta2).max(1) as u64,
+                    },
+                }
+            }
+        }
+        ProgramNode::Hybrid { first, second } => {
+            // Either replace one branch or swap them
+            match rng.gen_range(0..3) {
+                0 => ProgramNode::Hybrid {
+                    first: Box::new(random_node(rng, 2)),
+                    second: second.clone(),
+                },
+                1 => ProgramNode::Hybrid {
+                    first: first.clone(),
+                    second: Box::new(random_node(rng, 2)),
+                },
+                _ => {
+                    // Swap the order (second runs first)
+                    ProgramNode::Hybrid {
+                        first: second.clone(),
+                        second: first.clone(),
+                    }
+                }
             }
         }
     }
@@ -272,17 +553,22 @@ pub struct Population {
 }
 
 impl Population {
-    /// Create an initial population with random programs plus the three seed programs.
+    /// Create an initial population with random programs plus 10 seed programs.
     pub fn new(size: usize, rng: &mut impl Rng) -> Self {
         let mut individuals = Vec::with_capacity(size);
 
-        // Add seed programs first
+        // Add seed programs first (5 original + 5 from E1-E20 domain knowledge)
         let seeds = vec![
             seed_pollard_rho(),
             seed_trial_like(),
             seed_fermat_like(),
             seed_lehman_like(),
             seed_hart_like(),
+            seed_dixon_smooth(),
+            seed_cf_regulator_jump(),
+            seed_lattice_gcd(),
+            seed_ecm_cf_hybrid(),
+            seed_pm1_rho_hybrid(),
         ];
         for seed in seeds {
             individuals.push(Individual {
@@ -375,6 +661,103 @@ impl Population {
             if i < replace_count {
                 self.individuals[i] = child;
             }
+        }
+
+        self.generation += 1;
+    }
+
+    /// Evolve one generation with Rayon-parallel fitness evaluation.
+    ///
+    /// Creates offspring sequentially (RNG-dependent), but evaluates fitness
+    /// of all offspring in parallel using Rayon's par_iter.
+    pub fn evolve_generation_parallel(
+        &mut self,
+        rng: &mut impl Rng,
+        fitness_fn: &(dyn Fn(&Program) -> f64 + Sync),
+        cache: &mut FitnessCache,
+    ) {
+        let pop_size = self.individuals.len();
+        if pop_size == 0 {
+            return;
+        }
+
+        // Step 1: Evaluate fitness (check cache first, then parallel for uncached)
+        let programs: Vec<Program> = self.individuals.iter().map(|i| i.program.clone()).collect();
+        let scores: Vec<f64> = programs
+            .par_iter()
+            .map(|program| {
+                if let Some(cached) = cache.get(program) {
+                    cached
+                } else {
+                    fitness_fn(program)
+                }
+            })
+            .collect();
+
+        for (individual, &score) in self.individuals.iter_mut().zip(scores.iter()) {
+            individual.fitness = score;
+            cache.insert(&individual.program, score);
+        }
+
+        // Step 2: Apply covariant parsimony pressure
+        let c = parsimony_coefficient(&self.individuals);
+        if c > 0.0 {
+            for individual in &mut self.individuals {
+                let size = individual.program.root.node_count() as f64;
+                individual.fitness = (individual.fitness - c * size).max(0.0);
+            }
+        }
+
+        // Step 3 & 4: Create offspring (sequential RNG, parallel eval)
+        let num_offspring = pop_size / 4;
+        let tournament_size = 3;
+        let mut offspring_programs: Vec<Program> = Vec::with_capacity(num_offspring);
+
+        for _ in 0..num_offspring {
+            let parent_a = tournament_select(&self.individuals, tournament_size, rng);
+            let parent_b = tournament_select(&self.individuals, tournament_size, rng);
+
+            let mut child_program = crossover(&parent_a.program, &parent_b.program, rng);
+
+            if rng.gen_bool(0.95) {
+                child_program = mutate(&child_program, rng);
+            }
+
+            if child_program.root.node_count() > 200 {
+                child_program = random_program(rng, 3);
+            }
+
+            offspring_programs.push(child_program);
+        }
+
+        // Parallel fitness evaluation of offspring
+        let offspring_scores: Vec<f64> = offspring_programs
+            .par_iter()
+            .map(|program| {
+                if let Some(cached) = cache.get(program) {
+                    cached
+                } else {
+                    fitness_fn(program)
+                }
+            })
+            .collect();
+
+        let mut offspring: Vec<Individual> = offspring_programs
+            .into_iter()
+            .zip(offspring_scores.into_iter())
+            .map(|(program, fitness)| {
+                cache.insert(&program, fitness);
+                Individual { program, fitness }
+            })
+            .collect();
+
+        // Step 5: Sort and replace worst
+        self.individuals
+            .sort_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap_or(Ordering::Equal));
+
+        let replace_count = offspring.len().min(pop_size);
+        for (i, child) in offspring.drain(..replace_count).enumerate() {
+            self.individuals[i] = child;
         }
 
         self.generation += 1;
@@ -537,6 +920,31 @@ impl IslandModel {
         }
 
         self.islands[worst_idx] = new_island;
+    }
+
+    /// Evolve all islands with parallel fitness evaluation.
+    ///
+    /// Same migration/culling logic as `evolve_generation`, but uses Rayon
+    /// for parallel fitness evaluation within each island.
+    pub fn evolve_generation_parallel(
+        &mut self,
+        rng: &mut impl Rng,
+        fitness_fn: &(dyn Fn(&Program) -> f64 + Sync),
+        cache: &mut FitnessCache,
+    ) {
+        for island in &mut self.islands {
+            island.evolve_generation_parallel(rng, fitness_fn, cache);
+        }
+
+        self.generation += 1;
+
+        if self.generation % self.migration_interval == 0 && self.islands.len() > 1 {
+            self.migrate();
+        }
+
+        if self.generation % 50 == 0 && self.islands.len() > 2 {
+            self.cull_worst_island(rng);
+        }
     }
 
     /// Get the global best individual across all islands.

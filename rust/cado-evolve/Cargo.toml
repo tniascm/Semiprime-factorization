@@ -1,7 +1,8 @@
 [package]
-name = "alpha-evolve"
+name = "cado-evolve"
 version = "0.1.0"
 edition = "2021"
+description = "Evolutionary GNFS parameter optimization via CADO-NFS"
 
 [dependencies]
 num-bigint = { workspace = true }
@@ -11,9 +12,8 @@ rand = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = "1.0"
+tempfile = "3.10"
+log = "0.4"
+env_logger = "0.11"
 factoring-core = { path = "../factoring-core" }
-cf-factor = { path = "../cf-factor" }
-ecm = { path = "../ecm" }
-lattice-reduction = { path = "../lattice-reduction" }
-smooth-pilatte = { path = "../smooth-pilatte" }
-cf-factor-ms = { path = "../cf-factor-ms" }

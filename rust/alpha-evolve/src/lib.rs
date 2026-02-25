@@ -4,17 +4,24 @@
 //! primitives. Programs are tree-structured combinations of modular arithmetic
 //! operations that are evolved via mutation, crossover, and tournament selection.
 
+pub mod analysis;
 pub mod evolution;
 pub mod fitness;
+pub mod macros;
+pub mod novelty;
 pub mod primitives;
+pub mod symreg;
 
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use std::fmt;
 
 use crate::primitives::{
-    add_const_mod, fermat_step, gcd_prim, hart_step, is_perfect_square, isqrt, multiply_mod,
-    random_element_prim, square_mod, subtract_gcd, williams_p_plus_1_step,
+    add_const_mod, cf_convergent_gcd, dixon_accumulate, dixon_combine, ecm_attempt,
+    fermat_step, gcd_prim, hart_step, is_perfect_square, isqrt, jacobi_symbol_prim,
+    lll_short_vector_gcd, multiply_mod, pilatte_vector_product, pollard_pm1_step,
+    random_element_prim, rho_form_step, smooth_test, square_mod, squfof_attempt, subtract_gcd,
+    williams_p_plus_1_step, DixonState,
 };
 
 // ---------------------------------------------------------------------------
@@ -52,6 +59,31 @@ pub enum PrimitiveOp {
     ISqrt,
     /// Fast perfect square test on state.
     IsPerfectSquare,
+
+    // --- New primitives from project crates ---
+
+    /// k-th CF convergent of sqrt(N): compute gcd(p_k² - N, N).
+    CfConvergent { k: u32 },
+    /// Full SQUFOF factoring attempt with step budget.
+    SqufofStep,
+    /// One rho-step in the class group infrastructure of Q(sqrt(N)).
+    RhoFormStep,
+    /// Run one ECM curve with Phase 1 bound B1.
+    EcmCurve { b1: u64 },
+    /// Build a small lattice from [state, N], LLL-reduce, return gcd of short vector with N.
+    LllShortVector,
+    /// Test if state is B-smooth; if yes, return largest smooth factor.
+    SmoothTest { bound: u64 },
+    /// Generate one exponent vector from Pilatte lattice, compute product mod N.
+    PilatteVector,
+    /// Compute Jacobi symbol (state / N): sets state to 0, 1, or N-1.
+    QuadraticResidue,
+    /// Pollard p-1 step with smoothness bound B.
+    PollardPm1 { bound: u64 },
+    /// Accumulate a smooth square for Dixon's method.
+    DixonAccumulate,
+    /// Combine accumulated Dixon squares, try gcd.
+    DixonCombine,
 }
 
 impl fmt::Display for PrimitiveOp {
@@ -71,6 +103,17 @@ impl fmt::Display for PrimitiveOp {
             PrimitiveOp::WilliamsStep { bound } => write!(f, "Williams({})", bound),
             PrimitiveOp::ISqrt => write!(f, "ISqrt"),
             PrimitiveOp::IsPerfectSquare => write!(f, "IsSq"),
+            PrimitiveOp::CfConvergent { k } => write!(f, "CF({})", k),
+            PrimitiveOp::SqufofStep => write!(f, "SQUFOF"),
+            PrimitiveOp::RhoFormStep => write!(f, "RhoForm"),
+            PrimitiveOp::EcmCurve { b1 } => write!(f, "ECM({})", b1),
+            PrimitiveOp::LllShortVector => write!(f, "LLL"),
+            PrimitiveOp::SmoothTest { bound } => write!(f, "Smooth({})", bound),
+            PrimitiveOp::PilatteVector => write!(f, "Pilatte"),
+            PrimitiveOp::QuadraticResidue => write!(f, "Jacobi"),
+            PrimitiveOp::PollardPm1 { bound } => write!(f, "Pm1({})", bound),
+            PrimitiveOp::DixonAccumulate => write!(f, "DixAcc"),
+            PrimitiveOp::DixonCombine => write!(f, "DixCmb"),
         }
     }
 }
@@ -95,6 +138,30 @@ pub enum ProgramNode {
     GcdCheck {
         setup: Box<ProgramNode>,
     },
+    /// Conditional: if state > threshold, execute if_true; else execute if_false.
+    ConditionalGt {
+        threshold: u64,
+        if_true: Box<ProgramNode>,
+        if_false: Box<ProgramNode>,
+    },
+    /// Store current state into memory slot (0-3), or load from slot into state.
+    MemoryOp {
+        store: bool,
+        slot: u8,
+    },
+    /// A macro algorithm block: runs a complete algorithm with evolved parameters.
+    /// State is passed as a hint to the macro. If the macro finds a factor, it's
+    /// set as the result. Otherwise, state is left unchanged.
+    MacroBlock {
+        kind: crate::macros::MacroKind,
+        params: crate::macros::MacroParams,
+    },
+    /// Hybrid composition: run child A first; if it doesn't find a factor,
+    /// feed the resulting state into child B.
+    Hybrid {
+        first: Box<ProgramNode>,
+        second: Box<ProgramNode>,
+    },
 }
 
 impl fmt::Display for ProgramNode {
@@ -117,6 +184,26 @@ impl fmt::Display for ProgramNode {
             ProgramNode::GcdCheck { setup } => {
                 write!(f, "GcdChk({})", setup)
             }
+            ProgramNode::ConditionalGt {
+                threshold,
+                if_true,
+                if_false,
+            } => {
+                write!(f, "If(>{}, {}, {})", threshold, if_true, if_false)
+            }
+            ProgramNode::MemoryOp { store, slot } => {
+                if *store {
+                    write!(f, "Store({})", slot)
+                } else {
+                    write!(f, "Load({})", slot)
+                }
+            }
+            ProgramNode::MacroBlock { kind, params } => {
+                write!(f, "{}({},{})", kind, params.param1, params.param2)
+            }
+            ProgramNode::Hybrid { first, second } => {
+                write!(f, "Hybrid({}, {})", first, second)
+            }
         }
     }
 }
@@ -131,6 +218,14 @@ impl ProgramNode {
             }
             ProgramNode::IterateNode { body, .. } => 1 + body.node_count(),
             ProgramNode::GcdCheck { setup } => 1 + setup.node_count(),
+            ProgramNode::ConditionalGt {
+                if_true, if_false, ..
+            } => 1 + if_true.node_count() + if_false.node_count(),
+            ProgramNode::MemoryOp { .. } => 1,
+            ProgramNode::MacroBlock { .. } => 1,
+            ProgramNode::Hybrid { first, second } => {
+                1 + first.node_count() + second.node_count()
+            }
         }
     }
 
@@ -148,7 +243,7 @@ impl ProgramNode {
         *counter += 1;
 
         match self {
-            ProgramNode::Leaf(_) => None,
+            ProgramNode::Leaf(_) | ProgramNode::MemoryOp { .. } | ProgramNode::MacroBlock { .. } => None,
             ProgramNode::Sequence(children) => {
                 for child in children {
                     if let Some(node) = child.get_node_impl(target, counter) {
@@ -159,6 +254,20 @@ impl ProgramNode {
             }
             ProgramNode::IterateNode { body, .. } => body.get_node_impl(target, counter),
             ProgramNode::GcdCheck { setup } => setup.get_node_impl(target, counter),
+            ProgramNode::ConditionalGt {
+                if_true, if_false, ..
+            } => {
+                if let Some(node) = if_true.get_node_impl(target, counter) {
+                    return Some(node);
+                }
+                if_false.get_node_impl(target, counter)
+            }
+            ProgramNode::Hybrid { first, second } => {
+                if let Some(node) = first.get_node_impl(target, counter) {
+                    return Some(node);
+                }
+                second.get_node_impl(target, counter)
+            }
         }
     }
 
@@ -184,6 +293,14 @@ impl ProgramNode {
 
         match self {
             ProgramNode::Leaf(op) => ProgramNode::Leaf(op.clone()),
+            ProgramNode::MemoryOp { store, slot } => ProgramNode::MemoryOp {
+                store: *store,
+                slot: *slot,
+            },
+            ProgramNode::MacroBlock { kind, params } => ProgramNode::MacroBlock {
+                kind: kind.clone(),
+                params: params.clone(),
+            },
             ProgramNode::Sequence(children) => {
                 let new_children: Vec<ProgramNode> = children
                     .iter()
@@ -197,6 +314,19 @@ impl ProgramNode {
             },
             ProgramNode::GcdCheck { setup } => ProgramNode::GcdCheck {
                 setup: Box::new(setup.replace_node_impl(target, replacement, counter)),
+            },
+            ProgramNode::ConditionalGt {
+                threshold,
+                if_true,
+                if_false,
+            } => ProgramNode::ConditionalGt {
+                threshold: *threshold,
+                if_true: Box::new(if_true.replace_node_impl(target, replacement, counter)),
+                if_false: Box::new(if_false.replace_node_impl(target, replacement, counter)),
+            },
+            ProgramNode::Hybrid { first, second } => ProgramNode::Hybrid {
+                first: Box::new(first.replace_node_impl(target, replacement, counter)),
+                second: Box::new(second.replace_node_impl(target, replacement, counter)),
             },
         }
     }
@@ -240,6 +370,12 @@ struct EvalState {
     n: BigUint,
     /// RNG for random operations.
     rng: rand::rngs::ThreadRng,
+    /// Memory slots for storing/recalling intermediate values.
+    memory: [BigUint; 4],
+    /// Dixon method accumulation state.
+    dixon: DixonState,
+    /// Wall-clock deadline for the entire evaluation.
+    deadline: std::time::Instant,
 }
 
 impl EvalState {
@@ -255,13 +391,28 @@ impl EvalState {
             found_factor: None,
             n: n.clone(),
             rng: rand::thread_rng(),
+            memory: [
+                BigUint::zero(),
+                BigUint::zero(),
+                BigUint::zero(),
+                BigUint::zero(),
+            ],
+            dixon: DixonState::new(),
+            deadline: std::time::Instant::now() + std::time::Duration::from_millis(50),
         }
     }
 
     /// Increment the operation counter. Returns true if we should stop.
     fn tick(&mut self) -> bool {
         self.ops += 1;
-        self.ops >= self.max_ops || self.found_factor.is_some()
+        self.ops >= self.max_ops
+            || self.found_factor.is_some()
+            || std::time::Instant::now() >= self.deadline
+    }
+
+    /// Check if the evaluation has exceeded its wall-clock deadline.
+    fn timed_out(&self) -> bool {
+        std::time::Instant::now() >= self.deadline
     }
 
     /// Check if gcd(state, n) is a nontrivial factor.
@@ -294,7 +445,7 @@ impl Program {
 /// Only leaf operations consume the operation budget; structural nodes
 /// (Sequence, IterateNode, GcdCheck) are free to allow deeper programs.
 fn execute_node(node: &ProgramNode, eval: &mut EvalState) {
-    if eval.found_factor.is_some() || eval.ops >= eval.max_ops {
+    if eval.found_factor.is_some() || eval.ops >= eval.max_ops || eval.timed_out() {
         return;
     }
 
@@ -308,7 +459,7 @@ fn execute_node(node: &ProgramNode, eval: &mut EvalState) {
         ProgramNode::Sequence(children) => {
             for child in children {
                 execute_node(child, eval);
-                if eval.found_factor.is_some() || eval.ops >= eval.max_ops {
+                if eval.found_factor.is_some() || eval.ops >= eval.max_ops || eval.timed_out() {
                     return;
                 }
             }
@@ -339,7 +490,7 @@ fn execute_node(node: &ProgramNode, eval: &mut EvalState) {
                     eval.prev_state = saved_prev;
                 }
 
-                if eval.found_factor.is_some() || eval.ops >= eval.max_ops {
+                if eval.found_factor.is_some() || eval.ops >= eval.max_ops || eval.timed_out() {
                     return;
                 }
             }
@@ -348,6 +499,51 @@ fn execute_node(node: &ProgramNode, eval: &mut EvalState) {
             execute_node(setup, eval);
             if eval.found_factor.is_none() && eval.ops < eval.max_ops {
                 eval.check_gcd();
+            }
+        }
+        ProgramNode::ConditionalGt {
+            threshold,
+            if_true,
+            if_false,
+        } => {
+            let threshold_big = BigUint::from(*threshold);
+            if eval.state > threshold_big {
+                execute_node(if_true, eval);
+            } else {
+                execute_node(if_false, eval);
+            }
+        }
+        ProgramNode::MemoryOp { store, slot } => {
+            let idx = (*slot as usize) % 4;
+            if *store {
+                eval.memory[idx] = eval.state.clone();
+            } else {
+                eval.prev_state = eval.state.clone();
+                eval.state = eval.memory[idx].clone();
+            }
+        }
+        ProgramNode::MacroBlock { kind, params } => {
+            if eval.tick() {
+                return;
+            }
+            if let Some(factor) = crate::macros::execute_macro(
+                kind,
+                params,
+                &eval.n,
+                &eval.state,
+            ) {
+                let one = BigUint::one();
+                if factor > one && factor < eval.n {
+                    eval.found_factor = Some(factor);
+                }
+            }
+        }
+        ProgramNode::Hybrid { first, second } => {
+            // Run the first child
+            execute_node(first, eval);
+            // If no factor found, run the second child with the state from the first
+            if eval.found_factor.is_none() && !eval.timed_out() && eval.ops < eval.max_ops {
+                execute_node(second, eval);
             }
         }
     }
@@ -385,7 +581,7 @@ fn execute_op(op: &PrimitiveOp, eval: &mut EvalState) {
             // As a leaf, iterate just means "repeat the last operation" conceptually.
             // In practice, we square `steps` times (a common sub-routine).
             for _ in 0..*steps {
-                if eval.ops >= eval.max_ops || eval.found_factor.is_some() {
+                if eval.ops >= eval.max_ops || eval.found_factor.is_some() || eval.timed_out() {
                     return;
                 }
                 eval.ops += 1;
@@ -456,6 +652,74 @@ fn execute_op(op: &PrimitiveOp, eval: &mut EvalState) {
                 eval.state = BigUint::one();
             } else {
                 eval.state = BigUint::zero();
+            }
+        }
+
+        // --- New primitives from project crates ---
+
+        PrimitiveOp::CfConvergent { k } => {
+            if let Some(factor) = cf_convergent_gcd(&eval.n, *k) {
+                eval.found_factor = Some(factor);
+            }
+        }
+        PrimitiveOp::SqufofStep => {
+            if let Some(factor) = squfof_attempt(&eval.n) {
+                eval.found_factor = Some(factor);
+            }
+        }
+        PrimitiveOp::RhoFormStep => {
+            if let Some(factor) = rho_form_step(&eval.n) {
+                eval.found_factor = Some(factor);
+            } else {
+                // Update state with a value derived from the infrastructure
+                eval.prev_state = eval.state.clone();
+                eval.state = add_const_mod(&eval.state, 1, &eval.n);
+            }
+        }
+        PrimitiveOp::EcmCurve { b1 } => {
+            if let Some(factor) = ecm_attempt(&eval.n, *b1) {
+                eval.found_factor = Some(factor);
+            }
+        }
+        PrimitiveOp::LllShortVector => {
+            if let Some(factor) = lll_short_vector_gcd(&eval.state, &eval.n) {
+                eval.found_factor = Some(factor);
+            }
+        }
+        PrimitiveOp::SmoothTest { bound } => {
+            let result = smooth_test(&eval.state, *bound);
+            eval.prev_state = eval.state.clone();
+            eval.state = result;
+        }
+        PrimitiveOp::PilatteVector => {
+            let product = pilatte_vector_product(&eval.n);
+            eval.prev_state = eval.state.clone();
+            eval.state = product;
+            // Also try gcd
+            let g = gcd_prim(&eval.state, &eval.n);
+            let one = BigUint::one();
+            if g > one && g < eval.n {
+                eval.found_factor = Some(g);
+            }
+        }
+        PrimitiveOp::QuadraticResidue => {
+            eval.prev_state = eval.state.clone();
+            eval.state = jacobi_symbol_prim(&eval.state, &eval.n);
+        }
+        PrimitiveOp::PollardPm1 { bound } => {
+            if let Some(factor) = pollard_pm1_step(&eval.n, &eval.state, *bound) {
+                eval.found_factor = Some(factor);
+            }
+            // Advance state
+            eval.prev_state = eval.state.clone();
+            eval.state = add_const_mod(&eval.state, 1, &eval.n);
+        }
+        PrimitiveOp::DixonAccumulate => {
+            dixon_accumulate(&mut eval.dixon, &eval.state, &eval.n);
+        }
+        PrimitiveOp::DixonCombine => {
+            if let Some(factor) = dixon_combine(&mut eval.dixon, &eval.n) {
+                eval.found_factor = Some(factor);
             }
         }
     }
@@ -575,6 +839,146 @@ pub fn seed_hart_like() -> Program {
             steps: 200,
         },
     ]);
+
+    Program { root }
+}
+
+// ---------------------------------------------------------------------------
+// New seed programs from E1-E20 domain knowledge
+// ---------------------------------------------------------------------------
+
+/// Seed: Dixon-style smooth square accumulation.
+///
+/// Inspired by E13 (Eisenstein congruences): accumulate smooth squares,
+/// then combine them to find congruences of squares.
+/// Structure: Seq[ Rand, Loop(200, Seq[DixonAcc, DixonCmb]) ]
+pub fn seed_dixon_smooth() -> Program {
+    let inner = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::Square),
+        ProgramNode::Leaf(PrimitiveOp::DixonAccumulate),
+        ProgramNode::Leaf(PrimitiveOp::AddConst { c: 1 }),
+        ProgramNode::Leaf(PrimitiveOp::DixonCombine),
+    ]);
+
+    let root = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::RandomElement),
+        ProgramNode::IterateNode {
+            body: Box::new(inner),
+            steps: 200,
+        },
+    ]);
+
+    Program { root }
+}
+
+/// Seed: CF convergent + regulator-guided jump.
+///
+/// Inspired by Prong 4 (Murru-Salvatori regulator-guided factoring):
+/// use CF convergents to estimate the regulator, then walk the class
+/// group infrastructure to find ambiguous forms.
+/// Structure: Seq[ CF(10), Store(0), CF(20), Store(1), MacroClassWalk(500) ]
+pub fn seed_cf_regulator_jump() -> Program {
+    let root = ProgramNode::Sequence(vec![
+        // Compute early CF convergent
+        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: 10 }),
+        ProgramNode::MemoryOp {
+            store: true,
+            slot: 0,
+        },
+        // Compute later CF convergent
+        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: 30 }),
+        ProgramNode::MemoryOp {
+            store: true,
+            slot: 1,
+        },
+        // Walk class group infrastructure
+        ProgramNode::MacroBlock {
+            kind: macros::MacroKind::ClassWalk,
+            params: macros::MacroParams {
+                param1: 500,
+                param2: 1,
+            },
+        },
+        // Fall back to SQUFOF
+        ProgramNode::Leaf(PrimitiveOp::SqufofStep),
+    ]);
+
+    Program { root }
+}
+
+/// Seed: Lattice-based factoring via Pilatte short vectors.
+///
+/// Inspired by Prong 2 (smooth-pilatte): build a Pilatte lattice,
+/// extract short vectors, compute products, and check gcd.
+/// Structure: Seq[ PilatteVec, GcdChk, MacroLattice(6) ]
+pub fn seed_lattice_gcd() -> Program {
+    let root = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::PilatteVector),
+        ProgramNode::GcdCheck {
+            setup: Box::new(ProgramNode::Leaf(PrimitiveOp::LllShortVector)),
+        },
+        ProgramNode::MacroBlock {
+            kind: macros::MacroKind::LatticeSmooth,
+            params: macros::MacroParams {
+                param1: 6,
+                param2: 1,
+            },
+        },
+    ]);
+
+    Program { root }
+}
+
+/// Seed: ECM + CF hybrid.
+///
+/// Novel composition: use CF convergent as ECM curve seed, then run ECM.
+/// The idea is that CF convergents of sqrt(N) produce algebraic values
+/// structurally tied to N that might make better curve parameters.
+/// Structure: Seq[ CF(5), Store(0), ECM(500), Load(0), ECM(1000) ]
+pub fn seed_ecm_cf_hybrid() -> Program {
+    let root = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::CfConvergent { k: 5 }),
+        ProgramNode::MemoryOp {
+            store: true,
+            slot: 0,
+        },
+        ProgramNode::Leaf(PrimitiveOp::EcmCurve { b1: 500 }),
+        ProgramNode::MemoryOp {
+            store: false,
+            slot: 0,
+        },
+        ProgramNode::Leaf(PrimitiveOp::EcmCurve { b1: 1000 }),
+    ]);
+
+    Program { root }
+}
+
+/// Seed: Pollard p-1 + rho hybrid via Hybrid node.
+///
+/// Inspired by BSGS infrastructure: try Pollard p-1 first (works when
+/// p-1 is smooth), then fall back to Pollard rho.
+/// Structure: Hybrid[ Pm1(200), Seq[Rand, Loop(100, Seq[Sq, Add(1), SubGcd])] ]
+pub fn seed_pm1_rho_hybrid() -> Program {
+    let pm1_branch = ProgramNode::Leaf(PrimitiveOp::PollardPm1 { bound: 200 });
+
+    let rho_inner = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::Square),
+        ProgramNode::Leaf(PrimitiveOp::AddConst { c: 1 }),
+        ProgramNode::Leaf(PrimitiveOp::SubtractGcd),
+    ]);
+
+    let rho_branch = ProgramNode::Sequence(vec![
+        ProgramNode::Leaf(PrimitiveOp::RandomElement),
+        ProgramNode::IterateNode {
+            body: Box::new(rho_inner),
+            steps: 100,
+        },
+    ]);
+
+    let root = ProgramNode::Hybrid {
+        first: Box::new(pm1_branch),
+        second: Box::new(rho_branch),
+    };
 
     Program { root }
 }

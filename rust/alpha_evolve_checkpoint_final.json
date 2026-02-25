@@ -1,0 +1,112 @@
+{
+  "generation": 1000,
+  "elapsed_secs": 5479.834366042,
+  "cache_entries": 49914,
+  "novelty_archive_size": 594,
+  "unique_behaviors": 594,
+  "global_best_fitness": 1880400.6060606057,
+  "global_best_program": "ECM(6296)",
+  "global_best_nodes": 1,
+  "top_programs": [
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    },
+    {
+      "fitness": 1880400.6060606057,
+      "nodes": 1,
+      "program": "ECM(6296)"
+    }
+  ]
+}

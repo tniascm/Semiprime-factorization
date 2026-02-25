@@ -1,0 +1,19 @@
+[package]
+name = "cf-factor-ms"
+version = "0.1.0"
+edition = "2021"
+description = "Murru-Salvatori continued fraction factoring with BSGS + regulator guidance (Prong 4)"
+
+[dependencies]
+factoring-core = { path = "../factoring-core" }
+cf-factor = { path = "../cf-factor" }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "cf-factor-ms"
+path = "src/main.rs"
