@@ -5566,6 +5566,155 @@ fn ols_residuals(x: &[f64], y: &[f64], intercept: f64, slope: f64) -> Vec<f64> {
         .collect()
 }
 
+// ===========================================================================
+// E24c: Robustness Check Helper Functions
+// ===========================================================================
+
+/// Monotone-bin residualization: sort y by x into k equal-frequency bins,
+/// subtract within-bin mean of y. Returns residualized y values in original order.
+///
+/// Unlike OLS, this removes any monotone (not just linear) relationship
+/// between x and y.
+fn binned_residualize(x: &[f64], y: &[f64], k: usize) -> Vec<f64> {
+    assert_eq!(x.len(), y.len());
+    let n = x.len();
+    if n == 0 || k == 0 {
+        return y.to_vec();
+    }
+    let k = k.min(n);
+
+    // Sort indices by x
+    let mut indexed: Vec<(usize, f64)> = x.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Assign each index to a bin (equal-frequency)
+    let bin_size = n / k;
+    let mut residuals = vec![0.0f64; n];
+    let mut start = 0;
+    for bin in 0..k {
+        let end = if bin == k - 1 { n } else { start + bin_size };
+        let bin_indices: Vec<usize> = indexed[start..end].iter().map(|&(i, _)| i).collect();
+        let bin_mean = if bin_indices.is_empty() {
+            0.0
+        } else {
+            bin_indices.iter().map(|&i| y[i]).sum::<f64>() / bin_indices.len() as f64
+        };
+        for &i in &bin_indices {
+            residuals[i] = y[i] - bin_mean;
+        }
+        start = end;
+    }
+
+    residuals
+}
+
+/// 2-predictor OLS regression: y = a + b1*x1 + b2*x2.
+/// Returns (intercept, b1, b2, r_squared).
+///
+/// Solves the normal equations via centered 2x2 system (Cramer's rule).
+fn ols_2d(x1: &[f64], x2: &[f64], y: &[f64]) -> (f64, f64, f64, f64) {
+    assert_eq!(x1.len(), x2.len());
+    assert_eq!(x1.len(), y.len());
+    let n = x1.len() as f64;
+    if x1.len() < 4 {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+
+    let m1 = x1.iter().sum::<f64>() / n;
+    let m2 = x2.iter().sum::<f64>() / n;
+    let my = y.iter().sum::<f64>() / n;
+
+    let mut s11 = 0.0f64;
+    let mut s22 = 0.0f64;
+    let mut s12 = 0.0f64;
+    let mut s1y = 0.0f64;
+    let mut s2y = 0.0f64;
+    let mut syy = 0.0f64;
+
+    for i in 0..x1.len() {
+        let d1 = x1[i] - m1;
+        let d2 = x2[i] - m2;
+        let dy = y[i] - my;
+        s11 += d1 * d1;
+        s22 += d2 * d2;
+        s12 += d1 * d2;
+        s1y += d1 * dy;
+        s2y += d2 * dy;
+        syy += dy * dy;
+    }
+
+    let det = s11 * s22 - s12 * s12;
+    if det.abs() < 1e-30 {
+        // Singular: fall back to simple OLS on x1 only
+        let (intercept, slope, r_sq) = simple_ols(x1, y);
+        return (intercept, slope, 0.0, r_sq);
+    }
+
+    let b1 = (s22 * s1y - s12 * s2y) / det;
+    let b2 = (s11 * s2y - s12 * s1y) / det;
+    let intercept = my - b1 * m1 - b2 * m2;
+
+    let ss_res: f64 = (0..x1.len())
+        .map(|i| {
+            let pred = intercept + b1 * x1[i] + b2 * x2[i];
+            (y[i] - pred).powi(2)
+        })
+        .sum();
+    let r_squared = if syy > 1e-30 { 1.0 - ss_res / syy } else { 0.0 };
+
+    (intercept, b1, b2, r_squared)
+}
+
+/// Compute 2-predictor OLS residuals: y - (intercept + b1*x1 + b2*x2).
+fn ols_2d_residuals(x1: &[f64], x2: &[f64], y: &[f64], intercept: f64, b1: f64, b2: f64) -> Vec<f64> {
+    x1.iter().zip(x2.iter()).zip(y.iter())
+        .map(|((&x1i, &x2i), &yi)| yi - (intercept + b1 * x1i + b2 * x2i))
+        .collect()
+}
+
+/// Replace values with their ranks (0-indexed). Ties get average rank.
+fn rank_transform(values: &[f64]) -> Vec<f64> {
+    let n = values.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut indexed: Vec<(usize, f64)> = values.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut ranks = vec![0.0f64; n];
+    let mut i = 0;
+    while i < n {
+        let mut j = i;
+        while j < n && (indexed[j].1 - indexed[i].1).abs() < 1e-30 {
+            j += 1;
+        }
+        let avg_rank = (i + j - 1) as f64 / 2.0;
+        for k in i..j {
+            ranks[indexed[k].0] = avg_rank;
+        }
+        i = j;
+    }
+    ranks
+}
+
+/// Winsorize a slice at the given lower and upper percentiles (e.g., 0.05 and 0.95).
+/// Returns a new vector with extreme values clipped to the percentile boundaries.
+fn winsorize(values: &[f64], lower_pct: f64, upper_pct: f64) -> Vec<f64> {
+    let n = values.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut sorted: Vec<f64> = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let lo_idx = ((n as f64 * lower_pct).floor() as usize).min(n - 1);
+    let hi_idx = ((n as f64 * upper_pct).ceil() as usize).min(n - 1);
+    let lo_val = sorted[lo_idx];
+    let hi_val = sorted[hi_idx];
+
+    values.iter().map(|&v| v.clamp(lo_val, hi_val)).collect()
+}
+
 /// Control A: Norm-residualized cofactor autocorrelation.
 ///
 /// Regresses cofactor_log against log2(alg_norm) to remove the magnitude
