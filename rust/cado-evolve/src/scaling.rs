@@ -798,6 +798,55 @@ pub fn build_trial_result(
         );
     }
 
+    // Fix aggregate-time phases. CADO-NFS reports "Total time: Xs" for
+    // client-dispatched phases (sieve, polyselect) where the value is
+    // aggregate CPU time across all workers, NOT wall time. We detect these
+    // by checking if stage_sum exceeds wall_clock (impossible if all values
+    // are true wall times) and adjust aggregate-time phases accordingly.
+    let raw_stage_sum: f64 = stages.values().map(|s| s.wall_secs).sum();
+    if raw_stage_sum > wall_clock_secs * 1.05 {
+        // Some phases reported aggregate CPU time. Identify them:
+        // aggregate-time phases have cpu_secs == Some(x) where x == wall_secs
+        // (set by Pattern 3 in parse_phase_timing).
+        let mut known_wall_sum = 0.0;
+        let mut aggregate_phases: Vec<String> = Vec::new();
+        let mut aggregate_cpu_sum = 0.0;
+
+        for (name, stage) in &stages {
+            if let Some(cpu) = stage.cpu_secs {
+                if (cpu - stage.wall_secs).abs() < 0.001 && stage.wall_secs > 1.0 {
+                    // This is an aggregate-time phase (cpu == wall means
+                    // it came from "Total time:" format)
+                    aggregate_phases.push(name.clone());
+                    aggregate_cpu_sum += cpu;
+                    continue;
+                }
+            }
+            known_wall_sum += stage.wall_secs;
+        }
+
+        if !aggregate_phases.is_empty() {
+            let remaining_wall = (wall_clock_secs - known_wall_sum).max(0.0);
+            // Distribute remaining wall time proportionally by CPU time
+            for phase_name in &aggregate_phases {
+                if let Some(stage) = stages.get_mut(phase_name) {
+                    let fraction = if aggregate_cpu_sum > 0.0 {
+                        stage.cpu_secs.unwrap_or(0.0) / aggregate_cpu_sum
+                    } else {
+                        1.0 / aggregate_phases.len() as f64
+                    };
+                    stage.wall_secs = remaining_wall * fraction;
+                    // Recompute sieve throughput with corrected wall time
+                    if let Some(rels) = stage.relations_found {
+                        if stage.wall_secs > 0.0 {
+                            stage.relations_per_sec = Some(rels as f64 / stage.wall_secs);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Compute stage_sum and overhead
     let stage_sum_secs: f64 = stages.values().map(|s| s.wall_secs).sum();
     let overhead_secs = (wall_clock_secs - stage_sum_secs).max(0.0);

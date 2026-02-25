@@ -439,7 +439,7 @@ impl CadoInstallation {
             .spawn()
             .map_err(|e| CadoError::ExecutionFailed(e.to_string()))?;
 
-        let child_pid = child.id();
+        let _child_pid = child.id();
 
         // Read stdout/stderr in background threads to prevent pipe buffer
         // deadlocks. CADO-NFS can produce hundreds of KB of output at c80+,
@@ -784,11 +784,18 @@ fn parse_phase_timing(line: &str) -> Option<(String, f64, Option<f64>)> {
         }
     }
 
-    // Pattern 3: "Total time: <secs>s" — no CPU time available
+    // Pattern 3: "Total time: <secs>s" — aggregate CPU time across workers.
+    // CADO-NFS uses this format for client-dispatched phases (sieving,
+    // polyselect) where the value is sum of CPU time across all worker
+    // threads, NOT wall time. We return it as both phase_time and cpu_time
+    // but mark it with a special flag by also returning Some(cpu) equal
+    // to the value, so downstream code can detect aggregate-time phases.
     if let Some(pos) = line.find("Total time:") {
         let after = &line[pos + "Total time:".len()..];
         if let Some(secs) = extract_seconds(after) {
-            return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs, None));
+            // Store aggregate time as both real and cpu — downstream must
+            // adjust real time for multi-worker phases where aggregate > wall.
+            return Some((phase_name.unwrap_or_else(|| "unknown".to_string()), secs, Some(secs)));
         }
     }
 
@@ -1008,14 +1015,16 @@ mod tests {
 
     #[test]
     fn test_parse_phase_timing_real_sieving_total_time() {
-        // "Total time:" format (no cpu/real) — cpu_secs should be None
+        // "Total time:" format — aggregate CPU time across workers.
+        // Stored as both real and cpu to let downstream detect and adjust.
         let line = "Info:Lattice Sieving: Total time: 3.02s";
         let result = parse_phase_timing(line);
         assert!(result.is_some());
         let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Lattice Sieving");
         assert!((real - 3.02).abs() < 0.01);
-        assert!(cpu.is_none(), "Pattern 3 should not report CPU time");
+        assert!(cpu.is_some(), "Pattern 3 stores aggregate time as cpu");
+        assert!((cpu.unwrap() - 3.02).abs() < 0.01);
     }
 
     #[test]
@@ -1026,7 +1035,8 @@ mod tests {
         let (phase, real, cpu) = result.unwrap();
         assert_eq!(phase, "Polynomial Selection (root optimized)");
         assert!((real - 1.9).abs() < 0.01);
-        assert!(cpu.is_none(), "Pattern 3 should not report CPU time");
+        assert!(cpu.is_some(), "Pattern 3 stores aggregate time as cpu");
+        assert!((cpu.unwrap() - 1.9).abs() < 0.01);
     }
 
     #[test]
@@ -1092,11 +1102,12 @@ Info:Square Root: Total cpu/real time for sqrt: 0.8/0.3
         assert!(result.phase_times.contains_key("Lattice Sieving"));
         assert!(result.phase_times.contains_key("Linear Algebra"));
         assert!(result.phase_times.contains_key("Square Root"));
-        // CPU times only populated for Patterns 1 & 2 (cpu/real format)
-        assert!(!result.phase_cpu_times.contains_key("Polynomial Selection (root optimized)"),
-            "Pattern 3 phases should not have CPU time");
-        assert!(!result.phase_cpu_times.contains_key("Lattice Sieving"),
-            "Pattern 3 phases should not have CPU time");
+        // CPU times populated for all phases (Pattern 3 stores aggregate
+        // time as cpu_time for downstream aggregate-time detection)
+        assert!(result.phase_cpu_times.contains_key("Polynomial Selection (root optimized)"),
+            "Pattern 3 phases should have CPU time (aggregate)");
+        assert!(result.phase_cpu_times.contains_key("Lattice Sieving"),
+            "Pattern 3 phases should have CPU time (aggregate)");
         assert!(result.phase_cpu_times.contains_key("Linear Algebra"),
             "Pattern 1 phases should have CPU time");
         assert!(result.phase_cpu_times.contains_key("Square Root"),
@@ -1187,12 +1198,12 @@ Info:Square Root: Total cpu/real time for sqrt: 0.8/0.3
         assert_eq!(result.factors[1], "1030343599805129");
         assert_eq!(result.relations_found, Some(52609));
 
-        // Verify CPU times are populated for cpu/real format phases
+        // Verify CPU times are populated for all phases
         assert!(result.phase_cpu_times.contains_key("Linear Algebra"));
         assert!(result.phase_cpu_times.contains_key("Square Root"));
         assert!(result.phase_cpu_times.contains_key("Complete Factorization / Discrete logarithm"));
-        // Lattice Sieving uses "Total time:" format — no CPU time
-        assert!(!result.phase_cpu_times.contains_key("Lattice Sieving"));
+        // Lattice Sieving uses "Total time:" format — stores aggregate as cpu
+        assert!(result.phase_cpu_times.contains_key("Lattice Sieving"));
 
         let linalg_cpu = result.phase_cpu_times["Linear Algebra"].as_secs_f64();
         assert!((linalg_cpu - 0.38).abs() < 0.01);
