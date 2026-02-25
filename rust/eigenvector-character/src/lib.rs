@@ -6237,6 +6237,333 @@ fn compute_conditional_cofactor(
     }
 }
 
+// ===========================================================================
+// E24c: Robustness Check Compute Functions
+// ===========================================================================
+
+/// Check 1: Nonlinear (monotone-bin) residualization.
+///
+/// OLS assumes linear cofactor_log ~ log2(norm). If the true relationship is
+/// nonlinear, OLS under-removes the gradient. Monotone-bin residualization
+/// (k equal-frequency bins sorted by log2(norm), subtract within-bin mean)
+/// makes no linearity assumption.
+fn compute_nonlinear_resid(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+    n_bins: usize,
+) -> NonlinearResidResult {
+    let n_grid = grid.len();
+
+    let log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+
+    // OLS residualization (same as E24b Control A)
+    let (intercept, slope, _) = simple_ols(&log_norms, alg_cofactor_logs);
+    let ols_resid = ols_residuals(&log_norms, alg_cofactor_logs, intercept, slope);
+
+    // Bin residualization (nonlinear)
+    let bin_resid = binned_residualize(&log_norms, alg_cofactor_logs, n_bins);
+
+    let displacements = standard_displacements();
+    let mut displacement_comparisons = Vec::new();
+
+    for disp in &displacements {
+        let mut base_raw = Vec::new();
+        let mut disp_raw = Vec::new();
+        let mut base_ols = Vec::new();
+        let mut disp_ols = Vec::new();
+        let mut base_bin = Vec::new();
+        let mut disp_bin = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_raw.push(alg_cofactor_logs[i]);
+                disp_raw.push(alg_cofactor_logs[j]);
+                base_ols.push(ols_resid[i]);
+                disp_ols.push(ols_resid[j]);
+                base_bin.push(bin_resid[i]);
+                disp_bin.push(bin_resid[j]);
+            }
+        }
+
+        let raw_corr = if base_raw.len() >= 3 { algebra::pearson_corr(&base_raw, &disp_raw) } else { 0.0 };
+        let ols_corr = if base_ols.len() >= 3 { algebra::pearson_corr(&base_ols, &disp_ols) } else { 0.0 };
+        let bin_corr = if base_bin.len() >= 3 { algebra::pearson_corr(&base_bin, &disp_bin) } else { 0.0 };
+
+        displacement_comparisons.push((disp.label.clone(), raw_corr, ols_corr, bin_corr));
+    }
+
+    NonlinearResidResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        n_bins,
+        displacement_comparisons,
+    }
+}
+
+/// Check 2: Cross-validated residualization.
+///
+/// Split grid into spatial halves (a < 0 vs a >= 0). Fit OLS on one half,
+/// compute residuals on the other. Measure autocorrelation on held-out half only.
+/// If held-out autocorrelations match in-sample ones, no overfitting.
+fn compute_crossval_resid(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> CrossValidatedResidResult {
+    let n_grid = grid.len();
+
+    let log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+
+    // Split indices by a-coordinate
+    let left_mask: Vec<bool> = grid.iter().map(|&(a, _, _, _)| a < 0).collect();
+    let n_left = left_mask.iter().filter(|&&m| m).count();
+    let n_right = n_grid - n_left;
+
+    // Collect left and right subsets for OLS
+    let left_x: Vec<f64> = (0..n_grid).filter(|&i| left_mask[i]).map(|i| log_norms[i]).collect();
+    let left_y: Vec<f64> = (0..n_grid).filter(|&i| left_mask[i]).map(|i| alg_cofactor_logs[i]).collect();
+    let right_x: Vec<f64> = (0..n_grid).filter(|&i| !left_mask[i]).map(|i| log_norms[i]).collect();
+    let right_y: Vec<f64> = (0..n_grid).filter(|&i| !left_mask[i]).map(|i| alg_cofactor_logs[i]).collect();
+
+    // Fit OLS on left half
+    let (li, ls, _) = simple_ols(&left_x, &left_y);
+    // Fit OLS on right half
+    let (ri, rs, _) = simple_ols(&right_x, &right_y);
+
+    // In-sample residuals (full data, same as E24b)
+    let (fi, fs, _) = simple_ols(&log_norms, alg_cofactor_logs);
+    let full_resid = ols_residuals(&log_norms, alg_cofactor_logs, fi, fs);
+
+    // Cross-validated residuals: for each point, use the OTHER half's model
+    let cv_resid: Vec<f64> = (0..n_grid).map(|i| {
+        if left_mask[i] {
+            // Point is in left half -> use right's model
+            alg_cofactor_logs[i] - (ri + rs * log_norms[i])
+        } else {
+            // Point is in right half -> use left's model
+            alg_cofactor_logs[i] - (li + ls * log_norms[i])
+        }
+    }).collect();
+
+    let displacements = standard_displacements();
+    let mut displacement_comparisons = Vec::new();
+
+    for disp in &displacements {
+        let mut base_full = Vec::new();
+        let mut disp_full = Vec::new();
+        let mut base_ho_left = Vec::new();
+        let mut disp_ho_left = Vec::new();
+        let mut base_ho_right = Vec::new();
+        let mut disp_ho_right = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                base_full.push(full_resid[i]);
+                disp_full.push(full_resid[j]);
+
+                if left_mask[i] && left_mask[j] {
+                    base_ho_left.push(cv_resid[i]);
+                    disp_ho_left.push(cv_resid[j]);
+                }
+                if !left_mask[i] && !left_mask[j] {
+                    base_ho_right.push(cv_resid[i]);
+                    disp_ho_right.push(cv_resid[j]);
+                }
+            }
+        }
+
+        let full_corr = if base_full.len() >= 3 { algebra::pearson_corr(&base_full, &disp_full) } else { 0.0 };
+        let left_corr = if base_ho_left.len() >= 3 { algebra::pearson_corr(&base_ho_left, &disp_ho_left) } else { 0.0 };
+        let right_corr = if base_ho_right.len() >= 3 { algebra::pearson_corr(&base_ho_right, &disp_ho_right) } else { 0.0 };
+
+        displacement_comparisons.push((disp.label.clone(), full_corr, left_corr, right_corr));
+    }
+
+    CrossValidatedResidResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        n_left,
+        n_right,
+        displacement_comparisons,
+    }
+}
+
+/// Check 3: Partial correlation controlling for both endpoint norms.
+///
+/// E24b Control A only regresses against the base point's log2(norm).
+/// Here we do 2-predictor OLS: regress each side against both log_norm_i
+/// AND log_norm_j, then correlate the two residual vectors. This is proper
+/// partial correlation controlling for both endpoints' magnitudes.
+fn compute_partial_correlation(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> PartialCorrelationResult {
+    let n_grid = grid.len();
+
+    let log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+
+    // 1D OLS for reference (same as E24b)
+    let (fi, fs, _) = simple_ols(&log_norms, alg_cofactor_logs);
+    let ols_1d_resid = ols_residuals(&log_norms, alg_cofactor_logs, fi, fs);
+
+    let displacements = standard_displacements();
+    let mut displacement_comparisons = Vec::new();
+    let mut r_sq_2d_sum = 0.0f64;
+    let mut r_sq_1d_sum = 0.0f64;
+    let mut n_disps = 0usize;
+
+    for disp in &displacements {
+        let mut cf_base = Vec::new();
+        let mut cf_neigh = Vec::new();
+        let mut ln_base = Vec::new();
+        let mut ln_neigh = Vec::new();
+        let mut ols1d_base = Vec::new();
+        let mut ols1d_neigh = Vec::new();
+
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            let na = a + disp.da;
+            let nb = b + disp.db;
+            if let Some(&j) = index.get(&(na, nb)) {
+                cf_base.push(alg_cofactor_logs[i]);
+                cf_neigh.push(alg_cofactor_logs[j]);
+                ln_base.push(log_norms[i]);
+                ln_neigh.push(log_norms[j]);
+                ols1d_base.push(ols_1d_resid[i]);
+                ols1d_neigh.push(ols_1d_resid[j]);
+            }
+        }
+
+        if cf_base.len() < 4 {
+            displacement_comparisons.push((disp.label.clone(), 0.0, 0.0, 0.0));
+            continue;
+        }
+
+        let raw_corr = algebra::pearson_corr(&cf_base, &cf_neigh);
+        let ols1d_corr = algebra::pearson_corr(&ols1d_base, &ols1d_neigh);
+
+        // 2-predictor OLS: regress cf_base on (ln_base, ln_neigh)
+        let (int_b, b1_b, b2_b, r2_b) = ols_2d(&ln_base, &ln_neigh, &cf_base);
+        let resid_base = ols_2d_residuals(&ln_base, &ln_neigh, &cf_base, int_b, b1_b, b2_b);
+
+        // 2-predictor OLS: regress cf_neigh on (ln_base, ln_neigh)
+        let (int_n, b1_n, b2_n, _r2_n) = ols_2d(&ln_base, &ln_neigh, &cf_neigh);
+        let resid_neigh = ols_2d_residuals(&ln_base, &ln_neigh, &cf_neigh, int_n, b1_n, b2_n);
+
+        let partial_corr = algebra::pearson_corr(&resid_base, &resid_neigh);
+
+        // Track R² for reporting
+        let (_, _, r2_1d) = simple_ols(&ln_base, &cf_base);
+        r_sq_1d_sum += r2_1d;
+        r_sq_2d_sum += r2_b;
+        n_disps += 1;
+
+        displacement_comparisons.push((disp.label.clone(), raw_corr, ols1d_corr, partial_corr));
+    }
+
+    PartialCorrelationResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        r_squared_2d: if n_disps > 0 { r_sq_2d_sum / n_disps as f64 } else { 0.0 },
+        r_squared_1d: if n_disps > 0 { r_sq_1d_sum / n_disps as f64 } else { 0.0 },
+        displacement_comparisons,
+    }
+}
+
+/// Check 4: Alternative transforms of cofactor_log.
+///
+/// Tests robustness of residualization to the choice of metric:
+/// (a) Rank cofactor: replace cofactor_log with ranks (most robust to any monotone transform)
+/// (b) Winsorized cofactor_log: clip at 5th/95th percentiles before residualization
+/// (c) Raw cofactor bits: ceil(cofactor_log) if > 0, else 0 — integer discretization
+fn compute_alternative_transforms(
+    grid: &[(i64, i64, u128, u128)],
+    index: &HashMap<(i64, i64), usize>,
+    alg_cofactor_logs: &[f64],
+    smooth_bound: u64,
+    n_bits: u32,
+) -> AlternativeTransformResult {
+    let n_grid = grid.len();
+
+    let log_norms: Vec<f64> = grid.iter()
+        .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
+        .collect();
+
+    let transforms: Vec<(&str, Vec<f64>)> = vec![
+        ("rank_cofactor", rank_transform(alg_cofactor_logs)),
+        ("winsorized_cofactor_log", winsorize(alg_cofactor_logs, 0.05, 0.95)),
+        ("cofactor_bits", alg_cofactor_logs.iter()
+            .map(|&v| if v > 0.0 { v.ceil() } else { 0.0 })
+            .collect()),
+    ];
+
+    let displacements = standard_displacements();
+    let mut variants = Vec::new();
+
+    for (name, transformed) in &transforms {
+        // OLS residualization of transformed values against log2(norm)
+        let (intercept, slope, _) = simple_ols(&log_norms, transformed);
+        let residualized = ols_residuals(&log_norms, transformed, intercept, slope);
+
+        let mut displacement_comparisons = Vec::new();
+
+        for disp in &displacements {
+            let mut base_raw = Vec::new();
+            let mut disp_raw = Vec::new();
+            let mut base_res = Vec::new();
+            let mut disp_res = Vec::new();
+
+            for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+                let na = a + disp.da;
+                let nb = b + disp.db;
+                if let Some(&j) = index.get(&(na, nb)) {
+                    base_raw.push(transformed[i]);
+                    disp_raw.push(transformed[j]);
+                    base_res.push(residualized[i]);
+                    disp_res.push(residualized[j]);
+                }
+            }
+
+            let raw_corr = if base_raw.len() >= 3 { algebra::pearson_corr(&base_raw, &disp_raw) } else { 0.0 };
+            let res_corr = if base_res.len() >= 3 { algebra::pearson_corr(&base_res, &disp_res) } else { 0.0 };
+
+            displacement_comparisons.push((disp.label.clone(), raw_corr, res_corr));
+        }
+
+        variants.push(TransformVariantResult {
+            transform_name: name.to_string(),
+            displacement_comparisons,
+        });
+    }
+
+    AlternativeTransformResult {
+        n_bits,
+        smooth_bound,
+        n_grid,
+        variants,
+    }
+}
+
 /// Compute full validation block for one (n_bits, smooth_bound) configuration.
 fn compute_nfs_validation_block(
     n_bits: u32,
