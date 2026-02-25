@@ -4864,6 +4864,96 @@ pub struct NfsLatticeResult {
 }
 
 // ---------------------------------------------------------------------------
+// E24 helper functions
+// ---------------------------------------------------------------------------
+
+/// Convert a BigUint to u128, clamping to u128::MAX on overflow.
+/// The log₂ of a clamped value is still meaningful for cofactor analysis.
+fn biguint_to_u128_clamped(v: &BigUint) -> u128 {
+    v.to_u128().unwrap_or(u128::MAX)
+}
+
+/// Compute the rational norm |a + b·m| as u128.
+fn rational_norm_u128(a: i64, b: i64, m: u64) -> u128 {
+    let bm = b as i128 * m as i128;
+    let val = a as i128 + bm;
+    val.unsigned_abs()
+}
+
+/// Standard 2D displacement vectors for lattice autocorrelation.
+///
+/// Covers nearest neighbors in all cardinal and diagonal directions,
+/// plus a few second-order displacements.
+fn standard_displacements() -> Vec<Displacement2D> {
+    vec![
+        Displacement2D { da: 1, db: 0, label: "(1,0)".into() },
+        Displacement2D { da: 0, db: 1, label: "(0,1)".into() },
+        Displacement2D { da: 1, db: 1, label: "(1,1)".into() },
+        Displacement2D { da: 1, db: -1, label: "(1,-1)".into() },
+        Displacement2D { da: 2, db: 0, label: "(2,0)".into() },
+        Displacement2D { da: 0, db: 2, label: "(0,2)".into() },
+        Displacement2D { da: 2, db: 1, label: "(2,1)".into() },
+        Displacement2D { da: 1, db: 2, label: "(1,2)".into() },
+    ]
+}
+
+/// Build a HashMap from (a,b) coordinates to index in the grid for O(1) neighbor lookup.
+fn build_grid_index(grid: &[(i64, i64, u128, u128)]) -> HashMap<(i64, i64), usize> {
+    grid.iter()
+        .enumerate()
+        .map(|(i, &(a, b, _, _))| ((a, b), i))
+        .collect()
+}
+
+/// Generate an NFS grid of coprime (a,b) pairs with their algebraic and rational norms.
+///
+/// For a semiprime N of the given bit size:
+/// 1. Select NFS polynomial via base-m method
+/// 2. Enumerate (a,b) with a ∈ [-sieve_area, sieve_area], b ∈ [1, max_b], gcd(|a|,b)=1
+/// 3. Compute algebraic norm F(a,b) and rational norm |a + b·m|
+///
+/// Returns the polynomial and grid as Vec<(a, b, alg_norm, rat_norm)>.
+fn generate_nfs_grid(
+    n_bits: u32,
+    seed: u64,
+    sieve_area: i64,
+    max_b: i64,
+) -> (NfsPolynomial, Vec<(i64, i64, u128, u128)>) {
+    let n_u128 = generate_semiprime(n_bits, seed);
+    let n_big = BigUint::from(n_u128);
+
+    // Choose polynomial degree based on bit size
+    let degree = if n_bits <= 90 { 3 } else if n_bits <= 120 { 4 } else { 5 };
+    let poly = select_polynomial(&n_big, degree);
+    let m_u64 = poly.m.to_u64().expect("m must fit in u64 for our bit sizes");
+
+    let mut grid = Vec::new();
+    for b in 1..=max_b {
+        let b_u64 = b as u64;
+        for a in -sieve_area..=sieve_area {
+            if a == 0 {
+                continue;
+            }
+            // coprimality requirement
+            if gcd_u64(a.unsigned_abs(), b_u64) != 1 {
+                continue;
+            }
+            let alg_norm_big = eval_homogeneous_abs(&poly.coefficients, a, b);
+            let alg_norm = biguint_to_u128_clamped(&alg_norm_big);
+            let rat_norm = rational_norm_u128(a, b, m_u64);
+
+            // skip trivial norms
+            if alg_norm <= 1 || rat_norm <= 1 {
+                continue;
+            }
+            grid.push((a, b, alg_norm, rat_norm));
+        }
+    }
+
+    (poly, grid)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -5704,5 +5794,74 @@ mod tests {
         for &(_, _, cf_corr, _) in &block.phase3.lag_comparisons {
             assert!(cf_corr.is_finite());
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // E24 tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_rational_norm() {
+        // |3 + 2*10| = 23
+        assert_eq!(rational_norm_u128(3, 2, 10), 23);
+        // |-5 + 1*3| = |-5+3| = 2
+        assert_eq!(rational_norm_u128(-5, 1, 3), 2);
+        // |0 + 1*7| = 7  — but a=0 is excluded from grid, test the function itself
+        assert_eq!(rational_norm_u128(0, 1, 7), 7);
+    }
+
+    #[test]
+    fn test_biguint_to_u128_clamped() {
+        assert_eq!(biguint_to_u128_clamped(&BigUint::from(42u64)), 42);
+        assert_eq!(biguint_to_u128_clamped(&BigUint::from(u128::MAX)), u128::MAX);
+        // A value > u128::MAX should clamp
+        let huge = BigUint::from(u128::MAX) + BigUint::from(1u64);
+        assert_eq!(biguint_to_u128_clamped(&huge), u128::MAX);
+    }
+
+    #[test]
+    fn test_standard_displacements() {
+        let disps = standard_displacements();
+        assert_eq!(disps.len(), 8);
+        assert_eq!(disps[0].da, 1);
+        assert_eq!(disps[0].db, 0);
+        assert_eq!(disps[1].da, 0);
+        assert_eq!(disps[1].db, 1);
+    }
+
+    #[test]
+    fn test_generate_nfs_grid() {
+        // Small grid: 40-bit N, area=10, max_b=3
+        let (poly, grid) = generate_nfs_grid(40, 0xE240_0001, 10, 3);
+
+        // Polynomial should be degree 3 for 40-bit N
+        assert_eq!(poly.degree, 3);
+
+        // Grid should have coprime (a,b) pairs with non-trivial norms
+        assert!(!grid.is_empty(), "grid must be non-empty");
+
+        // All entries should have a != 0
+        for &(a, b, alg, rat) in &grid {
+            assert_ne!(a, 0);
+            assert!(b >= 1);
+            assert!(alg > 1);
+            assert!(rat > 1);
+            // coprimality
+            assert_eq!(gcd_u64(a.unsigned_abs(), b as u64), 1);
+        }
+    }
+
+    #[test]
+    fn test_grid_index_lookup() {
+        let (_, grid) = generate_nfs_grid(40, 0xE240_0002, 5, 2);
+        let index = build_grid_index(&grid);
+
+        // Every grid entry should be in the index
+        for (i, &(a, b, _, _)) in grid.iter().enumerate() {
+            assert_eq!(index[&(a, b)], i);
+        }
+
+        // Non-existent point should not be in index
+        assert!(!index.contains_key(&(9999, 9999)));
     }
 }
