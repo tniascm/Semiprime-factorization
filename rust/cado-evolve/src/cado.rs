@@ -453,10 +453,22 @@ impl CadoInstallation {
 
         // Poll for completion with timeout
         let poll_interval = Duration::from_millis(500);
+        let child_pid = child.id() as i32;
         loop {
             match child.try_wait() {
                 Ok(Some(_status)) => {
-                    // Process finished
+                    // Process finished — kill the process group to clean up
+                    // daemon client processes that CADO-NFS leaves behind.
+                    #[cfg(unix)]
+                    {
+                        unsafe {
+                            libc::kill(-child_pid, libc::SIGTERM);
+                        }
+                        std::thread::sleep(Duration::from_millis(200));
+                        unsafe {
+                            libc::kill(-child_pid, libc::SIGKILL);
+                        }
+                    }
                     break;
                 }
                 Ok(None) => {
@@ -466,13 +478,12 @@ impl CadoInstallation {
                         // Kill the entire process group (server + clients)
                         #[cfg(unix)]
                         {
-                            let pid = child.id() as i32;
                             unsafe {
-                                libc::kill(-pid, libc::SIGTERM);
+                                libc::kill(-child_pid, libc::SIGTERM);
                             }
                             std::thread::sleep(Duration::from_millis(500));
                             unsafe {
-                                libc::kill(-pid, libc::SIGKILL);
+                                libc::kill(-child_pid, libc::SIGKILL);
                             }
                         }
                         #[cfg(not(unix))]
