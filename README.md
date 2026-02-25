@@ -34,7 +34,7 @@ Quadratic Residuosity Assumption (QRA).
 E14-E17 were brainstorm gap experiments (nonlinear ML, class numbers, partial
 sums, carry scaleup). All failed the poly(log N) gate and were removed.
 
-### Rust Experiments (E1-E3, E19)
+### Rust Experiments (E1-E3, E19-E24)
 
 | Experiment | What it tests | Key finding |
 |-----------|--------------|-------------|
@@ -42,10 +42,15 @@ sums, carry scaleup). All failed the poly(log N) gate and were removed.
 | **E2** | ML feature extraction + latent space | KNN/autoencoder features are CRT observables; prediction requires labeled data (circular) |
 | **E3** | Multi-base representations + SSD linearization | Cross-base anomaly z-scores insignificant; all linearizations >= O(sqrt(N)) |
 | **E19** | Eisenstein congruence indirect evaluation | 231K poly(log N) candidates tested; 0 match σ_{k-1}(N) mod ℓ; gate closed |
+| **E20** (a-b) | Boolean polynomial degree + real SVD of Eisenstein channels | F2 rank grows linearly (barrier holds); real stable rank ~3.7 constant but inaccessible without factors |
+| **E21** (a-c) | Eigenvector character structure, smoothness Fourier, cross-channel | No character structure in dominant eigenvectors; smoothness bias real but not N-extractable; pairwise channels independent |
+| **E22** | QS sieve enrichment | Zero speedup — standard QS sieve already optimal |
+| **E23** | Local smoothness autocorrelation | QS sieve captures all local smoothness structure |
+| **E24** (a-c) | NFS 2D lattice locality + validation + robustness | Raw cofactor autocorrelation is norm magnitude artifact (collapse ratio 0.24); NFS sieve also optimal |
 
 ### Bonus: Non-Poly(log N) Implementations
 
-14 additional Rust implementations of classical, physics-based, spectral, and
+17 additional Rust implementations of classical, physics-based, spectral, and
 heuristic factoring methods. See [`rust/BONUS.md`](rust/BONUS.md) for details.
 
 ## Barrier Theorem
@@ -84,7 +89,9 @@ E12_carry_depth/            # Deep carry compositions
 E13_bach_charles/           # Eisenstein congruence channel
 E18_algebraic_channels/     # Algebraic extensions
 E19_eisenstein_hunt/        # Eisenstein indirect evaluation hunt (Rust)
-rust/                       # Rust workspace (20 crates, ~40K LOC)
+E20_path_sum_degree/        # Boolean polynomial degree audit (Rust, see rust/path-sum-degree/)
+E21_eigenvector_character/  # Eigenvector character structure + sieve optimality (Rust, see rust/eigenvector-character/)
+rust/                       # Rust workspace (25 crates, ~60K LOC)
   factoring-core/           # Shared library (BigUint utils, RSA gen, Pollard Rho)
   BONUS.md                  # Non-poly(log N) experiment documentation
 utils/                      # Shared SageMath utilities (semiprime gen, encoding, spectral)
