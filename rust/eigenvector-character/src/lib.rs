@@ -7822,4 +7822,116 @@ mod tests {
         // Control E: conditional cofactor
         assert!(block.control_e.conditional_cf_corr.is_finite());
     }
+
+    // ── E24c helper and smoke tests ──
+
+    #[test]
+    fn test_binned_residualize_removes_mean() {
+        // For perfectly linear data with 2 bins, bin means differ → residuals should
+        // be much smaller than the original range.
+        let x: Vec<f64> = (0..100).map(|i| i as f64).collect();
+        let y: Vec<f64> = x.iter().map(|&v| 2.0 * v + 10.0).collect();
+        let resid = binned_residualize(&x, &y, 2);
+        // Mean of residuals should be approximately 0
+        let mean_resid = resid.iter().sum::<f64>() / resid.len() as f64;
+        assert!(mean_resid.abs() < 1.0, "mean_resid={}", mean_resid);
+        // Residuals should be much smaller than original values
+        let max_resid = resid.iter().map(|v| v.abs()).fold(0.0f64, f64::max);
+        assert!(max_resid < 100.0, "max_resid={}", max_resid);
+    }
+
+    #[test]
+    fn test_ols_2d_perfect_fit() {
+        // y = 1 + 2*x1 + 3*x2 => R² should be 1.0
+        // x1 and x2 must not be collinear (x2 = 6-x1 would be collinear!)
+        let x1: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let x2: Vec<f64> = vec![1.0, 3.0, 2.0, 5.0, 4.0];
+        let y: Vec<f64> = x1.iter().zip(x2.iter()).map(|(&a, &b)| 1.0 + 2.0 * a + 3.0 * b).collect();
+        let (intercept, b1, b2, r_sq) = ols_2d(&x1, &x2, &y);
+        assert!((intercept - 1.0).abs() < 1e-6, "intercept={intercept}");
+        assert!((b1 - 2.0).abs() < 1e-6, "b1={b1}");
+        assert!((b2 - 3.0).abs() < 1e-6, "b2={b2}");
+        assert!((r_sq - 1.0).abs() < 1e-6, "r_sq={r_sq}");
+    }
+
+    #[test]
+    fn test_ols_2d_residuals_zero_for_perfect_fit() {
+        let x1: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let x2: Vec<f64> = vec![1.0, 3.0, 2.0, 5.0, 4.0];
+        let y: Vec<f64> = x1.iter().zip(x2.iter()).map(|(&a, &b)| 1.0 + 2.0 * a + 3.0 * b).collect();
+        let resid = ols_2d_residuals(&x1, &x2, &y, 1.0, 2.0, 3.0);
+        for r in &resid {
+            assert!(r.abs() < 1e-10, "residual={r}");
+        }
+    }
+
+    #[test]
+    fn test_rank_transform() {
+        let vals = vec![30.0, 10.0, 20.0, 10.0]; // ties at index 1,3
+        let ranks = rank_transform(&vals);
+        // Sorted: 10.0(idx1), 10.0(idx3), 20.0(idx2), 30.0(idx0)
+        // Ranks: 0.5, 0.5, 2.0, 3.0 (tied values get average rank)
+        assert!((ranks[0] - 3.0).abs() < 1e-10, "rank[0]={}", ranks[0]); // 30.0 -> rank 3
+        assert!((ranks[1] - 0.5).abs() < 1e-10, "rank[1]={}", ranks[1]); // 10.0 -> rank 0.5
+        assert!((ranks[2] - 2.0).abs() < 1e-10, "rank[2]={}", ranks[2]); // 20.0 -> rank 2
+        assert!((ranks[3] - 0.5).abs() < 1e-10, "rank[3]={}", ranks[3]); // 10.0 -> rank 0.5
+    }
+
+    #[test]
+    fn test_winsorize() {
+        let vals = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+        let w = winsorize(&vals, 0.1, 0.9);
+        // 10th percentile index = floor(10*0.1) = 1 -> value 2.0
+        // 90th percentile index = ceil(10*0.9) = 9 -> value 10.0
+        assert!((w[0] - 2.0).abs() < 1e-10, "w[0]={}", w[0]); // 1.0 clipped up to 2.0
+        assert!((w[5] - 6.0).abs() < 1e-10, "w[5]={}", w[5]); // 6.0 unchanged
+    }
+
+    #[test]
+    fn test_nfs_robustness_block_smoke() {
+        // Quick smoke: small grid (40-bit, area=15, max_b=3), deterministic seed.
+        let block = compute_nfs_robustness_block(40, 200, 15, 3, 0xE24C_0000);
+
+        assert_eq!(block.n_bits, 40);
+        assert_eq!(block.smooth_bound, 200);
+        assert!(block.n_grid > 0);
+
+        // Check 1: nonlinear residualization
+        assert_eq!(block.check1_nonlinear.displacement_comparisons.len(), 8);
+        for &(ref _label, raw, ols_r, bin_r) in &block.check1_nonlinear.displacement_comparisons {
+            assert!(raw.is_finite(), "Check 1: raw not finite");
+            assert!(ols_r.is_finite(), "Check 1: ols_r not finite");
+            assert!(bin_r.is_finite(), "Check 1: bin_r not finite");
+        }
+
+        // Check 2: cross-validated
+        assert!(block.check2_crossval.n_left > 0);
+        assert!(block.check2_crossval.n_right > 0);
+        assert_eq!(block.check2_crossval.displacement_comparisons.len(), 8);
+        for &(ref _label, in_s, ho_l, ho_r) in &block.check2_crossval.displacement_comparisons {
+            assert!(in_s.is_finite(), "Check 2: in_sample not finite");
+            assert!(ho_l.is_finite(), "Check 2: ho_left not finite");
+            assert!(ho_r.is_finite(), "Check 2: ho_right not finite");
+        }
+
+        // Check 3: partial correlation
+        assert!(block.check3_partial_corr.r_squared_1d >= 0.0);
+        assert!(block.check3_partial_corr.r_squared_2d >= 0.0);
+        assert_eq!(block.check3_partial_corr.displacement_comparisons.len(), 8);
+        for &(ref _label, raw, ols1d, partial) in &block.check3_partial_corr.displacement_comparisons {
+            assert!(raw.is_finite(), "Check 3: raw not finite");
+            assert!(ols1d.is_finite(), "Check 3: ols1d not finite");
+            assert!(partial.is_finite(), "Check 3: partial not finite");
+        }
+
+        // Check 4: alternative transforms (3 variants)
+        assert_eq!(block.check4_transforms.variants.len(), 3);
+        for variant in &block.check4_transforms.variants {
+            assert_eq!(variant.displacement_comparisons.len(), 8);
+            for &(ref _label, raw, resid) in &variant.displacement_comparisons {
+                assert!(raw.is_finite(), "Check 4 {}: raw not finite", variant.transform_name);
+                assert!(resid.is_finite(), "Check 4 {}: resid not finite", variant.transform_name);
+            }
+        }
+    }
 }
