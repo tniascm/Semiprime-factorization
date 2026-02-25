@@ -442,7 +442,7 @@ pub fn compute_size_summary(trials: &[TrialResult]) -> SizeSummary {
                 .iter()
                 .find(|(k, _)| {
                     let kl = k.to_lowercase();
-                    kl.contains("sieve") || kl.contains("lattice sieving")
+                    kl.contains("siev")
                 })
                 .and_then(|(_, s)| s.relations_per_sec)
         })
@@ -762,7 +762,7 @@ pub fn build_trial_result(
             .map(|d| d.as_secs_f64());
 
         // Sieve-specific: attach relations_found and throughput
-        let is_sieve = phase_lower.contains("sieve") || phase_lower.contains("lattice sieving");
+        let is_sieve = phase_lower.contains("siev");
         let relations_found = if is_sieve {
             cado_result.relations_found
         } else {
@@ -1064,7 +1064,7 @@ pub fn run_scaling_for_size(
                 trial
                     .stages
                     .iter()
-                    .find(|(k, _)| k.to_lowercase().contains("sieve"))
+                    .find(|(k, _)| k.to_lowercase().contains("siev"))
                     .map(|(_, s)| s.wall_secs / trial.wall_clock_secs * 100.0)
                     .unwrap_or(0.0),
                 if trial.wall_clock_secs > 0.0 {
@@ -1300,7 +1300,7 @@ fn print_summary_table(result: &ScalingProtocolResult) {
         let sieve_pct = s
             .stage_fractions
             .iter()
-            .find(|(k, _)| k.to_lowercase().contains("sieve"))
+            .find(|(k, _)| k.to_lowercase().contains("siev"))
             .map(|(_, v)| v * 100.0)
             .unwrap_or(0.0);
 
