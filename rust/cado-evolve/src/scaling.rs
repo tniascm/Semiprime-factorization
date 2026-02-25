@@ -626,6 +626,386 @@ fn detect_os() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Composite persistence
+// ---------------------------------------------------------------------------
+
+/// Ensure composites exist for a size class, loading from disk or generating.
+///
+/// Composites are stored as `scaling_composites_c{digits}.json` in `output_dir`.
+/// If the file exists and has at least `spec.num_composites` entries, it is
+/// loaded and returned. Otherwise, new composites are generated and saved.
+///
+/// # Arguments
+/// - `spec`: Size specification (digits, bits, num_composites)
+/// - `output_dir`: Directory for JSON files
+/// - `rng`: Random number generator for composite generation
+pub fn ensure_composites(
+    spec: &SizeSpec,
+    output_dir: &std::path::Path,
+    rng: &mut impl rand::Rng,
+) -> Result<Vec<StoredComposite>, String> {
+    let filename = format!("scaling_composites_c{}.json", spec.digits);
+    let filepath = output_dir.join(&filename);
+
+    // Try loading existing composites
+    if filepath.exists() {
+        match std::fs::read_to_string(&filepath) {
+            Ok(contents) => {
+                match serde_json::from_str::<CompositesFile>(&contents) {
+                    Ok(file) => {
+                        if file.composites.len() >= spec.num_composites {
+                            log::info!(
+                                "Loaded {} composites for c{} from {}",
+                                file.composites.len(),
+                                spec.digits,
+                                filepath.display()
+                            );
+                            return Ok(file.composites[..spec.num_composites].to_vec());
+                        }
+                        log::warn!(
+                            "File {} has {} composites but need {}, regenerating",
+                            filepath.display(),
+                            file.composites.len(),
+                            spec.num_composites
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to parse {}: {}, regenerating", filepath.display(), e);
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to read {}: {}, regenerating", filepath.display(), e);
+            }
+        }
+    }
+
+    // Generate new composites
+    log::info!(
+        "Generating {} composites for c{} ({}-bit)",
+        spec.num_composites,
+        spec.digits,
+        spec.bits
+    );
+
+    let mut composites = Vec::with_capacity(spec.num_composites);
+    for id in 0..spec.num_composites {
+        let target = factoring_core::generate_rsa_target(spec.bits, rng);
+        let n_str = target.n.to_string();
+        let n_digits = n_str.len() as u32;
+        composites.push(StoredComposite {
+            id,
+            n: n_str,
+            p: target.p.to_string(),
+            q: target.q.to_string(),
+            n_bits: target.n.bits() as u32,
+            n_digits,
+        });
+    }
+
+    // Save to disk
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("Failed to create output dir {}: {}", output_dir.display(), e))?;
+
+    let file = CompositesFile {
+        schema_version: SCHEMA_VERSION.to_string(),
+        size_digits: spec.digits,
+        size_bits: spec.bits,
+        composites: composites.clone(),
+        generated_at: iso_now(),
+        git_commit: git_commit_hash(),
+    };
+
+    let json = serde_json::to_string_pretty(&file)
+        .map_err(|e| format!("Failed to serialize composites: {}", e))?;
+    std::fs::write(&filepath, &json)
+        .map_err(|e| format!("Failed to write {}: {}", filepath.display(), e))?;
+
+    log::info!(
+        "Saved {} composites for c{} to {}",
+        composites.len(),
+        spec.digits,
+        filepath.display()
+    );
+
+    Ok(composites)
+}
+
+// ---------------------------------------------------------------------------
+// Trial execution
+// ---------------------------------------------------------------------------
+
+/// Build a TrialResult from a CadoResult and a StoredComposite.
+///
+/// Extracts per-stage telemetry, computes overhead and CPU/wall ratio,
+/// and verifies factors against known p × q.
+pub fn build_trial_result(
+    composite: &StoredComposite,
+    cado_result: &crate::cado::CadoResult,
+    parse_debug: Option<ParseDebug>,
+) -> TrialResult {
+    let wall_clock_secs = cado_result.total_time.as_secs_f64();
+
+    // Build per-stage telemetry
+    let mut stages = HashMap::new();
+    for (phase, wall_dur) in &cado_result.phase_times {
+        // Skip the "Complete Factorization" total — it's a sum, not a stage
+        let phase_lower = phase.to_lowercase();
+        if phase_lower.contains("complete factorization") {
+            continue;
+        }
+
+        let wall_secs = wall_dur.as_secs_f64();
+        let cpu_secs = cado_result
+            .phase_cpu_times
+            .get(phase)
+            .map(|d| d.as_secs_f64());
+
+        // Sieve-specific: attach relations_found and throughput
+        let is_sieve = phase_lower.contains("sieve") || phase_lower.contains("lattice sieving");
+        let relations_found = if is_sieve {
+            cado_result.relations_found
+        } else {
+            None
+        };
+        let relations_per_sec = if is_sieve && wall_secs > 0.0 {
+            cado_result
+                .relations_found
+                .map(|r| r as f64 / wall_secs)
+        } else {
+            None
+        };
+
+        // Linalg-specific: attach matrix dims
+        let is_linalg = phase_lower.contains("linalg")
+            || phase_lower.contains("linear algebra")
+            || phase_lower.contains("bwc");
+        let matrix_dims = if is_linalg {
+            cado_result.matrix_size
+        } else {
+            None
+        };
+
+        stages.insert(
+            phase.clone(),
+            StageTelemetry {
+                wall_secs,
+                cpu_secs,
+                relations_found,
+                relations_per_sec,
+                matrix_dims,
+            },
+        );
+    }
+
+    // Compute stage_sum and overhead
+    let stage_sum_secs: f64 = stages.values().map(|s| s.wall_secs).sum();
+    let overhead_secs = (wall_clock_secs - stage_sum_secs).max(0.0);
+
+    // Compute CPU/wall ratio across stages with CPU time
+    let (total_cpu, total_real_with_cpu) = stages.values().fold((0.0, 0.0), |(cpu, real), s| {
+        if let Some(c) = s.cpu_secs {
+            (cpu + c, real + s.wall_secs)
+        } else {
+            (cpu, real)
+        }
+    });
+    let cpu_wall_ratio = if total_real_with_cpu > 0.0 {
+        Some(total_cpu / total_real_with_cpu)
+    } else {
+        None
+    };
+
+    // Verify factors
+    let verified = if cado_result.success && cado_result.factors.len() >= 2 {
+        verify_factors(composite, &cado_result.factors)
+    } else {
+        false
+    };
+
+    TrialResult {
+        composite_id: composite.id,
+        success: cado_result.success,
+        verified,
+        wall_clock_secs,
+        stages,
+        overhead_secs,
+        stage_sum_secs,
+        cpu_wall_ratio,
+        parse_debug,
+    }
+}
+
+/// Verify that the found factors match the known p × q.
+///
+/// Requires at least 2 non-trivial factors whose product equals N.
+fn verify_factors(composite: &StoredComposite, factors: &[String]) -> bool {
+    use num_bigint::BigUint;
+    use num_traits::One;
+
+    if factors.len() < 2 {
+        return false;
+    }
+
+    let known_n: BigUint = match composite.n.parse() {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+
+    let parsed: Vec<BigUint> = factors
+        .iter()
+        .filter_map(|f| f.parse::<BigUint>().ok())
+        .collect();
+
+    if parsed.len() < 2 {
+        return false;
+    }
+
+    // All factors must be > 1 (non-trivial)
+    if parsed.iter().any(|f| *f <= BigUint::one()) {
+        return false;
+    }
+
+    let product: BigUint = parsed.into_iter().fold(BigUint::one(), |acc, f| acc * f);
+    product == known_n
+}
+
+/// Extract ParseDebug from a CADO-NFS log and CadoResult.
+///
+/// Collects the raw lines that were used for timing, relation, and matrix
+/// parsing so that parser drift can be diagnosed without rerunning.
+pub fn extract_parse_debug(log: &str, timed_out: bool) -> ParseDebug {
+    let mut debug = ParseDebug {
+        parsed_timing_lines: Vec::new(),
+        parsed_relation_lines: Vec::new(),
+        parsed_matrix_lines: Vec::new(),
+        exit_status: None,
+        timed_out,
+    };
+
+    for line in log.lines() {
+        let trimmed = line.trim();
+        let clean = crate::cado::strip_ansi(trimmed);
+
+        // Timing lines
+        if clean.contains("Total cpu/real time for ")
+            || clean.contains("Total cpu/elapsed time for ")
+            || clean.contains("Total time:")
+        {
+            debug.parsed_timing_lines.push(clean.clone());
+        }
+
+        // Relation lines
+        if trimmed.contains("rels found")
+            || trimmed.contains("relations found")
+            || trimmed.contains("number of relations")
+            || (trimmed.contains("found") && trimmed.contains("relation"))
+        {
+            debug.parsed_relation_lines.push(clean.clone());
+        }
+
+        // Matrix lines
+        if trimmed.contains("matrix is") || trimmed.contains("Matrix has") {
+            debug.parsed_matrix_lines.push(clean.clone());
+        }
+    }
+
+    debug
+}
+
+/// Run a single factorization trial with full telemetry.
+///
+/// # Arguments
+/// - `install`: Validated CADO-NFS installation
+/// - `composite`: The composite to factor (with known p, q for verification)
+/// - `params`: CADO-NFS parameter configuration
+/// - `timeout`: Maximum wall-clock time
+///
+/// # Returns
+/// A `TrialResult` with success/failure, per-stage telemetry, and parse debug info.
+pub fn run_trial(
+    install: &crate::cado::CadoInstallation,
+    composite: &StoredComposite,
+    params: &crate::params::CadoParams,
+    timeout: Duration,
+) -> TrialResult {
+    let n: num_bigint::BigUint = match composite.n.parse() {
+        Ok(n) => n,
+        Err(e) => {
+            log::error!("Failed to parse composite N='{}': {}", composite.n, e);
+            return TrialResult {
+                composite_id: composite.id,
+                success: false,
+                verified: false,
+                wall_clock_secs: 0.0,
+                stages: HashMap::new(),
+                overhead_secs: 0.0,
+                stage_sum_secs: 0.0,
+                cpu_wall_ratio: None,
+                parse_debug: Some(ParseDebug {
+                    parsed_timing_lines: vec![],
+                    parsed_relation_lines: vec![],
+                    parsed_matrix_lines: vec![],
+                    exit_status: None,
+                    timed_out: false,
+                }),
+            };
+        }
+    };
+
+    match install.run_with_kill_timeout(&n, params, timeout) {
+        Ok(cado_result) => {
+            let parse_debug = extract_parse_debug(&cado_result.log_tail, false);
+            build_trial_result(composite, &cado_result, Some(parse_debug))
+        }
+        Err(crate::cado::CadoError::Timeout(_)) => {
+            log::warn!(
+                "Trial {} timed out after {:?}",
+                composite.id,
+                timeout
+            );
+            TrialResult {
+                composite_id: composite.id,
+                success: false,
+                verified: false,
+                wall_clock_secs: timeout.as_secs_f64(),
+                stages: HashMap::new(),
+                overhead_secs: 0.0,
+                stage_sum_secs: 0.0,
+                cpu_wall_ratio: None,
+                parse_debug: Some(ParseDebug {
+                    parsed_timing_lines: vec![],
+                    parsed_relation_lines: vec![],
+                    parsed_matrix_lines: vec![],
+                    exit_status: None,
+                    timed_out: true,
+                }),
+            }
+        }
+        Err(e) => {
+            log::error!("Trial {} failed: {}", composite.id, e);
+            TrialResult {
+                composite_id: composite.id,
+                success: false,
+                verified: false,
+                wall_clock_secs: 0.0,
+                stages: HashMap::new(),
+                overhead_secs: 0.0,
+                stage_sum_secs: 0.0,
+                cpu_wall_ratio: None,
+                parse_debug: Some(ParseDebug {
+                    parsed_timing_lines: vec![],
+                    parsed_relation_lines: vec![],
+                    parsed_matrix_lines: vec![],
+                    exit_status: None,
+                    timed_out: false,
+                }),
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -936,5 +1316,206 @@ mod tests {
             assert!(hash.len() >= 7);
             assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
         }
+    }
+
+    #[test]
+    fn test_ensure_composites_generate_and_load() {
+        use rand::SeedableRng;
+
+        let tmpdir = tempfile::tempdir().unwrap();
+        let spec = SizeSpec {
+            digits: 30,
+            bits: 100,
+            num_composites: 3,
+            expected_time_description: "~1s".to_string(),
+            timeout: Duration::from_secs(60),
+        };
+
+        // Generate composites
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let composites = ensure_composites(&spec, tmpdir.path(), &mut rng).unwrap();
+        assert_eq!(composites.len(), 3);
+
+        // Each composite should have valid p × q = N
+        for c in &composites {
+            let n: num_bigint::BigUint = c.n.parse().unwrap();
+            let p: num_bigint::BigUint = c.p.parse().unwrap();
+            let q: num_bigint::BigUint = c.q.parse().unwrap();
+            assert_eq!(p * q, n, "p × q should equal N for composite {}", c.id);
+            assert!(c.n_bits >= 90, "Should be ~100 bits, got {}", c.n_bits);
+        }
+
+        // File should exist
+        let filepath = tmpdir.path().join("scaling_composites_c30.json");
+        assert!(filepath.exists());
+
+        // Load should return the same composites
+        let mut rng2 = rand::rngs::StdRng::seed_from_u64(99);
+        let loaded = ensure_composites(&spec, tmpdir.path(), &mut rng2).unwrap();
+        assert_eq!(loaded.len(), 3);
+        assert_eq!(loaded[0].n, composites[0].n);
+        assert_eq!(loaded[1].n, composites[1].n);
+        assert_eq!(loaded[2].n, composites[2].n);
+    }
+
+    #[test]
+    fn test_verify_factors_correct() {
+        let composite = StoredComposite {
+            id: 0,
+            n: "143".to_string(),
+            p: "11".to_string(),
+            q: "13".to_string(),
+            n_bits: 8,
+            n_digits: 3,
+        };
+        assert!(verify_factors(&composite, &["11".to_string(), "13".to_string()]));
+        assert!(verify_factors(&composite, &["13".to_string(), "11".to_string()]));
+    }
+
+    #[test]
+    fn test_verify_factors_incorrect() {
+        let composite = StoredComposite {
+            id: 0,
+            n: "143".to_string(),
+            p: "11".to_string(),
+            q: "13".to_string(),
+            n_bits: 8,
+            n_digits: 3,
+        };
+        assert!(!verify_factors(&composite, &["7".to_string(), "11".to_string()]));
+        assert!(!verify_factors(&composite, &["143".to_string()]));
+        assert!(!verify_factors(&composite, &[]));
+    }
+
+    #[test]
+    fn test_build_trial_result_success() {
+        use crate::cado::CadoResult;
+
+        let composite = StoredComposite {
+            id: 0,
+            n: "143".to_string(),
+            p: "11".to_string(),
+            q: "13".to_string(),
+            n_bits: 8,
+            n_digits: 3,
+        };
+
+        let mut phase_times = HashMap::new();
+        phase_times.insert("Lattice Sieving".to_string(), Duration::from_secs_f64(3.0));
+        phase_times.insert("Linear Algebra".to_string(), Duration::from_secs_f64(1.0));
+        phase_times.insert("Square Root".to_string(), Duration::from_secs_f64(0.5));
+
+        let mut phase_cpu_times = HashMap::new();
+        phase_cpu_times.insert("Linear Algebra".to_string(), Duration::from_secs_f64(2.0));
+        phase_cpu_times.insert("Square Root".to_string(), Duration::from_secs_f64(0.4));
+
+        let cado_result = CadoResult {
+            success: true,
+            n: "143".to_string(),
+            factors: vec!["11".to_string(), "13".to_string()],
+            total_time: Duration::from_secs_f64(6.0),
+            phase_times,
+            phase_cpu_times,
+            relations_found: Some(50000),
+            matrix_size: Some((3000, 3200)),
+            unique_relations: Some(42000),
+            log_tail: String::new(),
+        };
+
+        let trial = build_trial_result(&composite, &cado_result, None);
+
+        assert!(trial.success);
+        assert!(trial.verified);
+        assert!((trial.wall_clock_secs - 6.0).abs() < 0.01);
+        assert_eq!(trial.stages.len(), 3);
+
+        // Verify sieve stage has relations
+        let sieve = &trial.stages["Lattice Sieving"];
+        assert!((sieve.wall_secs - 3.0).abs() < 0.01);
+        assert_eq!(sieve.relations_found, Some(50000));
+        assert!(sieve.relations_per_sec.is_some());
+        assert!((sieve.relations_per_sec.unwrap() - 50000.0 / 3.0).abs() < 1.0);
+        assert!(sieve.cpu_secs.is_none()); // Sieving uses Pattern 3
+
+        // Verify linalg stage has matrix dims and CPU time
+        let linalg = &trial.stages["Linear Algebra"];
+        assert_eq!(linalg.matrix_dims, Some((3000, 3200)));
+        assert_eq!(linalg.cpu_secs, Some(2.0));
+
+        // Verify overhead
+        let stage_sum = 3.0 + 1.0 + 0.5;
+        assert!((trial.stage_sum_secs - stage_sum).abs() < 0.01);
+        assert!((trial.overhead_secs - (6.0 - stage_sum)).abs() < 0.01);
+
+        // Verify CPU/wall ratio (only for stages with CPU: LA=2.0/1.0, sqrt=0.4/0.5)
+        // total_cpu = 2.4, total_real_with_cpu = 1.5
+        assert!(trial.cpu_wall_ratio.is_some());
+        assert!((trial.cpu_wall_ratio.unwrap() - 2.4 / 1.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_build_trial_result_filters_complete_factorization() {
+        use crate::cado::CadoResult;
+
+        let composite = StoredComposite {
+            id: 0,
+            n: "143".to_string(),
+            p: "11".to_string(),
+            q: "13".to_string(),
+            n_bits: 8,
+            n_digits: 3,
+        };
+
+        let mut phase_times = HashMap::new();
+        phase_times.insert("Lattice Sieving".to_string(), Duration::from_secs_f64(3.0));
+        // This should be filtered out (it's a sum, not a stage)
+        phase_times.insert(
+            "Complete Factorization / Discrete logarithm".to_string(),
+            Duration::from_secs_f64(10.0),
+        );
+
+        let cado_result = CadoResult {
+            success: true,
+            n: "143".to_string(),
+            factors: vec!["11".to_string(), "13".to_string()],
+            total_time: Duration::from_secs_f64(10.0),
+            phase_times,
+            phase_cpu_times: HashMap::new(),
+            relations_found: None,
+            matrix_size: None,
+            unique_relations: None,
+            log_tail: String::new(),
+        };
+
+        let trial = build_trial_result(&composite, &cado_result, None);
+
+        // Should only have Lattice Sieving, not Complete Factorization
+        assert_eq!(trial.stages.len(), 1);
+        assert!(trial.stages.contains_key("Lattice Sieving"));
+        assert!(!trial.stages.contains_key("Complete Factorization / Discrete logarithm"));
+    }
+
+    #[test]
+    fn test_extract_parse_debug() {
+        let log = "\x1b[32;1mInfo\x1b[0m:Lattice Sieving: Total number of relations: 52609\n\
+                   \x1b[32;1mInfo\x1b[0m:Lattice Sieving: Total time: 0.98s\n\
+                   \x1b[32;1mInfo\x1b[0m:Linear Algebra: Total cpu/real time for bwc: 0.38/1.19\n\
+                   matrix is 3000 x 3200\n\
+                   \x1b[32;1mInfo\x1b[0m:Complete Factorization: Total cpu/elapsed time for entire factorization 2.68/13.47\n";
+
+        let debug = extract_parse_debug(log, false);
+
+        assert!(!debug.timed_out);
+        // Should capture timing lines
+        assert_eq!(debug.parsed_timing_lines.len(), 3);
+        assert!(debug.parsed_timing_lines[0].contains("Total time: 0.98s"));
+        assert!(debug.parsed_timing_lines[1].contains("Total cpu/real time for bwc"));
+        assert!(debug.parsed_timing_lines[2].contains("Total cpu/elapsed time"));
+        // Should capture relation lines
+        assert_eq!(debug.parsed_relation_lines.len(), 1);
+        assert!(debug.parsed_relation_lines[0].contains("52609"));
+        // Should capture matrix lines
+        assert_eq!(debug.parsed_matrix_lines.len(), 1);
+        assert!(debug.parsed_matrix_lines[0].contains("3000 x 3200"));
     }
 }

@@ -869,7 +869,7 @@ fn extract_matrix_size(line: &str) -> Option<(u64, u64)> {
 }
 
 /// Strip ANSI escape codes from a string.
-fn strip_ansi(s: &str) -> String {
+pub fn strip_ansi(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
