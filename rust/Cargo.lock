@@ -400,7 +400,10 @@ dependencies = [
 name = "eigenvector-character"
 version = "0.1.0"
 dependencies = [
+ "classical-nfs",
  "eisenstein-hunt",
+ "num-bigint",
+ "num-traits",
  "rand",
  "serde",
  "serde_json",
