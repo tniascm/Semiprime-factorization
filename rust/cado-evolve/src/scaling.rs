@@ -1006,6 +1006,322 @@ pub fn run_trial(
 }
 
 // ---------------------------------------------------------------------------
+// Per-size execution
+// ---------------------------------------------------------------------------
+
+/// Run the scaling protocol for a single size class.
+///
+/// Executes `run_trial()` for each composite, saves results incrementally
+/// to `scaling_classical_c{digits}.json`, and prints per-trial progress.
+///
+/// # Arguments
+/// - `install`: Validated CADO-NFS installation
+/// - `spec`: Size specification
+/// - `composites`: Pre-generated composites with known factors
+/// - `output_dir`: Directory for JSON output
+///
+/// # Returns
+/// A `ScalingResult` with all trials and summary statistics.
+pub fn run_scaling_for_size(
+    install: &crate::cado::CadoInstallation,
+    spec: &SizeSpec,
+    composites: &[StoredComposite],
+    output_dir: &std::path::Path,
+) -> ScalingResult {
+    let started_at = iso_now();
+    let params = crate::params::CadoParams::default_for_bits(spec.bits);
+    let hardware = detect_hardware(&install.root_dir.to_string_lossy());
+    let result_filename = format!("scaling_classical_c{}.json", spec.digits);
+    let result_filepath = output_dir.join(&result_filename);
+    let composites_filename = format!("scaling_composites_c{}.json", spec.digits);
+
+    eprintln!(
+        "\n━━━ c{} ({}-bit) — {} trials, timeout {:?} ━━━",
+        spec.digits,
+        spec.bits,
+        composites.len(),
+        spec.timeout
+    );
+
+    let mut trials = Vec::with_capacity(composites.len());
+
+    for (i, composite) in composites.iter().enumerate() {
+        eprint!(
+            "  Trial {}/{} (N={}...): ",
+            i + 1,
+            composites.len(),
+            &composite.n[..composite.n.len().min(20)]
+        );
+
+        let trial = run_trial(install, composite, &params, spec.timeout);
+
+        if trial.success {
+            let verified_str = if trial.verified { "✓" } else { "⚠" };
+            eprintln!(
+                "{} {:.2}s (sieve {:.0}%, overhead {:.0}%)",
+                verified_str,
+                trial.wall_clock_secs,
+                trial
+                    .stages
+                    .iter()
+                    .find(|(k, _)| k.to_lowercase().contains("sieve"))
+                    .map(|(_, s)| s.wall_secs / trial.wall_clock_secs * 100.0)
+                    .unwrap_or(0.0),
+                if trial.wall_clock_secs > 0.0 {
+                    trial.overhead_secs / trial.wall_clock_secs * 100.0
+                } else {
+                    0.0
+                }
+            );
+        } else {
+            eprintln!(
+                "✗ FAILED (wall {:.2}s, timeout={})",
+                trial.wall_clock_secs,
+                trial
+                    .parse_debug
+                    .as_ref()
+                    .map(|d| d.timed_out)
+                    .unwrap_or(false)
+            );
+        }
+
+        trials.push(trial);
+
+        // Incremental save after each trial
+        let summary = compute_size_summary(&trials);
+        let partial_result = ScalingResult {
+            schema_version: SCHEMA_VERSION.to_string(),
+            git_commit: git_commit_hash(),
+            crate_version: CRATE_VERSION.to_string(),
+            size: spec.clone(),
+            method: "classical-cado-nfs".to_string(),
+            params_description: params.summary(),
+            composites_file: composites_filename.clone(),
+            trials: trials.clone(),
+            summary,
+            hardware: hardware.clone(),
+            started_at: started_at.clone(),
+            finished_at: iso_now(),
+        };
+
+        if let Ok(json) = serde_json::to_string_pretty(&partial_result) {
+            let _ = std::fs::write(&result_filepath, &json);
+        }
+    }
+
+    let finished_at = iso_now();
+    let summary = compute_size_summary(&trials);
+
+    // Print size summary
+    let success_count = trials.iter().filter(|t| t.success).count();
+    eprintln!(
+        "  Summary: {}/{} succeeded, median {:.2}s, mean {:.2}s, p90 {:.2}s",
+        success_count,
+        trials.len(),
+        summary.wall_clock_percentiles.p50,
+        summary.wall_clock_percentiles.mean,
+        summary.wall_clock_percentiles.p90
+    );
+
+    ScalingResult {
+        schema_version: SCHEMA_VERSION.to_string(),
+        git_commit: git_commit_hash(),
+        crate_version: CRATE_VERSION.to_string(),
+        size: spec.clone(),
+        method: "classical-cado-nfs".to_string(),
+        params_description: params.summary(),
+        composites_file: composites_filename,
+        trials,
+        summary,
+        hardware,
+        started_at,
+        finished_at,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Top-level orchestrator
+// ---------------------------------------------------------------------------
+
+/// Run the complete scaling protocol across multiple size classes.
+///
+/// For each size in `size_filter` (or all defaults if empty):
+/// 1. Generate or load composites
+/// 2. Check if results already exist (skip if so — incremental resume)
+/// 3. Run trials and save per-size JSON
+/// 4. Combine all sizes into a protocol-level summary
+/// 5. Print summary table
+///
+/// # Arguments
+/// - `install`: Validated CADO-NFS installation
+/// - `output_dir`: Base directory for all output files
+/// - `size_filter`: If non-empty, only run these digit counts. Empty = all defaults.
+/// - `rng`: Random number generator for composite generation
+pub fn run_scaling_protocol(
+    install: &crate::cado::CadoInstallation,
+    output_dir: &std::path::Path,
+    size_filter: &[u32],
+    rng: &mut impl rand::Rng,
+) -> Result<ScalingProtocolResult, String> {
+    let started_at = iso_now();
+    let all_specs = default_size_specs();
+
+    let specs: Vec<&SizeSpec> = if size_filter.is_empty() {
+        all_specs.iter().collect()
+    } else {
+        all_specs
+            .iter()
+            .filter(|s| size_filter.contains(&s.digits))
+            .collect()
+    };
+
+    if specs.is_empty() {
+        return Err(format!(
+            "No matching size specs for filter {:?}. Available: {:?}",
+            size_filter,
+            all_specs.iter().map(|s| s.digits).collect::<Vec<_>>()
+        ));
+    }
+
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("Failed to create output dir: {}", e))?;
+
+    let hardware = detect_hardware(&install.root_dir.to_string_lossy());
+
+    eprintln!("╔══════════════════════════════════════════════════╗");
+    eprintln!("║       Scaling Protocol — Classical Baseline      ║");
+    eprintln!("╚══════════════════════════════════════════════════╝");
+    eprintln!(
+        "  Sizes: {}",
+        specs
+            .iter()
+            .map(|s| format!("c{}", s.digits))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    eprintln!("  Hardware: {} ({} cores)", hardware.cpu_model, hardware.cores);
+    eprintln!("  Output: {}", output_dir.display());
+    eprintln!();
+
+    let mut size_results = Vec::new();
+
+    for spec in &specs {
+        // Step 1: Ensure composites exist
+        let composites = ensure_composites(spec, output_dir, rng)?;
+
+        // Step 2: Check for existing results (incremental resume)
+        let result_filename = format!("scaling_classical_c{}.json", spec.digits);
+        let result_filepath = output_dir.join(&result_filename);
+
+        if result_filepath.exists() {
+            match std::fs::read_to_string(&result_filepath) {
+                Ok(contents) => {
+                    match serde_json::from_str::<ScalingResult>(&contents) {
+                        Ok(existing) => {
+                            if existing.trials.len() >= spec.num_composites {
+                                eprintln!(
+                                    "\n━━━ c{} — SKIPPED (already complete: {} trials) ━━━",
+                                    spec.digits,
+                                    existing.trials.len()
+                                );
+                                size_results.push(existing);
+                                continue;
+                            }
+                            eprintln!(
+                                "\n━━━ c{} — resuming ({}/{} trials done) ━━━",
+                                spec.digits,
+                                existing.trials.len(),
+                                spec.num_composites
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to parse existing result {}: {}, re-running",
+                                result_filepath.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to read {}: {}, re-running",
+                        result_filepath.display(),
+                        e
+                    );
+                }
+            }
+        }
+
+        // Step 3: Run trials
+        let result = run_scaling_for_size(install, spec, &composites, output_dir);
+        size_results.push(result);
+    }
+
+    // Save combined protocol result
+    let finished_at = iso_now();
+    let protocol_result = ScalingProtocolResult {
+        schema_version: SCHEMA_VERSION.to_string(),
+        git_commit: git_commit_hash(),
+        crate_version: CRATE_VERSION.to_string(),
+        method: "classical-cado-nfs".to_string(),
+        sizes: size_results,
+        hardware: hardware.clone(),
+        started_at,
+        finished_at,
+    };
+
+    let combined_filepath = output_dir.join("scaling_protocol_classical.json");
+    let json = serde_json::to_string_pretty(&protocol_result)
+        .map_err(|e| format!("Failed to serialize protocol result: {}", e))?;
+    std::fs::write(&combined_filepath, &json)
+        .map_err(|e| format!("Failed to write {}: {}", combined_filepath.display(), e))?;
+
+    // Print summary table
+    print_summary_table(&protocol_result);
+
+    eprintln!(
+        "\nResults saved to: {}",
+        combined_filepath.display()
+    );
+
+    Ok(protocol_result)
+}
+
+/// Print a summary table of scaling protocol results.
+fn print_summary_table(result: &ScalingProtocolResult) {
+    eprintln!();
+    eprintln!("┌──────┬──────┬─────────┬─────────┬─────────┬─────────┬────────┬──────┐");
+    eprintln!("│  cN  │ bits │  N (ok) │  median │   mean  │   p90   │ sieve% │  ok% │");
+    eprintln!("├──────┼──────┼─────────┼─────────┼─────────┼─────────┼────────┼──────┤");
+
+    for size in &result.sizes {
+        let s = &size.summary;
+        let sieve_pct = s
+            .stage_fractions
+            .iter()
+            .find(|(k, _)| k.to_lowercase().contains("sieve"))
+            .map(|(_, v)| v * 100.0)
+            .unwrap_or(0.0);
+
+        eprintln!(
+            "│ c{:<3} │ {:>4} │ {:>3}/{:<3} │ {:>6.1}s │ {:>6.1}s │ {:>6.1}s │ {:>5.1}% │ {:>3.0}% │",
+            size.size.digits,
+            size.size.bits,
+            s.n_success,
+            s.n_trials,
+            s.wall_clock_percentiles.p50,
+            s.wall_clock_percentiles.mean,
+            s.wall_clock_percentiles.p90,
+            sieve_pct,
+            s.success_rate * 100.0,
+        );
+    }
+
+    eprintln!("└──────┴──────┴─────────┴─────────┴─────────┴─────────┴────────┴──────┘");
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
