@@ -1,0 +1,16 @@
+[package]
+name = "path-sum-degree"
+version = "0.1.0"
+edition = "2021"
+description = "E20: Boolean polynomial degree audit for Eisenstein channels (Amy-Stinchcombe path sum degree analysis)"
+
+[dependencies]
+eisenstein-hunt = { path = "../eisenstein-hunt" }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+
+[[bin]]
+name = "path-sum-degree"
+path = "src/main.rs"

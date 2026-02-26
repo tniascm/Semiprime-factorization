@@ -1,0 +1,2256 @@
+{
+  "group_profiles": [
+    {
+      "ell": 691,
+      "weight": 12,
+      "order": 690,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.7188405797101449,
+      "full_r_star": 91,
+      "full_amplitude": 0.06574024190680784,
+      "enrichment_top_quartile": 1.172754126031508,
+      "enrichment_top_decile": 1.2096774193548387,
+      "enrichment_top_ventile": 1.1865512333965844,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.8695652173913043,
+          1.2096774193548387
+        ],
+        [
+          1,
+          0.8405797101449275,
+          1.1693548387096773
+        ],
+        [
+          2,
+          0.7681159420289855,
+          1.0685483870967742
+        ],
+        [
+          3,
+          0.7101449275362319,
+          0.9879032258064517
+        ],
+        [
+          4,
+          0.7391304347826086,
+          1.0282258064516128
+        ],
+        [
+          5,
+          0.7246376811594203,
+          1.0080645161290323
+        ],
+        [
+          6,
+          0.7246376811594203,
+          1.0080645161290323
+        ],
+        [
+          7,
+          0.6811594202898551,
+          0.9475806451612904
+        ],
+        [
+          8,
+          0.5507246376811594,
+          0.7661290322580645
+        ],
+        [
+          9,
+          0.5797101449275363,
+          0.8064516129032259
+        ]
+      ]
+    },
+    {
+      "ell": 3617,
+      "weight": 16,
+      "order": 3616,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.492533185840708,
+      "full_r_star": 399,
+      "full_amplitude": 0.045964559417451936,
+      "enrichment_top_quartile": 1.102751263335205,
+      "enrichment_top_decile": 1.1192068945673086,
+      "enrichment_top_ventile": 1.1053964689001183,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.5512465373961218,
+          1.1192068945673086
+        ],
+        [
+          1,
+          0.556786703601108,
+          1.1304552050654726
+        ],
+        [
+          2,
+          0.5069252077562327,
+          1.0292204105819975
+        ],
+        [
+          3,
+          0.5346260387811634,
+          1.0854619630728168
+        ],
+        [
+          4,
+          0.5318559556786704,
+          1.079837807823735
+        ],
+        [
+          5,
+          0.5041551246537396,
+          1.0235962553329154
+        ],
+        [
+          6,
+          0.4792243767313019,
+          0.9729788580911778
+        ],
+        [
+          7,
+          0.4155124653739612,
+          0.8436232873622929
+        ],
+        [
+          8,
+          0.4265927977839335,
+          0.8661199083586207
+        ],
+        [
+          9,
+          0.4196185286103542,
+          0.8519599098568449
+        ]
+      ]
+    },
+    {
+      "ell": 43867,
+      "weight": 18,
+      "order": 43866,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.2319336160124014,
+      "full_r_star": 843,
+      "full_amplitude": 0.02390474291987184,
+      "enrichment_top_quartile": 1.1044340781186133,
+      "enrichment_top_decile": 1.1491644563796508,
+      "enrichment_top_ventile": 1.161943872917662,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.2665298677610579,
+          1.1491644563796508
+        ],
+        [
+          1,
+          0.2560419516643867,
+          1.1039449824759178
+        ],
+        [
+          2,
+          0.2393980848153215,
+          1.0321836434547762
+        ],
+        [
+          3,
+          0.25216598267213863,
+          1.0872334377723643
+        ],
+        [
+          4,
+          0.23575011399908802,
+          1.0164551307926082
+        ],
+        [
+          5,
+          0.23575011399908802,
+          1.0164551307926082
+        ],
+        [
+          6,
+          0.20884632922936616,
+          0.900457349909119
+        ],
+        [
+          7,
+          0.2136342909256726,
+          0.9211010227782145
+        ],
+        [
+          8,
+          0.20155038759689922,
+          0.8690003245847829
+        ],
+        [
+          9,
+          0.20969945355191258,
+          0.9041356624246312
+        ]
+      ]
+    },
+    {
+      "ell": 283,
+      "weight": 20,
+      "order": 282,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.8439716312056738,
+      "full_r_star": 69,
+      "full_amplitude": 0.05722459101579081,
+      "enrichment_top_quartile": 1.1002400960384153,
+      "enrichment_top_decile": 1.1002400960384153,
+      "enrichment_top_ventile": 1.0156062424969987,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.9285714285714286,
+          1.1002400960384153
+        ],
+        [
+          1,
+          0.9285714285714286,
+          1.1002400960384153
+        ],
+        [
+          2,
+          0.8928571428571429,
+          1.0579231692677071
+        ],
+        [
+          3,
+          0.9642857142857143,
+          1.1425570228091237
+        ],
+        [
+          4,
+          0.7857142857142857,
+          0.9309723889555822
+        ],
+        [
+          5,
+          0.8571428571428571,
+          1.0156062424969987
+        ],
+        [
+          6,
+          0.8214285714285714,
+          0.9732893157262905
+        ],
+        [
+          7,
+          0.7857142857142857,
+          0.9309723889555822
+        ],
+        [
+          8,
+          0.6785714285714286,
+          0.8040216086434574
+        ],
+        [
+          9,
+          0.8,
+          0.9478991596638656
+        ]
+      ]
+    },
+    {
+      "ell": 617,
+      "weight": 20,
+      "order": 616,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.7353896103896104,
+      "full_r_star": 29,
+      "full_amplitude": 0.05486469129086939,
+      "enrichment_top_quartile": 0.8565121412803532,
+      "enrichment_top_decile": 0.8471031013643109,
+      "enrichment_top_ventile": 0.9065489330389992,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.6229508196721312,
+          0.8471031013643109
+        ],
+        [
+          1,
+          0.6557377049180327,
+          0.8916874751203271
+        ],
+        [
+          2,
+          0.639344262295082,
+          0.869395288242319
+        ],
+        [
+          3,
+          0.7213114754098361,
+          0.9808562226323599
+        ],
+        [
+          4,
+          0.6721311475409836,
+          0.9139796619983354
+        ],
+        [
+          5,
+          0.7377049180327869,
+          1.0031484095103682
+        ],
+        [
+          6,
+          0.819672131147541,
+          1.114609343900409
+        ],
+        [
+          7,
+          0.819672131147541,
+          1.114609343900409
+        ],
+        [
+          8,
+          0.8524590163934426,
+          1.1591937176564253
+        ],
+        [
+          9,
+          0.8059701492537313,
+          1.0959770683008798
+        ]
+      ]
+    },
+    {
+      "ell": 131,
+      "weight": 22,
+      "order": 130,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.9538461538461539,
+      "full_r_star": 50,
+      "full_amplitude": 0.04155411079395167,
+      "enrichment_top_quartile": 1.015625,
+      "enrichment_top_decile": 1.0483870967741935,
+      "enrichment_top_ventile": 1.0483870967741935,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          1.0,
+          1.0483870967741935
+        ],
+        [
+          1,
+          1.0,
+          1.0483870967741935
+        ],
+        [
+          2,
+          0.9230769230769231,
+          0.967741935483871
+        ],
+        [
+          3,
+          0.7692307692307693,
+          0.8064516129032258
+        ],
+        [
+          4,
+          0.9230769230769231,
+          0.967741935483871
+        ],
+        [
+          5,
+          1.0,
+          1.0483870967741935
+        ],
+        [
+          6,
+          0.9230769230769231,
+          0.967741935483871
+        ],
+        [
+          7,
+          1.0,
+          1.0483870967741935
+        ],
+        [
+          8,
+          1.0,
+          1.0483870967741935
+        ],
+        [
+          9,
+          1.0,
+          1.0483870967741935
+        ]
+      ]
+    },
+    {
+      "ell": 593,
+      "weight": 22,
+      "order": 592,
+      "smooth_bound": 100,
+      "smooth_fraction": 0.7415540540540541,
+      "full_r_star": 43,
+      "full_amplitude": 0.05571527964238717,
+      "enrichment_top_quartile": 1.0751708428246014,
+      "enrichment_top_decile": 1.0513879772981738,
+      "enrichment_top_ventile": 1.1160160238787211,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.7796610169491526,
+          1.0513879772981738
+        ],
+        [
+          1,
+          0.8135593220338984,
+          1.0971004980502683
+        ],
+        [
+          2,
+          0.7796610169491526,
+          1.0513879772981738
+        ],
+        [
+          3,
+          0.7966101694915254,
+          1.074244237674221
+        ],
+        [
+          4,
+          0.711864406779661,
+          0.9599629357939847
+        ],
+        [
+          5,
+          0.8135593220338984,
+          1.0971004980502683
+        ],
+        [
+          6,
+          0.6779661016949152,
+          0.9142504150418902
+        ],
+        [
+          7,
+          0.7966101694915254,
+          1.074244237674221
+        ],
+        [
+          8,
+          0.6271186440677966,
+          0.8456816339137485
+        ],
+        [
+          9,
+          0.6229508196721312,
+          0.8400612420179993
+        ]
+      ]
+    },
+    {
+      "ell": 691,
+      "weight": 12,
+      "order": 690,
+      "smooth_bound": 500,
+      "smooth_fraction": 0.9579710144927536,
+      "full_r_star": 43,
+      "full_amplitude": 0.02017203916923927,
+      "enrichment_top_quartile": 0.946768462160926,
+      "enrichment_top_decile": 0.9228441754916794,
+      "enrichment_top_ventile": 0.9517664857168283,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.8840579710144928,
+          0.9228441754916794
+        ],
+        [
+          1,
+          0.927536231884058,
+          0.9682299546142209
+        ],
+        [
+          2,
+          0.9130434782608695,
+          0.9531013615733737
+        ],
+        [
+          3,
+          0.9855072463768116,
+          1.0287443267776097
+        ],
+        [
+          4,
+          0.9710144927536232,
+          1.0136157337367626
+        ],
+        [
+          5,
+          0.9710144927536232,
+          1.0136157337367626
+        ],
+        [
+          6,
+          0.9710144927536232,
+          1.0136157337367626
+        ],
+        [
+          7,
+          1.0,
+          1.0438729198184569
+        ],
+        [
+          8,
+          0.9855072463768116,
+          1.0287443267776097
+        ],
+        [
+          9,
+          0.9710144927536232,
+          1.0136157337367626
+        ]
+      ]
+    },
+    {
+      "ell": 3617,
+      "weight": 16,
+      "order": 3616,
+      "smooth_bound": 500,
+      "smooth_fraction": 0.7773783185840708,
+      "full_r_star": 199,
+      "full_amplitude": 0.025708843225159955,
+      "enrichment_top_quartile": 1.0501600853788686,
+      "enrichment_top_decile": 1.0511928306977634,
+      "enrichment_top_ventile": 1.0934187122020633,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.817174515235457,
+          1.0511928306977634
+        ],
+        [
+          1,
+          0.814404432132964,
+          1.0476294651699742
+        ],
+        [
+          2,
+          0.814404432132964,
+          1.0476294651699742
+        ],
+        [
+          3,
+          0.8116343490304709,
+          1.0440660996421853
+        ],
+        [
+          4,
+          0.8060941828254847,
+          1.036939368586607
+        ],
+        [
+          5,
+          0.7340720221606648,
+          0.9442918648640924
+        ],
+        [
+          6,
+          0.7506925207756233,
+          0.9656720580308267
+        ],
+        [
+          7,
+          0.7562326869806094,
+          0.9727987890864047
+        ],
+        [
+          8,
+          0.6980609418282548,
+          0.8979681130028351
+        ],
+        [
+          9,
+          0.771117166212534,
+          0.9919458103964863
+        ]
+      ]
+    },
+    {
+      "ell": 43867,
+      "weight": 18,
+      "order": 43866,
+      "smooth_bound": 500,
+      "smooth_fraction": 0.5092098664113437,
+      "full_r_star": 1657,
+      "full_amplitude": 0.01872404113897343,
+      "enrichment_top_quartile": 1.0583819616365042,
+      "enrichment_top_decile": 1.0692244597692588,
+      "enrichment_top_ventile": 1.0674334640242518,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.5444596443228454,
+          1.0692244597692588
+        ],
+        [
+          1,
+          0.5348837209302325,
+          1.050419004446684
+        ],
+        [
+          2,
+          0.5310077519379846,
+          1.0428072725304036
+        ],
+        [
+          3,
+          0.5328317373461012,
+          1.0463892640204178
+        ],
+        [
+          4,
+          0.5045599635202919,
+          0.9908683959251968
+        ],
+        [
+          5,
+          0.49338805289557686,
+          0.9689286980488594
+        ],
+        [
+          6,
+          0.48700410396716826,
+          0.9563917278338094
+        ],
+        [
+          7,
+          0.49589603283173733,
+          0.973853936347629
+        ],
+        [
+          8,
+          0.4883720930232558,
+          0.95907822145132
+        ],
+        [
+          9,
+          0.47973588342440804,
+          0.9421182012935972
+        ]
+      ]
+    },
+    {
+      "ell": 283,
+      "weight": 20,
+      "order": 282,
+      "smooth_bound": 500,
+      "smooth_fraction": 1.0,
+      "full_r_star": 141,
+      "full_amplitude": 0.0,
+      "enrichment_top_quartile": 1.0,
+      "enrichment_top_decile": 1.0,
+      "enrichment_top_ventile": 1.0,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          1.0,
+          1.0
+        ],
+        [
+          1,
+          1.0,
+          1.0
+        ],
+        [
+          2,
+          1.0,
+          1.0
+        ],
+        [
+          3,
+          1.0,
+          1.0
+        ],
+        [
+          4,
+          1.0,
+          1.0
+        ],
+        [
+          5,
+          1.0,
+          1.0
+        ],
+        [
+          6,
+          1.0,
+          1.0
+        ],
+        [
+          7,
+          1.0,
+          1.0
+        ],
+        [
+          8,
+          1.0,
+          1.0
+        ],
+        [
+          9,
+          1.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "ell": 617,
+      "weight": 20,
+      "order": 616,
+      "smooth_bound": 500,
+      "smooth_fraction": 0.9724025974025974,
+      "full_r_star": 39,
+      "full_amplitude": 0.018685498569934216,
+      "enrichment_top_quartile": 0.9682804674457429,
+      "enrichment_top_decile": 0.9946632365417772,
+      "enrichment_top_ventile": 0.9941012799109628,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          0.9672131147540983,
+          0.9946632365417772
+        ],
+        [
+          1,
+          0.9344262295081968,
+          0.9609458386929035
+        ],
+        [
+          2,
+          0.9344262295081968,
+          0.9609458386929035
+        ],
+        [
+          3,
+          0.9836065573770492,
+          1.0115219354662142
+        ],
+        [
+          4,
+          0.9672131147540983,
+          0.9946632365417772
+        ],
+        [
+          5,
+          0.9672131147540983,
+          0.9946632365417772
+        ],
+        [
+          6,
+          0.9836065573770492,
+          1.0115219354662142
+        ],
+        [
+          7,
+          1.0,
+          1.0283806343906512
+        ],
+        [
+          8,
+          0.9836065573770492,
+          1.0115219354662142
+        ],
+        [
+          9,
+          1.0,
+          1.0283806343906512
+        ]
+      ]
+    },
+    {
+      "ell": 131,
+      "weight": 22,
+      "order": 130,
+      "smooth_bound": 500,
+      "smooth_fraction": 1.0,
+      "full_r_star": 65,
+      "full_amplitude": 0.0,
+      "enrichment_top_quartile": 1.0,
+      "enrichment_top_decile": 1.0,
+      "enrichment_top_ventile": 1.0,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          1.0,
+          1.0
+        ],
+        [
+          1,
+          1.0,
+          1.0
+        ],
+        [
+          2,
+          1.0,
+          1.0
+        ],
+        [
+          3,
+          1.0,
+          1.0
+        ],
+        [
+          4,
+          1.0,
+          1.0
+        ],
+        [
+          5,
+          1.0,
+          1.0
+        ],
+        [
+          6,
+          1.0,
+          1.0
+        ],
+        [
+          7,
+          1.0,
+          1.0
+        ],
+        [
+          8,
+          1.0,
+          1.0
+        ],
+        [
+          9,
+          1.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "ell": 593,
+      "weight": 22,
+      "order": 592,
+      "smooth_bound": 500,
+      "smooth_fraction": 0.9797297297297297,
+      "full_r_star": 33,
+      "full_amplitude": 0.012590752245755529,
+      "enrichment_top_quartile": 1.013793103448276,
+      "enrichment_top_decile": 1.0206896551724138,
+      "enrichment_top_ventile": 1.0206896551724138,
+      "n_bins": 10,
+      "bin_enrichments": [
+        [
+          0,
+          1.0,
+          1.0206896551724138
+        ],
+        [
+          1,
+          0.9830508474576272,
+          1.0033898305084747
+        ],
+        [
+          2,
+          0.9830508474576272,
+          1.0033898305084747
+        ],
+        [
+          3,
+          0.9661016949152542,
+          0.9860900058445353
+        ],
+        [
+          4,
+          0.9830508474576272,
+          1.0033898305084747
+        ],
+        [
+          5,
+          0.9830508474576272,
+          1.0033898305084747
+        ],
+        [
+          6,
+          0.9661016949152542,
+          0.9860900058445353
+        ],
+        [
+          7,
+          0.9830508474576272,
+          1.0033898305084747
+        ],
+        [
+          8,
+          0.9830508474576272,
+          1.0033898305084747
+        ],
+        [
+          9,
+          0.9672131147540983,
+          0.9872244205765969
+        ]
+      ]
+    }
+  ],
+  "qs_blocks": [
+    {
+      "n_bits": 20,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "n_smooth_total": 160,
+      "overall_smooth_rate": 0.0032,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 91,
+          "n_tested": 50000,
+          "n_smooth": 160,
+          "smooth_rate": 0.0032,
+          "smooth_rate_top_q": 0.00336,
+          "enrichment_top_q": 1.05,
+          "smooth_rate_bot_q": 0.00216,
+          "enrichment_bot_q": 0.6749999999999999,
+          "pearson_corr_score_smooth": 0.004541853881112811,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 3.0269826858629147
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 399,
+          "n_tested": 49972,
+          "n_smooth": 160,
+          "smooth_rate": 0.0032017930040822862,
+          "smooth_rate_top_q": 0.0028015688785720002,
+          "enrichment_top_q": 0.8749999999999999,
+          "smooth_rate_bot_q": 0.003121748178980229,
+          "enrichment_bot_q": 0.9749999999999999,
+          "pearson_corr_score_smooth": -0.0028410339627765275,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 2.4154606737159634
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 843,
+          "n_tested": 50000,
+          "n_smooth": 160,
+          "smooth_rate": 0.0032,
+          "smooth_rate_top_q": 0.00272,
+          "enrichment_top_q": 0.85,
+          "smooth_rate_bot_q": 0.00304,
+          "enrichment_bot_q": 0.95,
+          "pearson_corr_score_smooth": -0.002936311858675039,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 1.8515285429421149
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 69,
+          "n_tested": 50000,
+          "n_smooth": 160,
+          "smooth_rate": 0.0032,
+          "smooth_rate_top_q": 0.0032,
+          "enrichment_top_q": 1.0,
+          "smooth_rate_bot_q": 0.0032,
+          "enrichment_bot_q": 1.0,
+          "pearson_corr_score_smooth": -0.00032657136343029676,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 3.5056278808604997
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 29,
+          "n_tested": 49838,
+          "n_smooth": 160,
+          "smooth_rate": 0.003210401701512902,
+          "smooth_rate_top_q": 0.0030500040131631752,
+          "enrichment_top_q": 0.9500381250501645,
+          "smooth_rate_bot_q": 0.0032105305401717633,
+          "enrichment_bot_q": 1.000040131631752,
+          "pearson_corr_score_smooth": -0.0015684688334976161,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 3.0803485597385127
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 50,
+          "n_tested": 50000,
+          "n_smooth": 160,
+          "smooth_rate": 0.0032,
+          "smooth_rate_top_q": 0.00328,
+          "enrichment_top_q": 1.025,
+          "smooth_rate_bot_q": 0.00288,
+          "enrichment_bot_q": 0.9,
+          "pearson_corr_score_smooth": 0.0008237881275874492,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 4.0594943614098655
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 43,
+          "n_tested": 49832,
+          "n_smooth": 160,
+          "smooth_rate": 0.0032107882485150102,
+          "smooth_rate_top_q": 0.0038529458982180125,
+          "enrichment_top_q": 1.2000000000000002,
+          "smooth_rate_bot_q": 0.0025686305988120084,
+          "enrichment_bot_q": 0.8,
+          "pearson_corr_score_smooth": 0.006731088771130101,
+          "avg_log2_qx": 28.552141016151733,
+          "overflow_ratio": 3.099488411410322
+        }
+      ],
+      "best_single_enrichment": 1.2000000000000002,
+      "best_single_channel_idx": 6
+    },
+    {
+      "n_bits": 20,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "n_smooth_total": 2006,
+      "overall_smooth_rate": 0.04012,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 43,
+          "n_tested": 50000,
+          "n_smooth": 2006,
+          "smooth_rate": 0.04012,
+          "smooth_rate_top_q": 0.03888,
+          "enrichment_top_q": 0.9690927218344964,
+          "smooth_rate_bot_q": 0.03944,
+          "enrichment_bot_q": 0.9830508474576272,
+          "pearson_corr_score_smooth": -0.003424985393017364,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 3.0257126147053897
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 199,
+          "n_tested": 49972,
+          "n_smooth": 2006,
+          "smooth_rate": 0.04014247978868166,
+          "smooth_rate_top_q": 0.039221964300008,
+          "enrichment_top_q": 0.9770687936191425,
+          "smooth_rate_bot_q": 0.04098295045225326,
+          "enrichment_bot_q": 1.0209371884346958,
+          "pearson_corr_score_smooth": -0.006677922702430962,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 2.414447186936488
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 1657,
+          "n_tested": 50000,
+          "n_smooth": 2006,
+          "smooth_rate": 0.04012,
+          "smooth_rate_top_q": 0.03992,
+          "enrichment_top_q": 0.995014955134596,
+          "smooth_rate_bot_q": 0.03952,
+          "enrichment_bot_q": 0.9850448654037885,
+          "pearson_corr_score_smooth": -0.0006215277862916576,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 1.8507516726247826
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 141,
+          "n_tested": 49647,
+          "n_smooth": 1933,
+          "smooth_rate": 0.03893488025459746,
+          "smooth_rate_top_q": 0.06075255821448715,
+          "enrichment_top_q": 1.5603632993660856,
+          "smooth_rate_bot_q": 0.01893481588913061,
+          "enrichment_bot_q": 0.48632012646025213,
+          "pearson_corr_score_smooth": 0.005587237346054179,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 3.5041569782083997
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 39,
+          "n_tested": 50000,
+          "n_smooth": 2006,
+          "smooth_rate": 0.04012,
+          "smooth_rate_top_q": 0.04064,
+          "enrichment_top_q": 1.0129611166500498,
+          "smooth_rate_bot_q": 0.04072,
+          "enrichment_bot_q": 1.0149551345962113,
+          "pearson_corr_score_smooth": -0.00037118809021904496,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 3.0790560971555188
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 65,
+          "n_tested": 50000,
+          "n_smooth": 2006,
+          "smooth_rate": 0.04012,
+          "smooth_rate_top_q": 0.06016,
+          "enrichment_top_q": 1.4995014955134596,
+          "smooth_rate_bot_q": 0.01896,
+          "enrichment_bot_q": 0.47258225324027914,
+          "pearson_corr_score_smooth": 0.00238551721729411,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 4.057791065673606
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 33,
+          "n_tested": 50000,
+          "n_smooth": 2006,
+          "smooth_rate": 0.04012,
+          "smooth_rate_top_q": 0.04024,
+          "enrichment_top_q": 1.0029910269192421,
+          "smooth_rate_bot_q": 0.04064,
+          "enrichment_bot_q": 1.0129611166500498,
+          "pearson_corr_score_smooth": -0.002887259148464212,
+          "avg_log2_qx": 28.5401610167419,
+          "overflow_ratio": 3.0981879180666363
+        }
+      ],
+      "best_single_enrichment": 1.5603632993660856,
+      "best_single_channel_idx": 3
+    },
+    {
+      "n_bits": 24,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "n_smooth_total": 257,
+      "overall_smooth_rate": 0.00514,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 91,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.00488,
+          "enrichment_top_q": 0.9494163424124514,
+          "smooth_rate_bot_q": 0.00456,
+          "enrichment_bot_q": 0.88715953307393,
+          "pearson_corr_score_smooth": 0.0010560934306655975,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 3.0680581694554063
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 399,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.00416,
+          "enrichment_top_q": 0.8093385214007782,
+          "smooth_rate_bot_q": 0.00568,
+          "enrichment_bot_q": 1.105058365758755,
+          "pearson_corr_score_smooth": -0.008586106195390398,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 2.4482379392533264
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 843,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.00496,
+          "enrichment_top_q": 0.9649805447470818,
+          "smooth_rate_bot_q": 0.00568,
+          "enrichment_bot_q": 1.105058365758755,
+          "pearson_corr_score_smooth": -0.0020802863560705548,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 1.8766533745580474
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 69,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.00456,
+          "enrichment_top_q": 0.88715953307393,
+          "smooth_rate_bot_q": 0.00464,
+          "enrichment_bot_q": 0.9027237354085604,
+          "pearson_corr_score_smooth": -0.0022978773068188818,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 3.55319847357455
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 29,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.00544,
+          "enrichment_top_q": 1.058365758754864,
+          "smooth_rate_bot_q": 0.00544,
+          "enrichment_bot_q": 1.058365758754864,
+          "pearson_corr_score_smooth": -0.003942314522992806,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 3.122148206401713
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 50,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.0048,
+          "enrichment_top_q": 0.933852140077821,
+          "smooth_rate_bot_q": 0.00512,
+          "enrichment_bot_q": 0.9961089494163425,
+          "pearson_corr_score_smooth": -0.002307608836707654,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 4.114580799404594
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 43,
+          "n_tested": 50000,
+          "n_smooth": 257,
+          "smooth_rate": 0.00514,
+          "smooth_rate_top_q": 0.00448,
+          "enrichment_top_q": 0.8715953307392996,
+          "smooth_rate_bot_q": 0.0048,
+          "enrichment_bot_q": 0.933852140077821,
+          "pearson_corr_score_smooth": -0.004570711435377259,
+          "avg_log2_qx": 28.93958723621662,
+          "overflow_ratio": 3.1415477816150474
+        }
+      ],
+      "best_single_enrichment": 1.058365758754864,
+      "best_single_channel_idx": 4
+    },
+    {
+      "n_bits": 24,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "n_smooth_total": 660,
+      "overall_smooth_rate": 0.0132,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 43,
+          "n_tested": 50000,
+          "n_smooth": 660,
+          "smooth_rate": 0.0132,
+          "smooth_rate_top_q": 0.01312,
+          "enrichment_top_q": 0.9939393939393939,
+          "smooth_rate_bot_q": 0.01312,
+          "enrichment_bot_q": 0.9939393939393939,
+          "pearson_corr_score_smooth": 0.0007847315412384365,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 3.068709009163394
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 199,
+          "n_tested": 50000,
+          "n_smooth": 660,
+          "smooth_rate": 0.0132,
+          "smooth_rate_top_q": 0.01424,
+          "enrichment_top_q": 1.0787878787878786,
+          "smooth_rate_bot_q": 0.0132,
+          "enrichment_bot_q": 1.0,
+          "pearson_corr_score_smooth": 0.0004746644089478142,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 2.4487572939648286
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 1657,
+          "n_tested": 50000,
+          "n_smooth": 660,
+          "smooth_rate": 0.0132,
+          "smooth_rate_top_q": 0.01328,
+          "enrichment_top_q": 1.006060606060606,
+          "smooth_rate_bot_q": 0.01472,
+          "enrichment_bot_q": 1.1151515151515152,
+          "pearson_corr_score_smooth": -0.004785687740761088,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 1.877051476701759
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 141,
+          "n_tested": 49646,
+          "n_smooth": 620,
+          "smooth_rate": 0.012488417999436006,
+          "smooth_rate_top_q": 0.01837080009668842,
+          "enrichment_top_q": 1.471027002580957,
+          "smooth_rate_bot_q": 0.007251631617113851,
+          "enrichment_bot_q": 0.5806685536503778,
+          "pearson_corr_score_smooth": -0.0072148351773541125,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 3.553952228076335
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 39,
+          "n_tested": 50000,
+          "n_smooth": 660,
+          "smooth_rate": 0.0132,
+          "smooth_rate_top_q": 0.01264,
+          "enrichment_top_q": 0.9575757575757576,
+          "smooth_rate_bot_q": 0.01296,
+          "enrichment_bot_q": 0.9818181818181818,
+          "pearson_corr_score_smooth": -0.00042136372586505617,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 3.1228105204501166
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 65,
+          "n_tested": 49238,
+          "n_smooth": 598,
+          "smooth_rate": 0.012145091189731509,
+          "smooth_rate_top_q": 0.018523031927857665,
+          "enrichment_top_q": 1.5251455619796916,
+          "smooth_rate_bot_q": 0.006824274920789666,
+          "enrichment_bot_q": 0.561895733360939,
+          "pearson_corr_score_smooth": -0.002097515444952886,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 4.115453642231578
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 33,
+          "n_tested": 49830,
+          "n_smooth": 660,
+          "smooth_rate": 0.013245033112582781,
+          "smooth_rate_top_q": 0.013406117042626635,
+          "enrichment_top_q": 1.012161836718311,
+          "smooth_rate_bot_q": 0.013004736292847395,
+          "enrichment_bot_q": 0.9818575901099783,
+          "pearson_corr_score_smooth": 0.0022262800992065715,
+          "avg_log2_qx": 28.945726309032654,
+          "overflow_ratio": 3.1422142109745597
+        }
+      ],
+      "best_single_enrichment": 1.5251455619796916,
+      "best_single_channel_idx": 5
+    },
+    {
+      "n_bits": 28,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "n_smooth_total": 2,
+      "overall_smooth_rate": 0.00004,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 91,
+          "n_tested": 50000,
+          "n_smooth": 2,
+          "smooth_rate": 0.00004,
+          "smooth_rate_top_q": 0.0,
+          "enrichment_top_q": 0.0,
+          "smooth_rate_bot_q": 0.00008,
+          "enrichment_bot_q": 2.0,
+          "pearson_corr_score_smooth": -0.002527295125124346,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 3.1656373876252824
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 399,
+          "n_tested": 50000,
+          "n_smooth": 2,
+          "smooth_rate": 0.00004,
+          "smooth_rate_top_q": 0.0,
+          "enrichment_top_q": 0.0,
+          "smooth_rate_bot_q": 0.00008,
+          "enrichment_bot_q": 2.0,
+          "pearson_corr_score_smooth": -0.0027129988209391885,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 2.526103850136161
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 843,
+          "n_tested": 49998,
+          "n_smooth": 2,
+          "smooth_rate": 0.00004000160006400256,
+          "smooth_rate_top_q": 0.00008000640051204096,
+          "enrichment_top_q": 2.000080006400512,
+          "smooth_rate_bot_q": 0.0,
+          "enrichment_bot_q": 0.0,
+          "pearson_corr_score_smooth": 0.004409911689341654,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 1.936340107648163
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 69,
+          "n_tested": 49647,
+          "n_smooth": 2,
+          "smooth_rate": 0.0000402844079199146,
+          "smooth_rate_top_q": 0.0,
+          "enrichment_top_q": 0.0,
+          "smooth_rate_bot_q": 0.00016114736926919668,
+          "enrichment_bot_q": 4.000241721053904,
+          "pearson_corr_score_smooth": -0.007802978742177443,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 3.666207520308284
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 29,
+          "n_tested": 50000,
+          "n_smooth": 2,
+          "smooth_rate": 0.00004,
+          "smooth_rate_top_q": 0.00008,
+          "enrichment_top_q": 2.0,
+          "smooth_rate_bot_q": 0.00008,
+          "enrichment_bot_q": 2.0,
+          "pearson_corr_score_smooth": 0.0005096433210768325,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 3.2214477516398783
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 50,
+          "n_tested": 49236,
+          "n_smooth": 2,
+          "smooth_rate": 0.00004062068405231944,
+          "smooth_rate_top_q": 0.0,
+          "enrichment_top_q": 0.0,
+          "smooth_rate_bot_q": 0.0,
+          "enrichment_bot_q": 0.0,
+          "pearson_corr_score_smooth": 0.005196083421805486,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 4.245444542960652
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 43,
+          "n_tested": 49832,
+          "n_smooth": 2,
+          "smooth_rate": 0.00004013485310643763,
+          "smooth_rate_top_q": 0.00008026970621287526,
+          "enrichment_top_q": 2.0,
+          "smooth_rate_bot_q": 0.00008026970621287526,
+          "enrichment_bot_q": 2.0,
+          "pearson_corr_score_smooth": -0.00012941774722903301,
+          "avg_log2_qx": 29.8600073002111,
+          "overflow_ratio": 3.2414643279912583
+        }
+      ],
+      "best_single_enrichment": 2.000080006400512,
+      "best_single_channel_idx": 2
+    },
+    {
+      "n_bits": 28,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "n_smooth_total": 782,
+      "overall_smooth_rate": 0.01564,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 43,
+          "n_tested": 49855,
+          "n_smooth": 782,
+          "smooth_rate": 0.015685487914953365,
+          "smooth_rate_top_q": 0.015164888068683302,
+          "enrichment_top_q": 0.9668100954785244,
+          "smooth_rate_bot_q": 0.015485838080718928,
+          "enrichment_bot_q": 0.9872716848008212,
+          "pearson_corr_score_smooth": -0.0012594080750120717,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 3.154863262787085
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 199,
+          "n_tested": 50000,
+          "n_smooth": 782,
+          "smooth_rate": 0.01564,
+          "smooth_rate_top_q": 0.01536,
+          "enrichment_top_q": 0.9820971867007672,
+          "smooth_rate_bot_q": 0.016,
+          "enrichment_bot_q": 1.023017902813299,
+          "pearson_corr_score_smooth": -0.003157034214280826,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 2.5175063530437876
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 1657,
+          "n_tested": 49998,
+          "n_smooth": 782,
+          "smooth_rate": 0.015640625625025002,
+          "smooth_rate_top_q": 0.016881350508040644,
+          "enrichment_top_q": 1.0793270622775142,
+          "smooth_rate_bot_q": 0.017281382510600848,
+          "enrichment_bot_q": 1.1049035329475974,
+          "pearson_corr_score_smooth": -0.0009942510757304343,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 1.9297498487225633
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 141,
+          "n_tested": 49646,
+          "n_smooth": 743,
+          "smooth_rate": 0.0149659589896467,
+          "smooth_rate_top_q": 0.02143260011280316,
+          "enrichment_top_q": 1.4320899935400075,
+          "smooth_rate_bot_q": 0.0097494158407864,
+          "enrichment_bot_q": 0.6514394331516575,
+          "pearson_corr_score_smooth": -0.002046525130016773,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 3.653729724316568
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 39,
+          "n_tested": 49838,
+          "n_smooth": 782,
+          "smooth_rate": 0.015690838316144307,
+          "smooth_rate_top_q": 0.016213179227867407,
+          "enrichment_top_q": 1.0332895477729613,
+          "smooth_rate_bot_q": 0.015651336383337346,
+          "enrichment_bot_q": 0.9974824842362745,
+          "pearson_corr_score_smooth": 0.0020927886105935045,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 3.210483678378811
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 65,
+          "n_tested": 49236,
+          "n_smooth": 715,
+          "smooth_rate": 0.0145218945487042,
+          "smooth_rate_top_q": 0.01966041108132261,
+          "enrichment_top_q": 1.353846153846154,
+          "smooth_rate_bot_q": 0.008449102282882443,
+          "enrichment_bot_q": 0.5818181818181818,
+          "pearson_corr_score_smooth": -0.004331294248040323,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 4.2309953360874
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 33,
+          "n_tested": 50000,
+          "n_smooth": 782,
+          "smooth_rate": 0.01564,
+          "smooth_rate_top_q": 0.01512,
+          "enrichment_top_q": 0.9667519181585676,
+          "smooth_rate_bot_q": 0.0164,
+          "enrichment_bot_q": 1.0485933503836318,
+          "pearson_corr_score_smooth": -0.0016267350956264942,
+          "avg_log2_qx": 29.758379916234794,
+          "overflow_ratio": 3.230432129084062
+        }
+      ],
+      "best_single_enrichment": 1.4320899935400075,
+      "best_single_channel_idx": 3
+    },
+    {
+      "n_bits": 32,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "n_smooth_total": 39,
+      "overall_smooth_rate": 0.00078,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 91,
+          "n_tested": 49855,
+          "n_smooth": 39,
+          "smooth_rate": 0.0007822685788787483,
+          "smooth_rate_top_q": 0.0008023750300890636,
+          "enrichment_top_q": 1.0257027467971864,
+          "smooth_rate_bot_q": 0.0009628500361068764,
+          "enrichment_bot_q": 1.2308432961566238,
+          "pearson_corr_score_smooth": -0.003206190473125398,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 3.2984956502493645
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 399,
+          "n_tested": 50000,
+          "n_smooth": 39,
+          "smooth_rate": 0.00078,
+          "smooth_rate_top_q": 0.00064,
+          "enrichment_top_q": 0.8205128205128206,
+          "smooth_rate_bot_q": 0.0008,
+          "enrichment_bot_q": 1.0256410256410258,
+          "pearson_corr_score_smooth": 0.000025600592795708204,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 2.6321216050593987
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 843,
+          "n_tested": 49998,
+          "n_smooth": 39,
+          "smooth_rate": 0.00078003120124805,
+          "smooth_rate_top_q": 0.0008000640051204096,
+          "enrichment_top_q": 1.025682054564365,
+          "smooth_rate_bot_q": 0.0008000640051204096,
+          "enrichment_bot_q": 1.025682054564365,
+          "pearson_corr_score_smooth": -0.00303647878954966,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 2.017606137534311
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 69,
+          "n_tested": 49646,
+          "n_smooth": 39,
+          "smooth_rate": 0.0007855617773838778,
+          "smooth_rate_top_q": 0.0008863105309805817,
+          "enrichment_top_q": 1.1282505800272298,
+          "smooth_rate_bot_q": 0.0007251631617113851,
+          "enrichment_bot_q": 0.9231141109313699,
+          "pearson_corr_score_smooth": 0.0051553145159011545,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 3.820074151866137
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 29,
+          "n_tested": 49838,
+          "n_smooth": 39,
+          "smooth_rate": 0.0007825354147437698,
+          "smooth_rate_top_q": 0.0005618428445300586,
+          "enrichment_top_q": 0.7179775304022836,
+          "smooth_rate_bot_q": 0.0004815795810257645,
+          "enrichment_bot_q": 0.6154093117733859,
+          "pearson_corr_score_smooth": 0.0034843109881371914,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 3.356648312857091
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 50,
+          "n_tested": 50000,
+          "n_smooth": 39,
+          "smooth_rate": 0.00078,
+          "smooth_rate_top_q": 0.00088,
+          "enrichment_top_q": 1.1282051282051282,
+          "smooth_rate_bot_q": 0.0008,
+          "enrichment_bot_q": 1.0256410256410258,
+          "pearson_corr_score_smooth": -0.0024433920554930723,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 4.423621104890811
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 43,
+          "n_tested": 49832,
+          "n_smooth": 39,
+          "smooth_rate": 0.0007826296355755338,
+          "smooth_rate_top_q": 0.0008829667683416278,
+          "enrichment_top_q": 1.1282051282051282,
+          "smooth_rate_bot_q": 0.0007224273559158774,
+          "enrichment_bot_q": 0.9230769230769231,
+          "pearson_corr_score_smooth": 0.0016072022287355078,
+          "avg_log2_qx": 31.113198429225545,
+          "overflow_ratio": 3.377504962543504
+        }
+      ],
+      "best_single_enrichment": 1.1282505800272298,
+      "best_single_channel_idx": 3
+    },
+    {
+      "n_bits": 32,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "n_smooth_total": 636,
+      "overall_smooth_rate": 0.01272,
+      "channels": [
+        {
+          "ell": 691,
+          "weight": 12,
+          "full_r_star": 43,
+          "n_tested": 50000,
+          "n_smooth": 636,
+          "smooth_rate": 0.01272,
+          "smooth_rate_top_q": 0.01184,
+          "enrichment_top_q": 0.930817610062893,
+          "smooth_rate_bot_q": 0.01344,
+          "enrichment_bot_q": 1.0566037735849056,
+          "pearson_corr_score_smooth": -0.007918500899235558,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 3.315090690527861
+        },
+        {
+          "ell": 3617,
+          "weight": 16,
+          "full_r_star": 199,
+          "n_tested": 50000,
+          "n_smooth": 636,
+          "smooth_rate": 0.01272,
+          "smooth_rate_top_q": 0.0132,
+          "enrichment_top_q": 1.0377358490566038,
+          "smooth_rate_bot_q": 0.01128,
+          "enrichment_bot_q": 0.8867924528301887,
+          "pearson_corr_score_smooth": 0.004996723469835937,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 2.64536405515951
+        },
+        {
+          "ell": 43867,
+          "weight": 18,
+          "full_r_star": 1657,
+          "n_tested": 50000,
+          "n_smooth": 636,
+          "smooth_rate": 0.01272,
+          "smooth_rate_top_q": 0.0136,
+          "enrichment_top_q": 1.069182389937107,
+          "smooth_rate_bot_q": 0.01328,
+          "enrichment_bot_q": 1.0440251572327044,
+          "pearson_corr_score_smooth": 0.0020466162473220407,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 2.02775690281302
+        },
+        {
+          "ell": 283,
+          "weight": 20,
+          "full_r_star": 141,
+          "n_tested": 49646,
+          "n_smooth": 606,
+          "smooth_rate": 0.012206421463964872,
+          "smooth_rate_top_q": 0.01651760535009266,
+          "enrichment_top_q": 1.3531898270803633,
+          "smooth_rate_bot_q": 0.007896221094190638,
+          "enrichment_bot_q": 0.6468907466042713,
+          "pearson_corr_score_smooth": 0.0011412775568804127,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 3.839293302393824
+        },
+        {
+          "ell": 617,
+          "weight": 20,
+          "full_r_star": 39,
+          "n_tested": 50000,
+          "n_smooth": 636,
+          "smooth_rate": 0.01272,
+          "smooth_rate_top_q": 0.0116,
+          "enrichment_top_q": 0.9119496855345911,
+          "smooth_rate_bot_q": 0.01264,
+          "enrichment_bot_q": 0.9937106918238994,
+          "pearson_corr_score_smooth": -0.004061912112039013,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 3.3735359246228973
+        },
+        {
+          "ell": 131,
+          "weight": 22,
+          "full_r_star": 65,
+          "n_tested": 49238,
+          "n_smooth": 593,
+          "smooth_rate": 0.012043543604533084,
+          "smooth_rate_top_q": 0.015760825412299943,
+          "enrichment_top_q": 1.308653493508979,
+          "smooth_rate_bot_q": 0.008367860914777805,
+          "enrichment_bot_q": 0.6948005661413652,
+          "pearson_corr_score_smooth": -0.003789280459872198,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 4.445876756617053
+        },
+        {
+          "ell": 593,
+          "weight": 22,
+          "full_r_star": 33,
+          "n_tested": 50000,
+          "n_smooth": 636,
+          "smooth_rate": 0.01272,
+          "smooth_rate_top_q": 0.01256,
+          "enrichment_top_q": 0.9874213836477987,
+          "smooth_rate_bot_q": 0.01264,
+          "enrichment_bot_q": 0.9937106918238994,
+          "pearson_corr_score_smooth": -0.0012301563047361498,
+          "avg_log2_qx": 31.269731841991096,
+          "overflow_ratio": 3.3944975060655773
+        }
+      ],
+      "best_single_enrichment": 1.3531898270803633,
+      "best_single_channel_idx": 3
+    }
+  ],
+  "joint_scoring": [
+    {
+      "n_bits": 20,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.0026,
+      "best_single_enrichment": 1.2923076923076924,
+      "joint_enrichment_top_q": 1.2923076923076924,
+      "joint_enrichment_top_d": 1.3846153846153846,
+      "joint_pearson_corr": 0.0049260728647437385,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          -0.00043185576171991493
+        ],
+        [
+          1,
+          0.005112116125993681
+        ],
+        [
+          2,
+          0.00029095773243723554
+        ],
+        [
+          3,
+          0.01302658417678903
+        ],
+        [
+          4,
+          -0.0019871177976648114
+        ],
+        [
+          5,
+          -0.002341494852617609
+        ],
+        [
+          6,
+          -0.0018573629991802281
+        ]
+      ]
+    },
+    {
+      "n_bits": 20,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.02414,
+      "best_single_enrichment": 1.5343827671913834,
+      "joint_enrichment_top_q": 0.9975144987572493,
+      "joint_enrichment_top_d": 1.0190555095277547,
+      "joint_pearson_corr": -0.0013904031588711967,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          -0.0024681897525938392
+        ],
+        [
+          1,
+          -0.001853389774943368
+        ],
+        [
+          2,
+          0.004438317463088827
+        ],
+        [
+          3,
+          0.00044848831051616224
+        ],
+        [
+          4,
+          -0.00011515053802153912
+        ],
+        [
+          5,
+          -0.0028191038992889028
+        ],
+        [
+          6,
+          -0.0036130166040958147
+        ]
+      ]
+    },
+    {
+      "n_bits": 24,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.00214,
+      "best_single_enrichment": 1.0841121495327104,
+      "joint_enrichment_top_q": 0.7476635514018692,
+      "joint_enrichment_top_d": 0.8411214953271028,
+      "joint_pearson_corr": -0.00610750938421223,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          -0.00047021703883309547
+        ],
+        [
+          1,
+          -0.0011516996698773684
+        ],
+        [
+          2,
+          0.004030326933771165
+        ],
+        [
+          3,
+          -0.0016941777376930714
+        ],
+        [
+          4,
+          -0.0037952574869297775
+        ],
+        [
+          5,
+          -0.0011266624299466168
+        ],
+        [
+          6,
+          -0.008540709551366306
+        ]
+      ]
+    },
+    {
+      "n_bits": 24,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.01856,
+      "best_single_enrichment": 1.456896551724138,
+      "joint_enrichment_top_q": 1.021551724137931,
+      "joint_enrichment_top_d": 1.0775862068965518,
+      "joint_pearson_corr": -0.0031403324474260233,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          0.003540140995525601
+        ],
+        [
+          1,
+          -0.0048248218228166
+        ],
+        [
+          2,
+          0.0036248817529119888
+        ],
+        [
+          3,
+          -0.002496189210878454
+        ],
+        [
+          4,
+          -0.0014281692679066482
+        ],
+        [
+          5,
+          -0.0064052003566802025
+        ],
+        [
+          6,
+          -0.010105975507284926
+        ]
+      ]
+    },
+    {
+      "n_bits": 28,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.00102,
+      "best_single_enrichment": 1.4901960784313726,
+      "joint_enrichment_top_q": 0.9411764705882353,
+      "joint_enrichment_top_d": 1.176470588235294,
+      "joint_pearson_corr": 0.0007002449757767047,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          0.005504949918607703
+        ],
+        [
+          1,
+          0.00321485896360982
+        ],
+        [
+          2,
+          -0.0014223214616120843
+        ],
+        [
+          3,
+          -0.014871623951612484
+        ],
+        [
+          4,
+          0.004984537125556402
+        ],
+        [
+          5,
+          -0.003906833917518458
+        ],
+        [
+          6,
+          0.006414019111530147
+        ]
+      ]
+    },
+    {
+      "n_bits": 28,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.03414,
+      "best_single_enrichment": 1.368482718219098,
+      "joint_enrichment_top_q": 0.9701230228471002,
+      "joint_enrichment_top_d": 0.9314586994727594,
+      "joint_pearson_corr": -0.00025662593339573225,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          0.00038722779490147366
+        ],
+        [
+          1,
+          0.0022075408052906376
+        ],
+        [
+          2,
+          -0.00042080710943046776
+        ],
+        [
+          3,
+          0.00010357094146367832
+        ],
+        [
+          4,
+          0.0003549314205201281
+        ],
+        [
+          5,
+          0.0057875791331486025
+        ],
+        [
+          6,
+          -0.005788293400466079
+        ]
+      ]
+    },
+    {
+      "n_bits": 32,
+      "smooth_bound": 100,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.00024,
+      "best_single_enrichment": 2.333333333333333,
+      "joint_enrichment_top_q": 2.0,
+      "joint_enrichment_top_d": 0.8333333333333334,
+      "joint_pearson_corr": 0.004148811228246364,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          0.0059956974503429985
+        ],
+        [
+          1,
+          -0.010427923660034946
+        ],
+        [
+          2,
+          -0.003530185627582479
+        ],
+        [
+          3,
+          0.008036885336558412
+        ],
+        [
+          4,
+          -0.0038940602299695685
+        ],
+        [
+          5,
+          0.012024711794872692
+        ],
+        [
+          6,
+          -0.0001164724532034532
+        ]
+      ]
+    },
+    {
+      "n_bits": 32,
+      "smooth_bound": 500,
+      "n_values": 50000,
+      "overall_smooth_rate": 0.01088,
+      "best_single_enrichment": 1.3014705882352942,
+      "joint_enrichment_top_q": 1.088235294117647,
+      "joint_enrichment_top_d": 1.1580882352941175,
+      "joint_pearson_corr": 0.004486144130794799,
+      "n_channels_used": 7,
+      "channel_weights": [
+        [
+          0,
+          0.0013098417063925466
+        ],
+        [
+          1,
+          0.00625722749472457
+        ],
+        [
+          2,
+          -0.002975611673567608
+        ],
+        [
+          3,
+          -0.0011689802202104669
+        ],
+        [
+          4,
+          0.0002466331170830871
+        ],
+        [
+          5,
+          -0.00036034742755480006
+        ],
+        [
+          6,
+          0.004875980373106806
+        ]
+      ]
+    }
+  ],
+  "sieve_speedup": [
+    {
+      "n_bits": 20,
+      "smooth_bound": 100,
+      "target_smooth": 100,
+      "random_tested": 2502,
+      "scored_tested": 39877,
+      "speedup_factor": 0.06274293452366025,
+      "random_smooth_rate": 0.03996802557953637,
+      "scored_smooth_rate": 0.0025077112119768286
+    },
+    {
+      "n_bits": 20,
+      "smooth_bound": 500,
+      "target_smooth": 100,
+      "random_tested": 401,
+      "scored_tested": 4701,
+      "speedup_factor": 0.0853009997872793,
+      "random_smooth_rate": 0.24937655860349128,
+      "scored_smooth_rate": 0.021272069772388852
+    },
+    {
+      "n_bits": 24,
+      "smooth_bound": 100,
+      "target_smooth": 100,
+      "random_tested": 9559,
+      "scored_tested": 50737,
+      "speedup_factor": 0.188402940654749,
+      "random_smooth_rate": 0.01046134532900931,
+      "scored_smooth_rate": 0.001970948223190177
+    },
+    {
+      "n_bits": 24,
+      "smooth_bound": 500,
+      "target_smooth": 100,
+      "random_tested": 645,
+      "scored_tested": 7553,
+      "speedup_factor": 0.08539653117966371,
+      "random_smooth_rate": 0.15503875968992248,
+      "scored_smooth_rate": 0.013239772275916854
+    },
+    {
+      "n_bits": 28,
+      "smooth_bound": 100,
+      "target_smooth": 100,
+      "random_tested": 10402,
+      "scored_tested": 48576,
+      "speedup_factor": 0.21413866930171277,
+      "random_smooth_rate": 0.009613535858488752,
+      "scored_smooth_rate": 0.0020586297760210805
+    },
+    {
+      "n_bits": 28,
+      "smooth_bound": 500,
+      "target_smooth": 100,
+      "random_tested": 655,
+      "scored_tested": 4386,
+      "speedup_factor": 0.14933880528955767,
+      "random_smooth_rate": 0.15267175572519084,
+      "scored_smooth_rate": 0.022799817601459188
+    },
+    {
+      "n_bits": 32,
+      "smooth_bound": 100,
+      "target_smooth": 100,
+      "random_tested": 100000,
+      "scored_tested": 100000,
+      "speedup_factor": 1.0,
+      "random_smooth_rate": 0.00037,
+      "scored_smooth_rate": 0.00037
+    },
+    {
+      "n_bits": 32,
+      "smooth_bound": 500,
+      "target_smooth": 100,
+      "random_tested": 967,
+      "scored_tested": 5121,
+      "speedup_factor": 0.18883030658074595,
+      "random_smooth_rate": 0.10341261633919338,
+      "scored_smooth_rate": 0.019527436047646944
+    }
+  ]
+}
