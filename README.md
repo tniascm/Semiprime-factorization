@@ -34,7 +34,7 @@ Quadratic Residuosity Assumption (QRA).
 E14-E17 were brainstorm gap experiments (nonlinear ML, class numbers, partial
 sums, carry scaleup). All failed the poly(log N) gate and were removed.
 
-### Rust Experiments (E1-E3, E19-E24)
+### Rust Experiments (E1-E3, E19-E20, E25-E28)
 
 | Experiment | What it tests | Key finding |
 |-----------|--------------|-------------|
@@ -43,10 +43,10 @@ sums, carry scaleup). All failed the poly(log N) gate and were removed.
 | **E3** | Multi-base representations + SSD linearization | Cross-base anomaly z-scores insignificant; all linearizations >= O(sqrt(N)) |
 | **E19** | Eisenstein congruence indirect evaluation | 231K poly(log N) candidates tested; 0 match σ_{k-1}(N) mod ℓ; gate closed |
 | **E20** (a-b) | Boolean polynomial degree + real SVD of Eisenstein channels | F2 rank grows linearly (barrier holds); real stable rank ~3.7 constant but inaccessible without factors |
-| **E21** (a-c) | Eigenvector character structure, smoothness Fourier, cross-channel | No character structure in dominant eigenvectors; smoothness bias real but not N-extractable; pairwise channels independent |
-| **E22** | QS sieve enrichment | Zero speedup — standard QS sieve already optimal |
-| **E23** | Local smoothness autocorrelation | QS sieve captures all local smoothness structure |
-| **E24** (a-c) | NFS 2D lattice locality + validation + robustness | Raw cofactor autocorrelation is norm magnitude artifact (collapse ratio 0.24); NFS sieve also optimal |
+| **E25** (a-c) | Eigenvector character structure, smoothness Fourier, cross-channel | No character structure in dominant eigenvectors; smoothness bias real but not N-extractable; pairwise channels independent |
+| **E26** | QS sieve enrichment | Zero speedup — standard QS sieve already optimal |
+| **E27** | Local smoothness autocorrelation | QS sieve captures all local smoothness structure |
+| **E28** (a-c) | NFS 2D lattice locality + validation + robustness | Raw cofactor autocorrelation is norm magnitude artifact (collapse ratio 0.24); NFS sieve also optimal |
 
 ### Bonus: Non-Poly(log N) Implementations
 
@@ -90,7 +90,7 @@ E13_bach_charles/           # Eisenstein congruence channel
 E18_algebraic_channels/     # Algebraic extensions
 E19_eisenstein_hunt/        # Eisenstein indirect evaluation hunt (Rust)
 E20_path_sum_degree/        # Boolean polynomial degree audit (Rust, see rust/path-sum-degree/)
-E21_eigenvector_character/  # Eigenvector character structure + sieve optimality (Rust, see rust/eigenvector-character/)
+E25_eigenvector_character/  # Eigenvector character structure + sieve optimality (Rust, see rust/eigenvector-character/)
 rust/                       # Rust workspace (25 crates, ~60K LOC)
   factoring-core/           # Shared library (BigUint utils, RSA gen, Pollard Rho)
   BONUS.md                  # Non-poly(log N) experiment documentation
