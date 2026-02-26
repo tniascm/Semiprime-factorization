@@ -1,6 +1,6 @@
-# E21: Dominant Eigenvector Multiplicative Character Structure
+# E25: Dominant Eigenvector Multiplicative Character Structure
 
-**Status:** Complete (E21 barrier confirmed; E21b smoothness bias real but NOT N-extractable; E22 sieve enrichment yields zero speedup; E23 confirms QS sieve captures all local structure; E24/E24b/E24c confirms NFS sieve also captures all local structure after artifact correction and robustness validation).
+**Status:** Complete (E25 barrier confirmed; E25b smoothness bias real but NOT N-extractable; E26 sieve enrichment yields zero speedup; E27 confirms QS sieve captures all local structure; E28/E28b/E28c confirms NFS sieve also captures all local structure after artifact correction and robustness validation).
 
 ## Motivation
 
@@ -37,7 +37,7 @@ If the eigenvectors **were** individual characters, then:
 - The product depends on `σ_{k−1}(N) mod ℓ`, which requires knowing p, q.
 - NOT computable from `N^{k−1} mod ℓ` alone (which IS accessible from N).
 
-## E21 measurements
+## E25 measurements
 
 For each (n_bits ∈ {14,16,18,20}, channel ∈ 7 Eisenstein channels):
 
@@ -184,7 +184,7 @@ too sparse (though sparsity compounds the problem).  The more decisive reason is
 any harmonic structure is spread across many characters and is not N-only
 extractable.
 
-## E21b: Smoothness Fourier spectrum
+## E25b: Smoothness Fourier spectrum
 
 ### Motivation
 
@@ -288,11 +288,11 @@ concentration in few modes, not spread across all ~ℓ/2 characters.
    applies: factoring requires extracting something about specific primes p, q
    dividing N, not just global group structure.
 
-### E21b Step 2: Prime-restricted diagnostic
+### E25b Step 2: Prime-restricted diagnostic
 
 **Question:** Does the smoothness character r* (identified on the full group)
 survive when restricted to the prime image set {g(p) : p in semiprime set}?
-In E21, parity characters dropped to noise under prime restriction.  Does
+In E25, parity characters dropped to noise under prime restriction.  Does
 smoothness behave differently?
 
 **Method:** For each (n_bits, channel, B):
@@ -381,7 +381,7 @@ NOT decay with bit size.  But the product test still confirms the barrier:
 the smoothness bias is real and detectable on the restricted set, but
 **NOT N-extractable**.
 
-### E21b Step 2b: σ-approximation corridor test
+### E25b Step 2b: σ-approximation corridor test
 
 **Question:** The algebraic gap σ_{k−1}(N) − N^{k−1} = 1 + p^{k−1} + q^{k−1} reduces
 (via Newton's identity) to knowing p + q.  For balanced semiprimes p ≈ q ≈ √N, can we
@@ -415,7 +415,7 @@ structure (Step 2), product extractability (Table 9), and σ-approximation (Tabl
 (Note: this closure is demonstrated for the tested character/product invariant family;
 alternative N-only observables are tested in Step 3 below.)
 
-### E21b Step 3: Stress tests (validation controls)
+### E25b Step 3: Stress tests (validation controls)
 
 **Motivation:** Step 2 established that the smoothness character r* survives prime
 restriction (fix_excess 5–10× at 24–48 bits) while the N-only product test shows
@@ -672,19 +672,19 @@ draws), recompute the product correlation.  500 resamples per block.
    amplitude O(√(log ℓ)/√ℓ), making them useless for extracting a single
    N-computable product.
 
-7. **Smoothness Fourier bias confirmed** (E21b): the B-smoothness indicator
+7. **Smoothness Fourier bias confirmed** (E25b): the B-smoothness indicator
    s_B(a) has significantly slower Fourier decay than parity for B ≥ 30.
    At B = 30, the decay exponent is −0.24 vs parity's −0.44 (Δ = +0.20),
    and the smoothness-to-parity ratio grows from 0.42 to 2.0 across
    ℓ = 101 to 50021.
 
-8. **Density-normalized bias survives** (E21b): after correcting for the
+8. **Density-normalized bias survives** (E25b): after correcting for the
    density effect (smooth_fraction drops with ℓ), the excess ratio
    A_max / null_A_max is 2.90× for B=10 and 2.32× for B=30, growing with ℓ.
    Head energy is 2.78× (B=10) and 1.79× (B=30) of parity.  This is
    genuine multiplicative structure, not a max-statistics artifact.
 
-9. **Smoothness character survives prime restriction to 48 bits** (E21b Step 2):
+9. **Smoothness character survives prime restriction to 48 bits** (E25b Step 2):
    unlike parity (which drops to noise), the smoothness-tuned character r*
    retains signal when restricted to the prime image set {g(p)}, tested across
    126 blocks (9 bit sizes × 7 channels × 2 bounds).  Mean fix_excess grows
@@ -692,14 +692,14 @@ draws), recompute the product correlation.  500 resamples per block.
    exceeding 2.0× and 62/126 exceeding scan_excess > 1.5.  The signal is
    **persistent and does NOT decay with bit size**.
 
-10. **Smoothness barrier also holds at scale** (E21b Step 2, product test):
+10. **Smoothness barrier also holds at scale** (E25b Step 2, product test):
     corr(s_B(g(p))·s_B(g(q)), Re(χ_{r*}(N^{k−1} mod ℓ))) ≈ 0 uniformly
     (125/126 blocks with |corr_Nk| < 0.15, max = 0.18 at n=14 small-sample
     noise).  Despite the smoothness character surviving restriction at all
     bit sizes, the product is NOT predictable from N alone.
     The **smoothness Fourier corridor is closed for the tested invariant family**.
 
-11. **Stress tests validate all findings** (E21b Step 3): Four independent
+11. **Stress tests validate all findings** (E25b Step 3): Four independent
     validation controls confirm the Step 2 results across 126 blocks:
     - **Permutation null:** 124/126 blocks consistent with random pairing (p > 0.05).
     - **Cross-n transfer:** r* is a stable group property, not overfit to a prime set
@@ -710,13 +710,13 @@ draws), recompute the product correlation.  500 resamples per block.
     - **Bootstrap CI:** fix_excess is robust (93/126 CI_lo > 1.0); corr_Nk CI
       contains 0 in 119/126 blocks.  The signal is real; the barrier is real.
 
-12. **σ-approximation corridor closed** (E21b Step 2b): the balanced-semiprime
+12. **σ-approximation corridor closed** (E25b Step 2b): the balanced-semiprime
     approximation σ_approx = 1 + 2·⌊√N⌋^{k−1} + N^{k−1} mod ℓ has circular
     distance error 0.252 ≈ 0.250 (random), with corr_approx ≈ 0 in all 56 blocks.
     High-order exponentiation (k−1 ≥ 11) destroys p ≈ q proximity modulo ℓ.
     The last algebraic loophole is closed.
 
-13. **Joint cross-channel N-only tests find no tested nonlinear signal** (E21c):
+13. **Joint cross-channel N-only tests find no tested nonlinear signal** (E25c):
     testing whether the JOINT distribution of N^{k−1} mod ℓ across all 7
     Eisenstein channels reveals cross-channel structure invisible to
     individual channels.  Four tests across 18 blocks (9 bit sizes × 2 bounds):
@@ -733,23 +733,23 @@ draws), recompute the product correlation.  500 resamples per block.
     The barrier is closed not just per-channel but for all tested pairwise,
     linear-combination, and binned-MI observables across the 7-channel family.
 
-## E21c: Joint cross-channel N-only tests
+## E25c: Joint cross-channel N-only tests
 
 ### Motivation
 
-E21b established that for each individual Eisenstein channel (k, ℓ), the single
+E25b established that for each individual Eisenstein channel (k, ℓ), the single
 N-only observable N^{k−1} mod ℓ carries zero predictive power for the smoothness
 product s_B(g(p))·s_B(g(q)).  But each channel probes a different algebraic function
 of N — different weight k, different prime ℓ, different optimal character r*.
 
-E21c tests whether the **joint** distribution across all 7 channels reveals
+E25c tests whether the **joint** distribution across all 7 channels reveals
 cross-channel structure that no single channel carries alone.  This is the natural
 next hypothesis class: nonlinear interactions between channels.
 
 ### Method
 
 **Shared primes and pairs.**  All 7 channels use the same (p, q) pairs per block
-(channel-independent seed `0xE21c_0000 + n_bits`), ensuring cross-channel features
+(channel-independent seed `0xE25c_0000 + n_bits`), ensuring cross-channel features
 are computed on identical data.
 
 **Feature construction.**  For each valid pair (p, q) and channel i ∈ {0,…,6}:
@@ -895,8 +895,8 @@ cross-channel signal.  The minor exceedances are:
 - **Expected rate:** 5 "failures" across 70 tests ≈ 7.1%, consistent with
   the 5% false-positive rate under multiple testing.
 
-Combined with E21b's per-channel results (126 blocks confirming individual
-corridor closure), E21c closes the joint/interaction corridor:
+Combined with E25b's per-channel results (126 blocks confirming individual
+corridor closure), E25c closes the joint/interaction corridor:
 
 > **The barrier holds not only for each Eisenstein channel individually, but
 > also for all tested pairwise, linear-combination, and binned-MI observables
@@ -904,25 +904,25 @@ corridor closure), E21c closes the joint/interaction corridor:
 > (pairwise character products, OLS on engineered features, binned mutual
 > information) rescues predictability of the smoothness product from N alone.**
 
-## E22: Eisenstein-Scored Sieve Enrichment
+## E26: Eisenstein-Scored Sieve Enrichment
 
 ### Motivation
 
-E21b established a stable 2-6× smoothness enrichment at the group level: certain
-character frequencies in (ℤ/ℓℤ)* predict B-smoothness better than chance.  E21b
-and E21c showed this enrichment is not extractable from N-only observables
+E25b established a stable 2-6× smoothness enrichment at the group level: certain
+character frequencies in (ℤ/ℓℤ)* predict B-smoothness better than chance.  E25b
+and E25c showed this enrichment is not extractable from N-only observables
 (barrier intact).  But for a **quadratic sieve**, the relevant object is the
 polynomial value Q(x) = (x + ⌊√N⌋)² − N, and Q(x) mod ℓ IS computable from
 public information.
 
-E22 asks: **can character-scoring of Q(x) mod ℓ predict smoothness of the full
+E26 asks: **can character-scoring of Q(x) mod ℓ predict smoothness of the full
 Q(x), and thereby accelerate the sieve?**
 
 ### Method
 
 **Phase 1: Group-level enrichment profile.**  For each of 7 channels and each
 smoothness bound B, partition (ℤ/ℓℤ)* into quantile bins by Re(χ_{r*}(a))
-(where r* is the optimal smoothness character from E21b).  Measure the fraction
+(where r* is the optimal smoothness character from E25b).  Measure the fraction
 of B-smooth elements in each bin.  This is the theoretical ceiling — the maximum
 enrichment achievable IF Q(x) mod ℓ perfectly predicted smoothness.
 
@@ -1013,11 +1013,11 @@ so Q(x) mod ℓ captures only one residue out of many prime-power factors.
 
 ### Interpretation
 
-The E22 results reveal a fundamental structural limitation:
+The E26 results reveal a fundamental structural limitation:
 
 1. **Group-level enrichment is real** (Phase 1): B-smooth elements of (ℤ/ℓℤ)*
    cluster in character space, with top-quartile enrichment up to 1.5×.
-   This is the signal found in E21b.
+   This is the signal found in E25b.
 
 2. **Partial transfer to QS polynomials** (Phase 2): the enrichment weakly
    transfers (1.3-1.6× at B=500) when Q(x) has manageable overflow ratio
@@ -1037,19 +1037,19 @@ The E22 results reveal a fundamental structural limitation:
    L(1/3) complexity class, one would need enrichment that scales as a function
    of N (e.g., reducing the sieve dimension), not a fixed constant factor.
 
-**Conclusion 14 (E22):** The Eisenstein smoothness character bias (E21b, 2-6× on
+**Conclusion 14 (E26):** The Eisenstein smoothness character bias (E25b, 2-6× on
 the prime-restricted group) does NOT translate to practical sieve acceleration.
 Character-scoring of QS polynomial values yields 5-20× slowdown compared to
 sequential scanning.  The bias is real at the group level but is structurally
 insufficient: it probes a single residue class while smoothness depends on the
 complete factorisation.  The approach cannot change the asymptotic complexity class.
 
-## E23: Local Smoothness Dependence in QS Polynomial Neighborhoods
+## E27: Local Smoothness Dependence in QS Polynomial Neighborhoods
 
 ### Motivation
 
-E21b/E21c/E22 exhaustively closed the Eisenstein residue-character corridor.
-E23 pivots to a qualitatively different hypothesis class: does smoothness have
+E25b/E25c/E26 exhaustively closed the Eisenstein residue-character corridor.
+E27 pivots to a qualitatively different hypothesis class: does smoothness have
 **local structure** in QS polynomial evaluations beyond what the standard sieve
 already captures?
 
@@ -1141,19 +1141,19 @@ The data reveals a clear pattern:
 4. **Scaling trend**: As N grows, |cf_corr| -> 0 systematically. At 40-48 bits
    with B=100, |cf_corr(1)| < 0.02 — indistinguishable from noise.
 
-**Conclusion 15 (E23):** The QS sieve captures all local smoothness structure in
+**Conclusion 15 (E27):** The QS sieve captures all local smoothness structure in
 polynomial neighborhoods.  Cofactor autocorrelation is < 0.02 at 40+ bits with
 B >= 100, confirming there is no exploitable beyond-sieve structure in consecutive
-Q(x) evaluations.  Combined with E21-E22 (character-based approaches yield no
+Q(x) evaluations.  Combined with E25-E26 (character-based approaches yield no
 speedup), this closes the local polynomial structure corridor: the standard QS
 sieve is already optimal for this polynomial family.
 
-## E24: NFS 2D Lattice Locality — Cofactor Autocorrelation in Algebraic Norm Neighborhoods
+## E28: NFS 2D Lattice Locality — Cofactor Autocorrelation in Algebraic Norm Neighborhoods
 
 ### Motivation
 
-E23 proved the QS sieve captures ALL local smoothness structure (cofactor corr < 0.02
-at 40+ bits).  E24 extends this to the qualitatively different NFS setting: 2D lattice
+E27 proved the QS sieve captures ALL local smoothness structure (cofactor corr < 0.02
+at 40+ bits).  E28 extends this to the qualitatively different NFS setting: 2D lattice
 sieving over (a,b) pairs with algebraic norms F(a,b) = |sum c_i * a^i * b^(d-i)|.
 
 NFS norms live in 2D (a,b)-space with richer structure than QS's 1D polynomial.
@@ -1220,7 +1220,7 @@ already capturing divisibility-based local structure.
 
 The raw cofactor autocorrelation appears significant (0.15–0.50 across all configurations
 and displacement directions).  However, this signal required rigorous artifact validation
-before any conclusions could be drawn — see E24b below.
+before any conclusions could be drawn — see E28b below.
 
 #### Table 29: 2D Random control
 
@@ -1249,9 +1249,9 @@ confirming no spatial structure in random integers at matched magnitudes.
 
 Dual-norm cofactor correlations are weak but nonzero (|rho| typically 0.05–0.11).
 
-### E24b: Artifact Validation Controls
+### E28b: Artifact Validation Controls
 
-The E24 raw cofactor autocorrelation signal (0.15–0.50) is strong enough to warrant
+The E28 raw cofactor autocorrelation signal (0.15–0.50) is strong enough to warrant
 skepticism.  Five controls were implemented to test whether this is genuine beyond-sieve
 structure or an artifact of **norm magnitude gradients** (F(a,b) varies smoothly as a
 polynomial in (a,b), so nearby points have similar-sized norms).
@@ -1302,10 +1302,10 @@ structure alone accounts for essentially all the cofactor autocorrelation.
 from r=1 to r=10).  This is a hallmark of a **global gradient**, not local structure.
 Residualized correlation is flat at ~0 across all radii.
 
-### E24c: Robustness Checks
+### E28c: Robustness Checks
 
-Four additional robustness checks on the E24b artifact conclusion, specifically targeting
-the remaining uncertainty (worst-case post-OLS residual ≈ 0.13 in E24b).
+Four additional robustness checks on the E28b artifact conclusion, specifically targeting
+the remaining uncertainty (worst-case post-OLS residual ≈ 0.13 in E28b).
 
 **Check 1: Nonlinear (binned) residualization.**  OLS assumes a linear cofactor–norm
 relationship. Monotone-bin residualization (k=50 equal-frequency bins, subtract within-bin
@@ -1317,7 +1317,7 @@ adequately linear; no nonlinear component explains the remaining signal.
 fit OLS on one half, test on the other.  Result: max |in_sample − held_out| = 0.015.
 No overfitting detected; the residualization generalizes perfectly across spatial halves.
 
-**Check 3: Partial correlation (both endpoint norms).**  E24b controls only the base
+**Check 3: Partial correlation (both endpoint norms).**  E28b controls only the base
 point's norm. Here we regress each cofactor against both log₂(norm_base) and
 log₂(norm_neighbor) using 2-predictor OLS.  Result: R²_2d = R²_1d everywhere (identical
 to 3 decimal places).  The neighbor's norm is collinear with the base norm for nearby
@@ -1339,7 +1339,7 @@ The worst-case residualized correlations (~0.20) include sign-flipped values (po
 negative residual), reflecting mechanical OLS anti-correlation from strong trend removal,
 not genuine local structure.
 
-### Interpretation (corrected after E24b/E24c validation)
+### Interpretation (corrected after E28b/E28c validation)
 
 1. **The raw cofactor autocorrelation is primarily an artifact.**  NFS algebraic norms
    F(a,b) are polynomial evaluations, so nearby (a,b) points produce similar-sized
@@ -1355,7 +1355,7 @@ not genuine local structure.
    would decay with displacement distance; a global gradient would not.  The raw correlation
    stays flat at ~0.36 from radius 1 to radius 10, confirming a global polynomial gradient.
 
-4. **This aligns with E23's conclusion**: In QS, the polynomial Q(x) = (x+s)^2 - N grows
+4. **This aligns with E27's conclusion**: In QS, the polynomial Q(x) = (x+s)^2 - N grows
    fast enough (~2x*sqrt(N) per step) that cofactor correlation vanishes.  In NFS, the
    polynomial norm varies slowly relative to the grid, creating a magnitude gradient.
    But in both cases, after controlling for this trivial smooth-scale effect, the sieve
@@ -1364,24 +1364,24 @@ not genuine local structure.
 5. **Dual-norm correlations** (Table 30) may also be partially explained by shared
    norm-magnitude effects, though this was not directly tested.
 
-**Conclusion 16 (E24/E24b/E24c):** NFS algebraic norms exhibit large raw cofactor
+**Conclusion 16 (E28/E28b/E28c):** NFS algebraic norms exhibit large raw cofactor
 autocorrelation (0.15–0.50), but this is **predominantly a norm magnitude gradient
 artifact**.  After residualizing against log₂(norm), the signal collapses to < 0.08
-in most blocks (collapse ratio 0.24).  E24c robustness checks confirm this is not due to
+in most blocks (collapse ratio 0.24).  E28c robustness checks confirm this is not due to
 (1) nonlinear confounding (bin resid ≈ OLS resid), (2) OLS overfitting (cross-val
 divergence < 0.015), (3) incomplete confound control (neighbor norm adds zero R²), or
 (4) transform sensitivity (rank, winsorized, bits all agree).  Combined with non-decaying
 displacement profiles and magnitude-bin shuffle agreement, this confirms the NFS lattice
-sieve — like the QS sieve (E23) — captures essentially all local smoothness structure.
+sieve — like the QS sieve (E27) — captures essentially all local smoothness structure.
 The standard sieve is optimal for both QS and NFS polynomial families at the tested
 bit sizes (40–64).
 
 ## Scope and limitations
 
 The negative results (barrier closure) are established for a specific hypothesis class.
-The following directions remain untested and are explicitly outside the scope of E21b/E21c:
+The following directions remain untested and are explicitly outside the scope of E25b/E25c:
 
-1. **Richer nonlinear function classes.**  E21c tests pairwise character products
+1. **Richer nonlinear function classes.**  E25c tests pairwise character products
    and OLS on engineered features (35-dimensional).  Higher-order interactions
    (3-way products, polynomial kernels, deep nonlinear models) are not tested.
    However, the 14-dimensional feature space is small enough that any strong
@@ -1398,10 +1398,10 @@ The following directions remain untested and are explicitly outside the scope of
    density), higher-dimensional MI (3+ channels jointly), or conditional MI
    conditioned on auxiliary variables are not tested.
 
-4. **NFS-structured norm distributions.**  E24/E24b/E24c thoroughly addresses this direction.
-   Initial raw cofactor autocorrelation (0.15–0.50) was shown by E24b to be primarily
+4. **NFS-structured norm distributions.**  E28/E28b/E28c thoroughly addresses this direction.
+   Initial raw cofactor autocorrelation (0.15–0.50) was shown by E28b to be primarily
    a norm magnitude gradient artifact (collapse ratio 0.24 after residualization).
-   E24c confirmed this via nonlinear residualization (no improvement over OLS),
+   E28c confirmed this via nonlinear residualization (no improvement over OLS),
    cross-validation (no overfitting), partial correlation (neighbor norm adds zero R²),
    and alternative transforms (rank, winsorized, bits all agree).
    The NFS sieve, like the QS sieve, captures essentially all local structure.
@@ -1419,17 +1419,17 @@ The following directions remain untested and are explicitly outside the scope of
 
 ## Data files
 
-- `rust/data/E21_character_audit.json` — full per-block per-eigenvector results
-- `rust/data/E21_control_results.json` — full-group control experiment results
-- `rust/data/E21_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
-- `rust/data/E21b_smoothness_spectrum.json` — smoothness Fourier spectrum (B = 10, 30, 100, 300)
-- `rust/data/E21b_prime_restricted.json` — prime-restricted smoothness diagnostic (126 blocks, n=14–48)
-- `rust/data/E21b_stress_tests.json` — stress test validation results (126 blocks, 4 tests)
-- `rust/data/E21c_cross_channel.json` — joint cross-channel test results (18 blocks, 4 tests)
-- `rust/eigenvector-character/data/E22_sieve_enrichment.json` — QS sieve enrichment results (16 blocks, 4 phases)
-- `rust/eigenvector-character/data/E22_sieve_enrichment_highpower.json` — high-power QS sieve results (8 blocks, B=100/500)
-- `rust/eigenvector-character/data/E23_local_smoothness.json` — local smoothness autocorrelation results (15 blocks, 4 phases)
-- `rust/data/E24_nfs_lattice.json` — NFS 2D lattice locality results (12 blocks, 5 phases)
-- `rust/data/E24b_nfs_validation.json` — E24b artifact validation results (12 blocks, 5 controls)
-- `rust/data/E24c_nfs_robustness.json` — E24c robustness check results (12 blocks, 4 checks)
-- `rust/eigenvector-character/` — Rust crate implementing E21, E21b, E21c, E22, E23, E24, E24b, and E24c
+- `rust/data/E25_character_audit.json` — full per-block per-eigenvector results
+- `rust/data/E25_control_results.json` — full-group control experiment results
+- `rust/data/E25_fourier_scaling.json` — Fourier scaling analysis (30 primes, centered parity)
+- `rust/data/E25b_smoothness_spectrum.json` — smoothness Fourier spectrum (B = 10, 30, 100, 300)
+- `rust/data/E25b_prime_restricted.json` — prime-restricted smoothness diagnostic (126 blocks, n=14–48)
+- `rust/data/E25b_stress_tests.json` — stress test validation results (126 blocks, 4 tests)
+- `rust/data/E25c_cross_channel.json` — joint cross-channel test results (18 blocks, 4 tests)
+- `rust/eigenvector-character/data/E26_sieve_enrichment.json` — QS sieve enrichment results (16 blocks, 4 phases)
+- `rust/eigenvector-character/data/E26_sieve_enrichment_highpower.json` — high-power QS sieve results (8 blocks, B=100/500)
+- `rust/eigenvector-character/data/E27_local_smoothness.json` — local smoothness autocorrelation results (15 blocks, 4 phases)
+- `rust/data/E28_nfs_lattice.json` — NFS 2D lattice locality results (12 blocks, 5 phases)
+- `rust/data/E28b_nfs_validation.json` — E28b artifact validation results (12 blocks, 5 controls)
+- `rust/data/E28c_nfs_robustness.json` — E28c robustness check results (12 blocks, 4 checks)
+- `rust/eigenvector-character/` — Rust crate implementing E25, E25b, E25c, E26, E27, E28, E28b, and E28c

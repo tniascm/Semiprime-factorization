@@ -1,4 +1,4 @@
-/// E21: Eigenvector Multiplicative Character Audit — CLI
+/// E25: Eigenvector Multiplicative Character Audit — CLI
 ///
 /// Usage:
 ///   eigenvector-character [--mode=audit|control|scaling|smooth] [--bits=14,16,18,20]
@@ -15,7 +15,7 @@
 ///
 /// Outputs:
 ///   - Human-readable summary to stdout
-///   - JSON to data/E21_*.json
+///   - JSON to data/E25_*.json
 
 use eigenvector_character::{
     run_character_audit, run_full_group_control, run_prime_restricted_smoothness,
@@ -64,7 +64,7 @@ fn run_audit_mode(opts: &HashMap<String, String>) {
     let bit_sizes    = parse_bit_sizes(opts, &[14, 16, 18, 20]);
     let channel_ids  = parse_channel_ids(opts, 7);
 
-    println!("E21 CHARACTER AUDIT: eigenvector multiplicative character structure");
+    println!("E25 CHARACTER AUDIT: eigenvector multiplicative character structure");
     println!("Bit sizes  : {:?}", bit_sizes);
     println!("Channels   : {:?}", channel_ids);
     println!("Eigenvectors per block: {n_eigenvecs}");
@@ -91,7 +91,7 @@ fn run_audit_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_summary(&all_results);
-    write_json(&all_results, "data/E21_character_audit.json");
+    write_json(&all_results, "data/E25_character_audit.json");
 }
 
 fn run_control_mode(opts: &HashMap<String, String>) {
@@ -105,7 +105,7 @@ fn run_control_mode(opts: &HashMap<String, String>) {
         .into_iter().collect();
     ells.sort();
 
-    println!("E21 CONTROL: full-group H[a][b] = parity(ab mod ℓ), characters are exact eigenvectors");
+    println!("E25 CONTROL: full-group H[a][b] = parity(ab mod ℓ), characters are exact eigenvectors");
     println!("Primes ℓ   : {:?}", ells);
     println!("Eigenvectors: {n_eigenvecs}");
     println!("Seed       : 0x{seed:016x}");
@@ -122,7 +122,7 @@ fn run_control_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_control_summary(&all);
-    write_json(&all, "data/E21_control_results.json");
+    write_json(&all, "data/E25_control_results.json");
 }
 
 fn run_scaling_mode(opts: &HashMap<String, String>) {
@@ -135,7 +135,7 @@ fn run_scaling_mode(opts: &HashMap<String, String>) {
 
     let primes = scaling_primes(lo, hi, n_pts);
 
-    println!("E21 FOURIER SCALING: centered parity h̃(a) = 2(a mod 2) − 1 on (ℤ/ℓℤ)*");
+    println!("E25 FOURIER SCALING: centered parity h̃(a) = 2(a mod 2) − 1 on (ℤ/ℓℤ)*");
     println!("Primes     : {} values from {} to {}", primes.len(), primes.first().unwrap(), primes.last().unwrap());
     println!("Top-k chars: {top_k}");
     println!("{}", "─".repeat(72));
@@ -154,7 +154,7 @@ fn run_scaling_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_scaling_summary(&analysis);
-    write_json(&analysis, "data/E21_fourier_scaling.json");
+    write_json(&analysis, "data/E25_fourier_scaling.json");
 }
 
 fn run_smooth_mode(opts: &HashMap<String, String>) {
@@ -170,7 +170,7 @@ fn run_smooth_mode(opts: &HashMap<String, String>) {
 
     let primes = scaling_primes(lo, hi, n_pts);
 
-    println!("E21b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness indicator on (ℤ/ℓℤ)*");
+    println!("E25b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness indicator on (ℤ/ℓℤ)*");
     println!("Primes     : {} values from {} to {}", primes.len(), primes.first().unwrap(), primes.last().unwrap());
     println!("Bounds B   : {:?}", bounds);
     println!("Top-k chars: {top_k}");
@@ -207,7 +207,7 @@ fn run_smooth_mode(opts: &HashMap<String, String>) {
     print_smooth_summary(&all_analyses);
 
     // Write all analyses to JSON.
-    write_json(&all_analyses, "data/E21b_smoothness_spectrum.json");
+    write_json(&all_analyses, "data/E25b_smoothness_spectrum.json");
 }
 
 fn run_restrict_mode(opts: &HashMap<String, String>) {
@@ -221,7 +221,7 @@ fn run_restrict_mode(opts: &HashMap<String, String>) {
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![10, 30]);
 
-    println!("E21b PRIME-RESTRICTED SMOOTHNESS: does the smoothness character survive?");
+    println!("E25b PRIME-RESTRICTED SMOOTHNESS: does the smoothness character survive?");
     println!("Bit sizes  : {:?}", bit_sizes);
     println!("Channels   : {:?}", channel_ids);
     println!("Bounds B   : {:?}", bounds);
@@ -259,12 +259,12 @@ fn run_restrict_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_restrict_summary(&all_results);
-    write_json(&all_results, "data/E21b_prime_restricted.json");
+    write_json(&all_results, "data/E25b_prime_restricted.json");
 }
 
 fn print_restrict_summary(results: &[PrimeRestrictedResult]) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E21b PRIME-RESTRICTED: smoothness character under prime restriction       │");
+    println!("│ E25b PRIME-RESTRICTED: smoothness character under prime restriction       │");
     println!("│ Tests whether full-group smoothness bias survives when restricted to      │");
     println!("│ the prime image set {{g(p) : p in balanced semiprimes}}                    │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
@@ -555,7 +555,7 @@ fn print_summary(results: &[CharacterAuditResult]) {
         "┌─────────────────────────────────────────────────────────────────────────┐"
     );
     println!(
-        "│ E21 RESULTS: Dominant eigenvector vs. multiplicative character χ_{{r*}}   │"
+        "│ E25 RESULTS: Dominant eigenvector vs. multiplicative character χ_{{r*}}   │"
     );
     println!(
         "└─────────────────────────────────────────────────────────────────────────┘"
@@ -665,7 +665,7 @@ fn print_summary(results: &[CharacterAuditResult]) {
 
 fn print_control_summary(results: &[FullGroupControlResult]) {
     println!("┌─────────────────────────────────────────────────┐");
-    println!("│ E21 CONTROL: Full-group eigenvector scan        │");
+    println!("│ E25 CONTROL: Full-group eigenvector scan        │");
     println!("│ Characters are exact eigenvectors over the full │");
     println!("│ group — amp should be ~1.0 for non-trivial ones │");
     println!("└─────────────────────────────────────────────────┘");
@@ -720,7 +720,7 @@ fn print_control_summary(results: &[FullGroupControlResult]) {
 
 fn print_scaling_summary(analysis: &FourierScalingAnalysis) {
     println!("┌───────────────────────────────────────────────────────────────────────┐");
-    println!("│ E21 FOURIER SCALING: centered parity h̃ = 2h − 1 on (ℤ/ℓℤ)*         │");
+    println!("│ E25 FOURIER SCALING: centered parity h̃ = 2h − 1 on (ℤ/ℓℤ)*         │");
     println!("│ A_max(ℓ) = max_{{r≥1}} |ĥ̃(r)|  — should scale as C · ℓ^{{−1/2}}      │");
     println!("└───────────────────────────────────────────────────────────────────────┘");
     println!();
@@ -789,7 +789,7 @@ fn print_scaling_summary(analysis: &FourierScalingAnalysis) {
 
 fn print_smooth_summary(analyses: &[SmoothnessScalingAnalysis]) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E21b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness on (ℤ/ℓℤ)*       │");
+    println!("│ E25b SMOOTHNESS SPECTRUM: DFT of centered B-smoothness on (ℤ/ℓℤ)*       │");
     println!("│ Density-normalized: comparing to random subset of same density           │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
@@ -971,14 +971,14 @@ fn run_stress_mode(opts: &HashMap<String, String>) {
     let channel_ids = parse_channel_ids(opts, 7);
     let n_perm = parse_usize(opts, "permutations", 200);
     let n_boot = parse_usize(opts, "bootstrap", 500);
-    let seed = parse_u64(opts, "seed", 0xE21b_5713_E55);
+    let seed = parse_u64(opts, "seed", 0xE25b_5713_E55);
 
     let bounds: Vec<u64> = opts
         .get("bounds")
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![10, 30]);
 
-    println!("E21b STRESS TESTS: validating smoothness character findings");
+    println!("E25b STRESS TESTS: validating smoothness character findings");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Channels     : {:?}", channel_ids);
     println!("Bounds B     : {:?}", bounds);
@@ -1064,11 +1064,11 @@ fn run_stress_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_stress_summary(&result);
-    write_json(&result, "data/E21b_stress_tests.json");
+    write_json(&result, "data/E25b_stress_tests.json");
 }
 
 // ---------------------------------------------------------------------------
-// Mode: crosschan (E21c joint cross-channel N-only tests)
+// Mode: crosschan (E25c joint cross-channel N-only tests)
 // ---------------------------------------------------------------------------
 
 fn run_crosschan_mode(opts: &HashMap<String, String>) {
@@ -1076,14 +1076,14 @@ fn run_crosschan_mode(opts: &HashMap<String, String>) {
     let bit_sizes = parse_bit_sizes(opts, &[14, 16, 18, 20, 24, 28, 32, 40, 48]);
     let n_perm = parse_usize(opts, "permutations", 200);
     let n_bins = parse_usize(opts, "bins", 8);
-    let seed = parse_u64(opts, "seed", 0xE21c_C400_5EED);
+    let seed = parse_u64(opts, "seed", 0xE25c_C400_5EED);
 
     let bounds: Vec<u64> = opts
         .get("bounds")
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![10, 30]);
 
-    println!("E21c CROSS-CHANNEL TESTS: joint N-only across 7 Eisenstein channels");
+    println!("E25c CROSS-CHANNEL TESTS: joint N-only across 7 Eisenstein channels");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Bounds B     : {:?}", bounds);
     println!("Permutations : {n_perm}");
@@ -1094,12 +1094,12 @@ fn run_crosschan_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_crosschan_summary(&result);
-    write_json(&result, "data/E21c_cross_channel.json");
+    write_json(&result, "data/E25c_cross_channel.json");
 }
 
 fn print_crosschan_summary(result: &CrossChannelResult) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E21c CROSS-CHANNEL TESTS: joint N-only across 7 Eisenstein channels       │");
+    println!("│ E25c CROSS-CHANNEL TESTS: joint N-only across 7 Eisenstein channels       │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
 
@@ -1259,7 +1259,7 @@ fn print_crosschan_summary(result: &CrossChannelResult) {
 
 fn print_stress_summary(result: &StressTestResult) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E21b STRESS TESTS: validation of smoothness character findings            │");
+    println!("│ E25b STRESS TESTS: validation of smoothness character findings            │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
 
@@ -1424,12 +1424,12 @@ fn print_stress_summary(result: &StressTestResult) {
 }
 
 // ---------------------------------------------------------------------------
-// E22: Sieve enrichment mode
+// E26: Sieve enrichment mode
 // ---------------------------------------------------------------------------
 
 fn run_sieve_mode(opts: &HashMap<String, String>) {
     let bit_sizes = parse_bit_sizes(opts, &[20, 24, 28, 32, 40, 48, 56, 64]);
-    let seed = parse_u64(opts, "seed", 0xE220_5EED_0001);
+    let seed = parse_u64(opts, "seed", 0xE260_5EED_0001);
     let n_qs = parse_usize(opts, "qs", 10_000);
     let n_pool = parse_usize(opts, "pool", 50_000);
     let target_smooth = parse_usize(opts, "target", 50);
@@ -1440,7 +1440,7 @@ fn run_sieve_mode(opts: &HashMap<String, String>) {
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![30, 100]);
 
-    println!("E22 SIEVE ENRICHMENT: Eisenstein-scored QS polynomial smoothness");
+    println!("E26 SIEVE ENRICHMENT: Eisenstein-scored QS polynomial smoothness");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Bounds B     : {:?}", bounds);
     println!("QS values    : {n_qs}");
@@ -1450,7 +1450,7 @@ fn run_sieve_mode(opts: &HashMap<String, String>) {
     println!("Seed         : 0x{seed:016x}");
     println!("{}", "─".repeat(72));
 
-    let checkpoint_path = "data/E22_sieve_enrichment_checkpoint.json";
+    let checkpoint_path = "data/E26_sieve_enrichment_checkpoint.json";
     let result = run_sieve_enrichment(
         &bit_sizes,
         &bounds,
@@ -1464,12 +1464,12 @@ fn run_sieve_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_sieve_summary(&result);
-    write_json(&result, "data/E22_sieve_enrichment.json");
+    write_json(&result, "data/E26_sieve_enrichment.json");
 }
 
 fn print_sieve_summary(result: &SieveEnrichmentResult) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E22 SIEVE ENRICHMENT: Eisenstein-scored QS polynomial smoothness          │");
+    println!("│ E26 SIEVE ENRICHMENT: Eisenstein-scored QS polynomial smoothness          │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
 
@@ -1635,12 +1635,12 @@ fn print_sieve_summary(result: &SieveEnrichmentResult) {
 }
 
 // ---------------------------------------------------------------------------
-// E23: Local smoothness mode
+// E27: Local smoothness mode
 // ---------------------------------------------------------------------------
 
 fn run_local_mode(opts: &HashMap<String, String>) {
     let bit_sizes = parse_bit_sizes(opts, &[24, 28, 32, 40, 48]);
-    let seed = parse_u64(opts, "seed", 0xE230_5EED_0001);
+    let seed = parse_u64(opts, "seed", 0xE270_5EED_0001);
     let n_pool = parse_usize(opts, "pool", 100_000);
     let max_lag = parse_usize(opts, "lag", 50);
 
@@ -1649,7 +1649,7 @@ fn run_local_mode(opts: &HashMap<String, String>) {
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![30, 100, 500]);
 
-    println!("E23 LOCAL SMOOTHNESS: autocorrelation in QS polynomial neighborhoods");
+    println!("E27 LOCAL SMOOTHNESS: autocorrelation in QS polynomial neighborhoods");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Bounds B     : {:?}", bounds);
     println!("Pool size    : {n_pool}");
@@ -1657,7 +1657,7 @@ fn run_local_mode(opts: &HashMap<String, String>) {
     println!("Seed         : 0x{seed:016x}");
     println!("{}", "─".repeat(72));
 
-    let checkpoint_path = "data/E23_local_smoothness_checkpoint.json";
+    let checkpoint_path = "data/E27_local_smoothness_checkpoint.json";
     let result = run_local_smoothness(
         &bit_sizes,
         &bounds,
@@ -1669,16 +1669,16 @@ fn run_local_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_local_summary(&result);
-    write_json(&result, "data/E23_local_smoothness.json");
+    write_json(&result, "data/E27_local_smoothness.json");
 }
 
 // ---------------------------------------------------------------------------
-// E24: NFS 2D lattice locality mode
+// E28: NFS 2D lattice locality mode
 // ---------------------------------------------------------------------------
 
 fn run_nfs2d_mode(opts: &HashMap<String, String>) {
     let bit_sizes = parse_bit_sizes(opts, &[40, 48, 56, 64]);
-    let seed = parse_u64(opts, "seed", 0xE240_5EED_0001);
+    let seed = parse_u64(opts, "seed", 0xE280_5EED_0001);
     let sieve_area = parse_usize(opts, "area", 500) as i64;
     let max_b = parse_usize(opts, "maxb", 50) as i64;
 
@@ -1687,7 +1687,7 @@ fn run_nfs2d_mode(opts: &HashMap<String, String>) {
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![100, 500, 1000]);
 
-    println!("E24 NFS 2D LATTICE LOCALITY: cofactor autocorrelation in algebraic norm neighborhoods");
+    println!("E28 NFS 2D LATTICE LOCALITY: cofactor autocorrelation in algebraic norm neighborhoods");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Bounds B     : {:?}", bounds);
     println!("Sieve area   : {} (a in [-{}, {}])", sieve_area, sieve_area, sieve_area);
@@ -1699,12 +1699,12 @@ fn run_nfs2d_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_nfs2d_summary(&result);
-    write_json(&result, "data/E24_nfs_lattice.json");
+    write_json(&result, "data/E28_nfs_lattice.json");
 }
 
 fn print_nfs2d_summary(result: &NfsLatticeResult) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E24 NFS 2D LATTICE LOCALITY: cofactor autocorrelation in norm neighbors   │");
+    println!("│ E28 NFS 2D LATTICE LOCALITY: cofactor autocorrelation in norm neighbors   │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
 
@@ -1898,12 +1898,12 @@ fn print_nfs2d_summary(result: &NfsLatticeResult) {
 }
 
 // ---------------------------------------------------------------------------
-// E24b: NFS 2D validation mode
+// E28b: NFS 2D validation mode
 // ---------------------------------------------------------------------------
 
 fn run_nfs2d_validate_mode(opts: &HashMap<String, String>) {
     let bit_sizes = parse_bit_sizes(opts, &[40, 48, 56, 64]);
-    let seed = parse_u64(opts, "seed", 0xE24B_5EED_0001);
+    let seed = parse_u64(opts, "seed", 0xE28B_5EED_0001);
     let sieve_area = parse_usize(opts, "area", 500) as i64;
     let max_b = parse_usize(opts, "maxb", 50) as i64;
 
@@ -1912,7 +1912,7 @@ fn run_nfs2d_validate_mode(opts: &HashMap<String, String>) {
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![100, 500, 1000]);
 
-    println!("E24b NFS 2D VALIDATION: artifact controls for cofactor autocorrelation");
+    println!("E28b NFS 2D VALIDATION: artifact controls for cofactor autocorrelation");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Bounds B     : {:?}", bounds);
     println!("Sieve area   : {}", sieve_area);
@@ -1924,12 +1924,12 @@ fn run_nfs2d_validate_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_nfs2d_validation_summary(&result);
-    write_json(&result, "data/E24b_nfs_validation.json");
+    write_json(&result, "data/E28b_nfs_validation.json");
 }
 
 fn print_nfs2d_validation_summary(result: &NfsValidationResult) {
     println!("┌───────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E24b VALIDATION: Artifact controls for NFS 2D cofactor autocorrelation         │");
+    println!("│ E28b VALIDATION: Artifact controls for NFS 2D cofactor autocorrelation         │");
     println!("└───────────────────────────────────────────────────────────────────────────────────┘");
     println!();
 
@@ -2094,7 +2094,7 @@ fn print_nfs2d_validation_summary(result: &NfsValidationResult) {
 
 fn run_nfs2d_robust_mode(opts: &HashMap<String, String>) {
     let bit_sizes = parse_bit_sizes(opts, &[40, 48, 56, 64]);
-    let seed = parse_u64(opts, "seed", 0xE24C_5EED_0001);
+    let seed = parse_u64(opts, "seed", 0xE28C_5EED_0001);
     let sieve_area = parse_usize(opts, "area", 500) as i64;
     let max_b = parse_usize(opts, "maxb", 50) as i64;
 
@@ -2103,7 +2103,7 @@ fn run_nfs2d_robust_mode(opts: &HashMap<String, String>) {
         .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_else(|| vec![100, 500, 1000]);
 
-    println!("E24c NFS 2D ROBUSTNESS: 4 checks on artifact validation");
+    println!("E28c NFS 2D ROBUSTNESS: 4 checks on artifact validation");
     println!("Bit sizes    : {:?}", bit_sizes);
     println!("Bounds B     : {:?}", bounds);
     println!("Sieve area   : {}", sieve_area);
@@ -2115,12 +2115,12 @@ fn run_nfs2d_robust_mode(opts: &HashMap<String, String>) {
 
     println!();
     print_nfs2d_robustness_summary(&result);
-    write_json(&result, "data/E24c_nfs_robustness.json");
+    write_json(&result, "data/E28c_nfs_robustness.json");
 }
 
 fn print_nfs2d_robustness_summary(result: &NfsRobustnessResult) {
     println!("┌────────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E24c ROBUSTNESS: 4 checks on NFS cofactor autocorrelation artifact validation  │");
+    println!("│ E28c ROBUSTNESS: 4 checks on NFS cofactor autocorrelation artifact validation  │");
     println!("└────────────────────────────────────────────────────────────────────────────────┘");
     println!();
 
@@ -2267,7 +2267,7 @@ fn print_nfs2d_robustness_summary(result: &NfsRobustnessResult) {
 
 fn print_local_summary(result: &LocalSmoothnessResult) {
     println!("┌───────────────────────────────────────────────────────────────────────────┐");
-    println!("│ E23 LOCAL SMOOTHNESS: QS polynomial neighborhood autocorrelation          │");
+    println!("│ E27 LOCAL SMOOTHNESS: QS polynomial neighborhood autocorrelation          │");
     println!("└───────────────────────────────────────────────────────────────────────────┘");
     println!();
 

@@ -7,7 +7,7 @@
 //! χ_0 is the trivial character (identically 1).
 //! For real characters: χ_0 and χ_{(ℓ−1)/2} (Legendre symbol, when 2 | ℓ−1).
 //!
-//! Key identity used in E21:
+//! Key identity used in E25:
 //!   g(p) = (1 + p^{k−1}) mod ℓ
 //!   g(p) · g(q) = (1 + p^{k−1})(1 + q^{k−1}) = σ_{k−1}(pq) mod ℓ
 //! so χ_r(g(p)) · χ_r(g(q)) = χ_r(σ_{k−1}(N) mod ℓ) for all r.

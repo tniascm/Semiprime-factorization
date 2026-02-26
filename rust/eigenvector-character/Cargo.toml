@@ -2,7 +2,7 @@
 name = "eigenvector-character"
 version = "0.1.0"
 edition = "2021"
-description = "E21: Verify multiplicative character structure of dominant eigenvectors of the Eisenstein CRT matrix"
+description = "E25: Verify multiplicative character structure of dominant eigenvectors of the Eisenstein CRT matrix"
 
 [dependencies]
 eisenstein-hunt = { path = "../eisenstein-hunt" }

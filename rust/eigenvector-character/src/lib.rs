@@ -1,4 +1,4 @@
-//! E21: Dominant eigenvector multiplicative character structure verification.
+//! E25: Dominant eigenvector multiplicative character structure verification.
 //!
 //! ## Theoretical background
 //!
@@ -11,7 +11,7 @@
 //! Its eigenvectors are (restrictions to the prime set of) multiplicative
 //! characters χ_r of (ℤ/ℓℤ)*.
 //!
-//! ## E21 tests
+//! ## E25 tests
 //!
 //! For each (n_bits, channel):
 //!   1. Build M and extract top-k eigenvectors u₁, u₂, …
@@ -40,7 +40,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::Serialize;
 use std::collections::HashMap;
 
-// E24 NFS imports
+// E28 NFS imports
 use classical_nfs::polynomial::{select_polynomial, NfsPolynomial};
 use classical_nfs::sieve::{eval_homogeneous_abs, gcd_u64, sieve_primes};
 use num_bigint::BigUint;
@@ -212,7 +212,7 @@ fn generate_primes_and_pairs(
 // Core audit function
 // ---------------------------------------------------------------------------
 
-/// Run the E21 character audit for a single (n_bits, channel) pair.
+/// Run the E25 character audit for a single (n_bits, channel) pair.
 ///
 /// Extracts `n_eigenvectors` dominant eigenvectors from the Eisenstein CRT
 /// matrix and tests each against the multiplicative character prediction.
@@ -807,14 +807,14 @@ pub fn smoothness_spectrum(ell: u64, bound: u64, top_k: usize) -> SmoothnessSpec
 }
 
 // ---------------------------------------------------------------------------
-// Prime-restricted smoothness character diagnostic (E21b Step 2)
+// Prime-restricted smoothness character diagnostic (E25b Step 2)
 // ---------------------------------------------------------------------------
 
 /// Result of testing whether the smoothness-tuned character r* survives
 /// restriction to the prime image set {g(p) : p in balanced-semiprime set}.
 ///
 /// Full group: the smoothness indicator s_B has a dominant character r* with
-/// excess ratio > 1 (confirmed in E21b Step 1).
+/// excess ratio > 1 (confirmed in E25b Step 1).
 /// Prime-restricted: do the same characters still show signal when evaluated
 /// only on {g(p)} instead of all of (ℤ/ℓℤ)*?
 #[derive(Debug, Clone, Serialize)]
@@ -897,7 +897,7 @@ pub fn run_prime_restricted_smoothness(
     let full_r_star = full.top_amplitudes.first().map(|&(r, _)| r).unwrap_or(1);
 
     // 2. Generate primes and pairs (enumerate for n≤24, sample for n>24).
-    let seed = 0xE21b_5a3d ^ (n_bits as u64 * 0x10000 + ell);
+    let seed = 0xE25b_5a3d ^ (n_bits as u64 * 0x10000 + ell);
     let (prime_set, pairs) = generate_primes_and_pairs(n_bits, 500, 20_000, seed);
     let n_primes = prime_set.len();
 
@@ -1292,7 +1292,7 @@ fn next_prime(n: u64) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// E21b Step 3: Stress tests
+// E25b Step 3: Stress tests
 // ---------------------------------------------------------------------------
 
 /// Full (untruncated) DFT of the smoothness indicator on (ℤ/ℓℤ)*.
@@ -1394,7 +1394,7 @@ fn prepare_block(n_bits: u32, ch: &Channel, bound: u64, top_k: usize) -> BlockDa
     let full_r_star = full.top_amplitudes.first().map(|&(r, _)| r).unwrap_or(1);
 
     // 2. Generate primes and pairs.
-    let seed = 0xE21b_5a3d ^ (n_bits as u64 * 0x10000 + ell);
+    let seed = 0xE25b_5a3d ^ (n_bits as u64 * 0x10000 + ell);
     let (prime_set, pairs) = generate_primes_and_pairs(n_bits, 500, 20_000, seed);
 
     // 3. Compute g(p) and smoothness for each prime.
@@ -2087,7 +2087,7 @@ pub fn run_bootstrap_ci(
 }
 
 // ===========================================================================
-// E21c: Joint cross-channel N-only tests
+// E25c: Joint cross-channel N-only tests
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -2420,7 +2420,7 @@ pub struct CrossChannelBlockResult {
     pub perm_null: CrossChannelPermResult,
 }
 
-/// Top-level E21c result.
+/// Top-level E25c result.
 #[derive(Debug, Clone, Serialize)]
 pub struct CrossChannelResult {
     pub blocks: Vec<CrossChannelBlockResult>,
@@ -2432,7 +2432,7 @@ pub struct CrossChannelResult {
 
 /// Prepare a cross-channel block with shared primes/pairs across all 7 channels.
 ///
-/// Uses a channel-independent seed `0xE21c_0000 + n_bits` so all channels
+/// Uses a channel-independent seed `0xE25c_0000 + n_bits` so all channels
 /// operate on the SAME (p, q) pairs — critical for cross-channel tests.
 fn prepare_cross_channel_block(
     n_bits: u32,
@@ -2441,7 +2441,7 @@ fn prepare_cross_channel_block(
 ) -> CrossChannelBlock {
     use algebra::{best_character, build_dlog_table, primitive_root};
 
-    let seed = 0xE21c_0000u64 + n_bits as u64;
+    let seed = 0xE25c_0000u64 + n_bits as u64;
     let (prime_set, pairs) = generate_primes_and_pairs(n_bits, 500, 20_000, seed);
 
     let mut channels = Vec::with_capacity(7);
@@ -3010,7 +3010,7 @@ fn run_cross_channel_perm(
 // Top-level cross-channel runner
 // ---------------------------------------------------------------------------
 
-/// Run the full E21c cross-channel test suite across multiple bit sizes and bounds.
+/// Run the full E25c cross-channel test suite across multiple bit sizes and bounds.
 pub fn run_cross_channel_tests(
     bit_sizes: &[u32],
     bounds: &[u64],
@@ -3024,7 +3024,7 @@ pub fn run_cross_channel_tests(
     for &n_bits in bit_sizes {
         for &bound in bounds {
             eprintln!(
-                "[E21c] Preparing cross-channel block: n_bits={}, B={}",
+                "[E25c] Preparing cross-channel block: n_bits={}, B={}",
                 n_bits, bound,
             );
 
@@ -3109,11 +3109,11 @@ pub fn run_cross_channel_tests(
 }
 
 // ===========================================================================
-// E22: Eisenstein-Scored Sieve Enrichment
+// E26: Eisenstein-Scored Sieve Enrichment
 // ===========================================================================
 //
 // Tests whether the found Eisenstein smoothness bias (2-6× fix_excess at group
-// level, confirmed in E21b) can accelerate a quadratic sieve.
+// level, confirmed in E25b) can accelerate a quadratic sieve.
 //
 // Key insight: For QS polynomial Q(x) = (x + ⌊√N⌋)² − N, the residue
 // Q(x) mod ℓ IS computable from public information (no factorisation needed).
@@ -3919,10 +3919,10 @@ fn measure_sieve_speedup(
 }
 
 // ---------------------------------------------------------------------------
-// Top-level E22 result types
+// Top-level E26 result types
 // ---------------------------------------------------------------------------
 
-/// Full E22 experiment result.
+/// Full E26 experiment result.
 #[derive(Debug, Clone, Serialize)]
 pub struct SieveEnrichmentResult {
     /// Phase 1: Group-level enrichment profiles.
@@ -3935,7 +3935,7 @@ pub struct SieveEnrichmentResult {
     pub sieve_speedup: Vec<SieveSpeedupResult>,
 }
 
-/// Run the full E22 experiment with checkpointing.
+/// Run the full E26 experiment with checkpointing.
 ///
 /// Writes intermediate results to `checkpoint_path` after each phase completes.
 pub fn run_sieve_enrichment(
@@ -3949,7 +3949,7 @@ pub fn run_sieve_enrichment(
     checkpoint_path: Option<&str>,
 ) -> SieveEnrichmentResult {
     // Phase 1: Group-level enrichment profiles.
-    eprintln!("\n=== E22 Phase 1: Group-level enrichment profiles ===\n");
+    eprintln!("\n=== E26 Phase 1: Group-level enrichment profiles ===\n");
 
     let mut group_profiles = Vec::new();
     for &bound in smooth_bounds {
@@ -3982,12 +3982,12 @@ pub fn run_sieve_enrichment(
     }
 
     // Phase 2: QS polynomial enrichment.
-    eprintln!("\n=== E22 Phase 2: QS polynomial enrichment ===\n");
+    eprintln!("\n=== E26 Phase 2: QS polynomial enrichment ===\n");
 
     let mut qs_blocks = Vec::new();
     for &n_bits in bit_sizes {
         for &bound in smooth_bounds {
-            let block_seed = seed ^ (0xE22_0002u64 + n_bits as u64 * 1000 + bound);
+            let block_seed = seed ^ (0xE26_0002u64 + n_bits as u64 * 1000 + bound);
             eprint!(
                 "  n_bits={:2}, B={:3}, {} Q(x) values … ",
                 n_bits, bound, n_qs_values
@@ -4015,12 +4015,12 @@ pub fn run_sieve_enrichment(
     }
 
     // Phase 3: Joint multi-channel scoring.
-    eprintln!("\n=== E22 Phase 3: Joint multi-channel scoring ===\n");
+    eprintln!("\n=== E26 Phase 3: Joint multi-channel scoring ===\n");
 
     let mut joint_scoring = Vec::new();
     for &n_bits in bit_sizes {
         for &bound in smooth_bounds {
-            let block_seed = seed ^ (0xE22_0003u64 + n_bits as u64 * 1000 + bound);
+            let block_seed = seed ^ (0xE26_0003u64 + n_bits as u64 * 1000 + bound);
             eprint!(
                 "  n_bits={:2}, B={:3} … ",
                 n_bits, bound
@@ -4049,12 +4049,12 @@ pub fn run_sieve_enrichment(
     }
 
     // Phase 4: Direct sieve speedup.
-    eprintln!("\n=== E22 Phase 4: Direct sieve speedup ===\n");
+    eprintln!("\n=== E26 Phase 4: Direct sieve speedup ===\n");
 
     let mut sieve_speedup = Vec::new();
     for &n_bits in bit_sizes {
         for &bound in smooth_bounds {
-            let block_seed = seed ^ (0xE22_0004u64 + n_bits as u64 * 1000 + bound);
+            let block_seed = seed ^ (0xE26_0004u64 + n_bits as u64 * 1000 + bound);
             eprint!(
                 "  n_bits={:2}, B={:3}, pool={}, target={} … ",
                 n_bits, bound, n_pool, target_smooth
@@ -4096,7 +4096,7 @@ fn write_checkpoint(path: &str, result: &SieveEnrichmentResult) {
 }
 
 // ===========================================================================
-// E23: Local Smoothness Dependence in QS Polynomial Neighborhoods
+// E27: Local Smoothness Dependence in QS Polynomial Neighborhoods
 // ===========================================================================
 //
 // Tests whether smoothness of QS polynomial values Q(x) = (x + ⌊√N⌋)² − N
@@ -4176,7 +4176,7 @@ pub struct LocalBlockResult {
     pub phase4: RandomControlResult,
 }
 
-/// Top-level E23 result aggregating all blocks.
+/// Top-level E27 result aggregating all blocks.
 #[derive(Debug, Clone, Serialize)]
 pub struct LocalSmoothnessResult {
     pub blocks: Vec<LocalBlockResult>,
@@ -4355,7 +4355,7 @@ fn cofactor_log(mut n: u128, bound: u64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// E23 Phase 1: Binary smoothness autocorrelation
+// E27 Phase 1: Binary smoothness autocorrelation
 // ---------------------------------------------------------------------------
 
 /// Compute binary smoothness autocorrelation: C(δ) = P(smooth(x+δ) | smooth(x)) / P(smooth).
@@ -4424,7 +4424,7 @@ pub fn compute_smoothness_autocorrelation(
 }
 
 // ---------------------------------------------------------------------------
-// E23 Phase 2: Partial-fraction Pearson autocorrelation
+// E27 Phase 2: Partial-fraction Pearson autocorrelation
 // ---------------------------------------------------------------------------
 
 /// Compute Pearson autocorrelation of partial smooth fractions at each lag.
@@ -4467,7 +4467,7 @@ pub fn compute_partial_frac_autocorrelation(
 }
 
 // ---------------------------------------------------------------------------
-// E23 Phase 3: Cofactor decomposition (sieve-predicted null)
+// E27 Phase 3: Cofactor decomposition (sieve-predicted null)
 // ---------------------------------------------------------------------------
 
 /// Decompose local structure into sieve-explained and cofactor components.
@@ -4535,7 +4535,7 @@ pub fn compute_cofactor_decomposition(
 }
 
 // ---------------------------------------------------------------------------
-// E23 Phase 4: Random control
+// E27 Phase 4: Random control
 // ---------------------------------------------------------------------------
 
 /// Random control: compute autocorrelation on matched-size random integers.
@@ -4643,7 +4643,7 @@ pub fn compute_random_control(
 }
 
 // ---------------------------------------------------------------------------
-// E23 Top-level runner
+// E27 Top-level runner
 // ---------------------------------------------------------------------------
 
 /// Compute all 4 phases for a single (n_bits, smooth_bound) block.
@@ -4689,7 +4689,7 @@ pub fn compute_local_block(
     );
 
     eprintln!("    Phase 4: random control ...");
-    let phase4 = compute_random_control(n, smooth_bound, n_pool, max_lag, seed ^ 0xE23_FFFF_0000, n_bits);
+    let phase4 = compute_random_control(n, smooth_bound, n_pool, max_lag, seed ^ 0xE27_FFFF_0000, n_bits);
     eprintln!(
         "      random_smooth_rate={:.6}, random_r(1)={:.6}",
         phase4.overall_smooth_rate,
@@ -4713,7 +4713,7 @@ fn write_local_checkpoint(path: &str, result: &LocalSmoothnessResult) {
     }
 }
 
-/// Run the full E23 local smoothness experiment across all bit sizes and bounds.
+/// Run the full E27 local smoothness experiment across all bit sizes and bounds.
 pub fn run_local_smoothness(
     bit_sizes: &[u32],
     smooth_bounds: &[u64],
@@ -4753,11 +4753,11 @@ pub fn run_local_smoothness(
 }
 
 // ===========================================================================
-// E24: NFS 2D Lattice Locality — Cofactor Autocorrelation in Algebraic Norm
+// E28: NFS 2D Lattice Locality — Cofactor Autocorrelation in Algebraic Norm
 //      Neighborhoods
 // ===========================================================================
 //
-// Extends E23 from 1D QS polynomials to 2D NFS lattice norms.
+// Extends E27 from 1D QS polynomials to 2D NFS lattice norms.
 // Tests whether cofactors of algebraic norms F(a,b) have 2D spatial
 // autocorrelation beyond what the lattice sieve already captures.
 //
@@ -4857,17 +4857,17 @@ pub struct NfsBlockResult {
     pub phase5: NfsDualNormResult,
 }
 
-/// Top-level E24 result aggregating all blocks.
+/// Top-level E28 result aggregating all blocks.
 #[derive(Debug, Clone, Serialize)]
 pub struct NfsLatticeResult {
     pub blocks: Vec<NfsBlockResult>,
 }
 
 // ===========================================================================
-// E24b: Artifact Validation Controls
+// E28b: Artifact Validation Controls
 // ===========================================================================
 //
-// Five controls to verify whether E24's cofactor autocorrelation is genuine
+// Five controls to verify whether E28's cofactor autocorrelation is genuine
 // or an artifact of norm magnitude gradients across the (a,b) grid.
 //
 // Control A: Norm-residualized cofactor autocorrelation
@@ -4958,14 +4958,14 @@ pub struct NfsValidationBlockResult {
     pub control_e: ConditionalCofactorResult,
 }
 
-/// Top-level E24b validation result.
+/// Top-level E28b validation result.
 #[derive(Debug, Clone, Serialize)]
 pub struct NfsValidationResult {
     pub blocks: Vec<NfsValidationBlockResult>,
 }
 
 // ===========================================================================
-// E24c: Robustness Check Result Structs
+// E28c: Robustness Check Result Structs
 // ===========================================================================
 
 /// Check 1 result: nonlinear (binned) residualization vs OLS residualization.
@@ -5024,7 +5024,7 @@ pub struct AlternativeTransformResult {
     pub variants: Vec<TransformVariantResult>,
 }
 
-/// Combined E24c robustness result for one (n_bits, smooth_bound) block.
+/// Combined E28c robustness result for one (n_bits, smooth_bound) block.
 #[derive(Debug, Clone, Serialize)]
 pub struct NfsRobustnessBlockResult {
     pub n_bits: u32,
@@ -5037,14 +5037,14 @@ pub struct NfsRobustnessBlockResult {
     pub check4_transforms: AlternativeTransformResult,
 }
 
-/// Top-level E24c robustness result.
+/// Top-level E28c robustness result.
 #[derive(Debug, Clone, Serialize)]
 pub struct NfsRobustnessResult {
     pub blocks: Vec<NfsRobustnessBlockResult>,
 }
 
 // ---------------------------------------------------------------------------
-// E24 helper functions
+// E28 helper functions
 // ---------------------------------------------------------------------------
 
 /// Convert a BigUint to u128, clamping to u128::MAX on overflow.
@@ -5134,7 +5134,7 @@ fn generate_nfs_grid(
 }
 
 // ---------------------------------------------------------------------------
-// E24 Phase 1: 2D binary smoothness autocorrelation
+// E28 Phase 1: 2D binary smoothness autocorrelation
 // ---------------------------------------------------------------------------
 
 /// Compute 2D binary smoothness autocorrelation for NFS algebraic norms.
@@ -5203,7 +5203,7 @@ fn compute_nfs_2d_autocorrelation(
 }
 
 // ---------------------------------------------------------------------------
-// E24 Phase 2: 2D partial-fraction Pearson autocorrelation
+// E28 Phase 2: 2D partial-fraction Pearson autocorrelation
 // ---------------------------------------------------------------------------
 
 /// Compute 2D partial-fraction Pearson autocorrelation for NFS algebraic norms.
@@ -5259,7 +5259,7 @@ fn compute_nfs_2d_partial_frac(
 }
 
 // ---------------------------------------------------------------------------
-// E24 Phase 3: 2D cofactor decomposition (sieve-predicted null)
+// E28 Phase 3: 2D cofactor decomposition (sieve-predicted null)
 // ---------------------------------------------------------------------------
 
 /// Compute 2D cofactor decomposition for NFS algebraic norms.
@@ -5326,7 +5326,7 @@ fn compute_nfs_2d_cofactor_decomposition(
 }
 
 // ---------------------------------------------------------------------------
-// E24 Phase 4: 2D random control
+// E28 Phase 4: 2D random control
 // ---------------------------------------------------------------------------
 
 /// Compute 2D random control: random integers in the same magnitude range.
@@ -5413,7 +5413,7 @@ fn compute_nfs_2d_random_control(
 }
 
 // ---------------------------------------------------------------------------
-// E24 Phase 5: Joint dual-norm cofactor correlation (novel)
+// E28 Phase 5: Joint dual-norm cofactor correlation (novel)
 // ---------------------------------------------------------------------------
 
 /// Compute cross-correlation between cofactors of algebraic and rational norms.
@@ -5468,7 +5468,7 @@ fn compute_nfs_dual_norm(
 }
 
 // ---------------------------------------------------------------------------
-// E24 block computation + runner
+// E28 block computation + runner
 // ---------------------------------------------------------------------------
 
 /// Compute a single NFS lattice locality block for one (n_bits, smooth_bound) pair.
@@ -5483,7 +5483,7 @@ fn compute_nfs_block(
     seed: u64,
 ) -> NfsBlockResult {
     eprintln!(
-        "  E24 block: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
+        "  E28 block: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
         n_bits, smooth_bound, sieve_area, max_b, seed
     );
 
@@ -5560,13 +5560,13 @@ fn compute_nfs_block(
     }
 }
 
-/// Write E24 checkpoint to JSON file.
+/// Write E28 checkpoint to JSON file.
 fn write_nfs_checkpoint(path: &str, result: &NfsLatticeResult) {
     let json = serde_json::to_string_pretty(result).expect("serialize nfs lattice result");
     std::fs::write(path, json).expect("write nfs checkpoint");
 }
 
-/// Run the full E24 NFS 2D lattice locality experiment.
+/// Run the full E28 NFS 2D lattice locality experiment.
 ///
 /// Iterates over all (bit_size, bound) combinations, computes a block for each,
 /// and writes a checkpoint after every block completes.
@@ -5577,7 +5577,7 @@ pub fn run_nfs_lattice(
     max_b: i64,
     seed: u64,
 ) -> NfsLatticeResult {
-    let checkpoint_path = "data/E24_nfs_lattice.json";
+    let checkpoint_path = "data/E28_nfs_lattice.json";
     let mut blocks = Vec::new();
 
     let total = bit_sizes.len() * bounds.len();
@@ -5587,7 +5587,7 @@ pub fn run_nfs_lattice(
         for &bound in bounds {
             count += 1;
             eprintln!(
-                "\n=== E24 block {}/{}: n_bits={}, B={} ===",
+                "\n=== E28 block {}/{}: n_bits={}, B={} ===",
                 count, total, n_bits, bound
             );
 
@@ -5608,7 +5608,7 @@ pub fn run_nfs_lattice(
 }
 
 // ===========================================================================
-// E24b: Artifact Validation Control Functions
+// E28b: Artifact Validation Control Functions
 // ===========================================================================
 
 /// Simple OLS regression: y = a + b*x, returns (intercept, slope, r_squared).
@@ -5646,7 +5646,7 @@ fn ols_residuals(x: &[f64], y: &[f64], intercept: f64, slope: f64) -> Vec<f64> {
 }
 
 // ===========================================================================
-// E24c: Robustness Check Helper Functions
+// E28c: Robustness Check Helper Functions
 // ===========================================================================
 
 /// Monotone-bin residualization: sort y by x into k equal-frequency bins,
@@ -6238,7 +6238,7 @@ fn compute_conditional_cofactor(
 }
 
 // ===========================================================================
-// E24c: Robustness Check Compute Functions
+// E28c: Robustness Check Compute Functions
 // ===========================================================================
 
 /// Check 1: Nonlinear (monotone-bin) residualization.
@@ -6261,7 +6261,7 @@ fn compute_nonlinear_resid(
         .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
         .collect();
 
-    // OLS residualization (same as E24b Control A)
+    // OLS residualization (same as E28b Control A)
     let (intercept, slope, _) = simple_ols(&log_norms, alg_cofactor_logs);
     let ols_resid = ols_residuals(&log_norms, alg_cofactor_logs, intercept, slope);
 
@@ -6342,7 +6342,7 @@ fn compute_crossval_resid(
     // Fit OLS on right half
     let (ri, rs, _) = simple_ols(&right_x, &right_y);
 
-    // In-sample residuals (full data, same as E24b)
+    // In-sample residuals (full data, same as E28b)
     let (fi, fs, _) = simple_ols(&log_norms, alg_cofactor_logs);
     let full_resid = ols_residuals(&log_norms, alg_cofactor_logs, fi, fs);
 
@@ -6405,7 +6405,7 @@ fn compute_crossval_resid(
 
 /// Check 3: Partial correlation controlling for both endpoint norms.
 ///
-/// E24b Control A only regresses against the base point's log2(norm).
+/// E28b Control A only regresses against the base point's log2(norm).
 /// Here we do 2-predictor OLS: regress each side against both log_norm_i
 /// AND log_norm_j, then correlate the two residual vectors. This is proper
 /// partial correlation controlling for both endpoints' magnitudes.
@@ -6422,7 +6422,7 @@ fn compute_partial_correlation(
         .map(|&(_, _, alg, _)| if alg > 1 { (alg as f64).log2() } else { 0.0 })
         .collect();
 
-    // 1D OLS for reference (same as E24b)
+    // 1D OLS for reference (same as E28b)
     let (fi, fs, _) = simple_ols(&log_norms, alg_cofactor_logs);
     let ols_1d_resid = ols_residuals(&log_norms, alg_cofactor_logs, fi, fs);
 
@@ -6573,7 +6573,7 @@ fn compute_nfs_validation_block(
     seed: u64,
 ) -> NfsValidationBlockResult {
     eprintln!(
-        "  E24b validation: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
+        "  E28b validation: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
         n_bits, smooth_bound, sieve_area, max_b, seed
     );
 
@@ -6630,7 +6630,7 @@ fn compute_nfs_validation_block(
     }
 }
 
-/// Run the full E24b validation experiment.
+/// Run the full E28b validation experiment.
 pub fn run_nfs_validation(
     bit_sizes: &[u32],
     bounds: &[u64],
@@ -6638,7 +6638,7 @@ pub fn run_nfs_validation(
     max_b: i64,
     seed: u64,
 ) -> NfsValidationResult {
-    let checkpoint_path = "data/E24b_nfs_validation.json";
+    let checkpoint_path = "data/E28b_nfs_validation.json";
     let mut blocks = Vec::new();
 
     let total = bit_sizes.len() * bounds.len();
@@ -6648,7 +6648,7 @@ pub fn run_nfs_validation(
         for &bound in bounds {
             count += 1;
             eprintln!(
-                "\n=== E24b validation {}/{}: n_bits={}, B={} ===",
+                "\n=== E28b validation {}/{}: n_bits={}, B={} ===",
                 count, total, n_bits, bound
             );
 
@@ -6669,10 +6669,10 @@ pub fn run_nfs_validation(
 }
 
 // ===========================================================================
-// E24c: Block Computation and Runner
+// E28c: Block Computation and Runner
 // ===========================================================================
 
-/// Compute full E24c robustness block for one (n_bits, smooth_bound) configuration.
+/// Compute full E28c robustness block for one (n_bits, smooth_bound) configuration.
 fn compute_nfs_robustness_block(
     n_bits: u32,
     smooth_bound: u64,
@@ -6681,7 +6681,7 @@ fn compute_nfs_robustness_block(
     seed: u64,
 ) -> NfsRobustnessBlockResult {
     eprintln!(
-        "  E24c robustness: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
+        "  E28c robustness: n_bits={}, B={}, area={}, max_b={}, seed=0x{:X}",
         n_bits, smooth_bound, sieve_area, max_b, seed
     );
 
@@ -6730,7 +6730,7 @@ fn compute_nfs_robustness_block(
     }
 }
 
-/// Run the full E24c robustness experiment.
+/// Run the full E28c robustness experiment.
 pub fn run_nfs_robustness(
     bit_sizes: &[u32],
     bounds: &[u64],
@@ -6738,7 +6738,7 @@ pub fn run_nfs_robustness(
     max_b: i64,
     seed: u64,
 ) -> NfsRobustnessResult {
-    let checkpoint_path = "data/E24c_nfs_robustness.json";
+    let checkpoint_path = "data/E28c_nfs_robustness.json";
     let mut blocks = Vec::new();
 
     let total = bit_sizes.len() * bounds.len();
@@ -6748,7 +6748,7 @@ pub fn run_nfs_robustness(
         for &bound in bounds {
             count += 1;
             eprintln!(
-                "\n=== E24c robustness {}/{}: n_bits={}, B={} ===",
+                "\n=== E28c robustness {}/{}: n_bits={}, B={} ===",
                 count, total, n_bits, bound
             );
 
@@ -7209,7 +7209,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // E21c: OLS solver tests
+    // E25c: OLS solver tests
     // -----------------------------------------------------------------------
 
     #[test]
@@ -7262,7 +7262,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // E21c: Binned MI test
+    // E25c: Binned MI test
     // -----------------------------------------------------------------------
 
     #[test]
@@ -7286,7 +7286,7 @@ mod tests {
     #[test]
     fn test_cross_channel_smoke() {
         // Full pipeline at n=14, B=10, 20 permutations.
-        let result = run_cross_channel_tests(&[14], &[10], 5, 20, 5, 0xE21C);
+        let result = run_cross_channel_tests(&[14], &[10], 5, 20, 5, 0xE25C);
         assert_eq!(result.blocks.len(), 1);
         let b = &result.blocks[0];
         assert_eq!(b.n_bits, 14);
@@ -7325,7 +7325,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // E22: Sieve enrichment tests
+    // E26: Sieve enrichment tests
     // -----------------------------------------------------------------------
 
     #[test]
@@ -7364,7 +7364,7 @@ mod tests {
     #[test]
     fn test_generate_semiprime() {
         for &n_bits in &[20u32, 24, 28, 32] {
-            let n = generate_semiprime(n_bits, 0xE220_7E57 + n_bits as u64);
+            let n = generate_semiprime(n_bits, 0xE260_7E57 + n_bits as u64);
             let actual_bits = 128 - n.leading_zeros();
             assert_eq!(
                 actual_bits, n_bits,
@@ -7407,7 +7407,7 @@ mod tests {
     #[test]
     fn test_qs_block_smoke() {
         // Small: 20-bit N, B=10, 100 QS values.
-        let result = compute_qs_block(20, 10, 100, 0xE220_5000);
+        let result = compute_qs_block(20, 10, 100, 0xE260_5000);
         assert_eq!(result.n_bits, 20);
         assert!(result.n_values > 0);
         assert_eq!(result.channels.len(), 7);
@@ -7429,7 +7429,7 @@ mod tests {
             100,  // n_pool
             5,    // target_smooth
             5,    // n_bins
-            0xE220_F000,
+            0xE260_F000,
             None,
         );
         assert_eq!(result.group_profiles.len(), 7); // 7 channels × 1 bound
@@ -7440,7 +7440,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // E23: Local smoothness helper tests
+    // E27: Local smoothness helper tests
     // -----------------------------------------------------------------------
 
     #[test]
@@ -7524,7 +7524,7 @@ mod tests {
     #[test]
     fn test_autocorrelation_smoke() {
         // Small N (20-bit), B=30, pool=500. Just check it runs and returns sane values.
-        let n = generate_semiprime(20, 0xE230_0001);
+        let n = generate_semiprime(20, 0xE270_0001);
         let qs_pairs = generate_qs_values(n, 500);
         let qs: Vec<u128> = qs_pairs.iter().map(|&(_, v)| v).collect();
         let result = compute_smoothness_autocorrelation(&qs, 30, 10, 20);
@@ -7539,7 +7539,7 @@ mod tests {
 
     #[test]
     fn test_partial_frac_autocorrelation_finite() {
-        let n = generate_semiprime(20, 0xE230_0002);
+        let n = generate_semiprime(20, 0xE270_0002);
         let qs_pairs = generate_qs_values(n, 500);
         let qs: Vec<u128> = qs_pairs.iter().map(|&(_, v)| v).collect();
         let result = compute_partial_frac_autocorrelation(&qs, 30, 10, 20);
@@ -7556,8 +7556,8 @@ mod tests {
     #[test]
     fn test_random_control_near_one() {
         // Use larger B bound so random values have a chance of being smooth.
-        let n = generate_semiprime(20, 0xE230_0004);
-        let result = compute_random_control(n, 500, 500, 10, 0xE230_C000, 20);
+        let n = generate_semiprime(20, 0xE270_0004);
+        let result = compute_random_control(n, 500, 500, 10, 0xE270_C000, 20);
 
         // Verify structure: correct number of lags.
         assert_eq!(result.lags.len(), 10);
@@ -7588,7 +7588,7 @@ mod tests {
     #[test]
     fn test_local_block_smoke() {
         // Quick smoke test: 20-bit, B=30, pool=200, max_lag=5.
-        let block = compute_local_block(20, 30, 200, 5, 0xE230_B000);
+        let block = compute_local_block(20, 30, 200, 5, 0xE270_B000);
 
         assert_eq!(block.n_bits, 20);
         assert_eq!(block.smooth_bound, 30);
@@ -7612,7 +7612,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // E24 tests
+    // E28 tests
     // -----------------------------------------------------------------------
 
     #[test]
@@ -7647,7 +7647,7 @@ mod tests {
     #[test]
     fn test_generate_nfs_grid() {
         // Small grid: 40-bit N, area=10, max_b=3
-        let (poly, grid) = generate_nfs_grid(40, 0xE240_0001, 10, 3);
+        let (poly, grid) = generate_nfs_grid(40, 0xE280_0001, 10, 3);
 
         // Polynomial should be degree 3 for 40-bit N
         assert_eq!(poly.degree, 3);
@@ -7668,7 +7668,7 @@ mod tests {
 
     #[test]
     fn test_grid_index_lookup() {
-        let (_, grid) = generate_nfs_grid(40, 0xE240_0002, 5, 2);
+        let (_, grid) = generate_nfs_grid(40, 0xE280_0002, 5, 2);
         let index = build_grid_index(&grid);
 
         // Every grid entry should be in the index
@@ -7683,7 +7683,7 @@ mod tests {
     #[test]
     fn test_nfs_2d_autocorrelation_smoke() {
         // Small NFS grid, verify Phase 1 produces meaningful output.
-        let (_, grid) = generate_nfs_grid(40, 0xE240_1000, 20, 5);
+        let (_, grid) = generate_nfs_grid(40, 0xE280_1000, 20, 5);
         let index = build_grid_index(&grid);
         let smooth_bound: u64 = 500;
 
@@ -7707,7 +7707,7 @@ mod tests {
 
     #[test]
     fn test_nfs_2d_partial_frac_finite() {
-        let (_, grid) = generate_nfs_grid(40, 0xE240_2000, 15, 3);
+        let (_, grid) = generate_nfs_grid(40, 0xE280_2000, 15, 3);
         let index = build_grid_index(&grid);
         let smooth_bound: u64 = 200;
 
@@ -7731,12 +7731,12 @@ mod tests {
 
     #[test]
     fn test_nfs_2d_random_control() {
-        let (_, grid) = generate_nfs_grid(40, 0xE240_4000, 20, 5);
+        let (_, grid) = generate_nfs_grid(40, 0xE280_4000, 20, 5);
         let index = build_grid_index(&grid);
         let smooth_bound: u64 = 500;
 
         let result = compute_nfs_2d_random_control(
-            &grid, &index, smooth_bound, 40, 0xE240_4001,
+            &grid, &index, smooth_bound, 40, 0xE280_4001,
         );
 
         assert_eq!(result.lags.len(), 8);
@@ -7749,7 +7749,7 @@ mod tests {
     #[test]
     fn test_nfs_block_smoke() {
         // Quick smoke test: 40-bit, B=200, small area, verify all 5 phases run.
-        let block = compute_nfs_block(40, 200, 15, 3, 0xE240_B000);
+        let block = compute_nfs_block(40, 200, 15, 3, 0xE280_B000);
 
         assert_eq!(block.n_bits, 40);
         assert_eq!(block.smooth_bound, 200);
@@ -7795,7 +7795,7 @@ mod tests {
     #[test]
     fn test_nfs_validation_block_smoke() {
         // Quick validation smoke: small grid, verify all 5 controls run.
-        let block = compute_nfs_validation_block(40, 200, 15, 3, 0xE24B_0000);
+        let block = compute_nfs_validation_block(40, 200, 15, 3, 0xE28B_0000);
 
         // Control A: norm-residualized
         assert!(block.control_a.norm_r_squared >= 0.0);
@@ -7823,7 +7823,7 @@ mod tests {
         assert!(block.control_e.conditional_cf_corr.is_finite());
     }
 
-    // ── E24c helper and smoke tests ──
+    // ── E28c helper and smoke tests ──
 
     #[test]
     fn test_binned_residualize_removes_mean() {
@@ -7890,7 +7890,7 @@ mod tests {
     #[test]
     fn test_nfs_robustness_block_smoke() {
         // Quick smoke: small grid (40-bit, area=15, max_b=3), deterministic seed.
-        let block = compute_nfs_robustness_block(40, 200, 15, 3, 0xE24C_0000);
+        let block = compute_nfs_robustness_block(40, 200, 15, 3, 0xE28C_0000);
 
         assert_eq!(block.n_bits, 40);
         assert_eq!(block.smooth_bound, 200);
