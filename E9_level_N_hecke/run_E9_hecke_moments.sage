@@ -218,7 +218,7 @@ def ridge_loocv_r2(X, y, lambdas=None):
 # ============================================================
 def null_distribution(X, y, n_perm=200, seed=42):
     """Permutation null for LOOCV R^2."""
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(int(seed))
     r2_null = []
     for _ in range(n_perm):
         y_perm = rng.permutation(y)
