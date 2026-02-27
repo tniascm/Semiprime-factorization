@@ -9,3 +9,4 @@ num-bigint = { workspace = true }
 num-traits = { workspace = true }
 num-integer = { workspace = true }
 rand = { workspace = true }
+cf-factor = { path = "../cf-factor" }
