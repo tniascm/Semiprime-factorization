@@ -119,6 +119,20 @@ pub fn default_size_specs() -> Vec<SizeSpec> {
             expected_time_description: "~2hr".to_string(),
             timeout: Duration::from_secs(14400),
         },
+        SizeSpec {
+            digits: 120,
+            bits: 399,
+            num_composites: 2,
+            expected_time_description: "~12hr".to_string(),
+            timeout: Duration::from_secs(86400),
+        },
+        SizeSpec {
+            digits: 154,
+            bits: 512,
+            num_composites: 2,
+            expected_time_description: "~days".to_string(),
+            timeout: Duration::from_secs(172800),
+        },
     ]
 }
 
@@ -1381,11 +1395,11 @@ mod tests {
     #[test]
     fn test_default_size_specs() {
         let specs = default_size_specs();
-        assert_eq!(specs.len(), 6);
+        assert_eq!(specs.len(), 8);
 
         // Verify all sizes present in expected order
-        let expected_digits = [30, 40, 50, 60, 80, 100];
-        let expected_bits = [100, 133, 166, 199, 266, 332];
+        let expected_digits = [30, 40, 50, 60, 80, 100, 120, 154];
+        let expected_bits = [100, 133, 166, 199, 266, 332, 399, 512];
         for (i, spec) in specs.iter().enumerate() {
             assert_eq!(spec.digits, expected_digits[i]);
             assert_eq!(spec.bits, expected_bits[i]);
