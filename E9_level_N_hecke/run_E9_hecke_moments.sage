@@ -49,12 +49,12 @@ np.random.seed(42)
 # ============================================================
 # Configuration
 # ============================================================
-MAX_N = 5000
-MIN_N = 200
+MAX_N = 500          # dim S_2(Gamma_0(500)) ~ 40, feasible in minutes
+MIN_N = 50           # lower bound to get more semiprimes in range
 WEIGHT = 2
 GOOD_PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
-MAX_MOMENT = 3   # Tr(T_ell), Tr(T_ell^2), Tr(T_ell^3)
-MIN_BALANCE = 0.15  # p/q >= 0.15
+MAX_MOMENT = 3       # Tr(T_ell), Tr(T_ell^2), Tr(T_ell^3)
+MIN_BALANCE = 0.30   # balanced semiprimes (project convention)
 
 # ============================================================
 # Step 1: Generate semiprimes
@@ -161,6 +161,8 @@ def build_features(results, primes_list, max_mom):
         dims.append(d)
 
     X = np.array(X_rows)
+    # Replace NaN (bad-prime entries) with 0 -- these carry no information
+    X = np.nan_to_num(X, nan=0.0)
     y = np.array(y)
     return Ns, ps, qs, X, y, np.array(dims, dtype=float)
 
@@ -214,7 +216,7 @@ def ridge_loocv_r2(X, y, lambdas=None):
 # ============================================================
 # Step 5: Null distribution
 # ============================================================
-def null_distribution(X, y, n_perm=500, seed=42):
+def null_distribution(X, y, n_perm=200, seed=42):
     """Permutation null for LOOCV R^2."""
     rng = np.random.default_rng(seed)
     r2_null = []
@@ -340,10 +342,10 @@ def main():
     # Test D: Null distribution for residualized test
     # ----------------------------------------------------------
     print("\n" + "=" * 70)
-    print("Test D: Null distribution (500 permutations, residualized)")
+    print("Test D: Null distribution (200 permutations, residualized)")
     print("=" * 70)
     t0 = time.time()
-    null_r2 = null_distribution(X_resid, y_resid, n_perm=500)
+    null_r2 = null_distribution(X_resid, y_resid, n_perm=200)
     print("  Computation time: %.1fs" % (time.time() - t0))
     p50 = float(np.median(null_r2))
     p95 = float(np.percentile(null_r2, 95))
@@ -505,10 +507,76 @@ def main():
         r2_j, _ = ridge_loocv_r2(X_j, y_resid)
         output['r2_by_moment']['m_%d' % j] = float(r2_j)
 
+    # Verdict
+    sig_95 = bool(r2_resid > p95)
+    amp_dir = "INCREASING" if second_half > first_half + 0.01 else (
+        "DECREASING" if second_half < first_half - 0.01 else "FLAT")
+
+    if sig_95 and amp_dir == "INCREASING":
+        verdict = "SIGNAL -- Hecke statistics leak factor info (investigate)"
+    elif sig_95:
+        verdict = "WEAK SIGNAL -- significant but no amplification (likely confound)"
+    else:
+        verdict = "BARRIER CONFIRMED -- no factor leakage from good-prime Hecke statistics"
+
+    output['verdict'] = verdict
+    print("\n  VERDICT: %s" % verdict)
+
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     output_path = os.path.join(data_dir, 'E9_hecke_moments_results.json')
     safe_json_dump(output, output_path)
+
+    # ----------------------------------------------------------
+    # Plots
+    # ----------------------------------------------------------
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        fig.suptitle('E9: Level-N Hecke Moments (N=%d-%d, %d semiprimes)' % (
+            min(Ns), max(Ns), n_samples), fontsize=13)
+
+        # Plot 1: R^2 vs K (amplification test)
+        ax = axes[0]
+        ax.plot(range(1, len(r2_vs_K)+1), r2_vs_K, 'ko-', markersize=5)
+        ax.axhline(0, color='gray', ls='--', alpha=0.5)
+        ax.axhline(p95, color='red', ls='--', alpha=0.5, label='95th null')
+        ax.set_xlabel('Number of good primes K')
+        ax.set_ylabel('R^2_CV (residualized)')
+        ax.set_title('Amplification Test')
+        ax.legend(fontsize=8)
+
+        # Plot 2: Per-prime marginal R^2
+        ax = axes[1]
+        labels_plot = list(per_prime_r2.keys())
+        vals_plot = [per_prime_r2[k] for k in labels_plot]
+        colors = ['red' if v > p95 else 'steelblue' for v in vals_plot]
+        ax.barh(range(len(labels_plot)), vals_plot, color=colors, alpha=0.8)
+        ax.set_yticks(range(len(labels_plot)))
+        ax.set_yticklabels(labels_plot, fontsize=6)
+        ax.set_xlabel('R^2_CV')
+        ax.set_title('Per-Feature Marginal')
+        ax.axvline(0, color='black', lw=0.5)
+
+        # Plot 3: Null distribution histogram
+        ax = axes[2]
+        ax.hist(null_r2, bins=int(30), color='steelblue', alpha=0.7, edgecolor='black')
+        ax.axvline(r2_resid, color='red', lw=2, ls='--', label='Observed (%.4f)' % r2_resid)
+        ax.axvline(p95, color='orange', lw=1, ls='--', label='95th (%.4f)' % p95)
+        ax.set_xlabel('R^2_CV')
+        ax.set_title('Permutation Null (200 shuffles)')
+        ax.legend(fontsize=8)
+
+        plt.tight_layout()
+        plot_path = os.path.join(data_dir, 'E9_hecke_moments.png')
+        plt.savefig(plot_path, dpi=int(150))
+        plt.close()
+        print("Plot saved to %s" % plot_path)
+    except ImportError:
+        print("matplotlib not available, skipping plots")
 
 
 if __name__ == '__main__':
