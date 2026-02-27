@@ -855,42 +855,41 @@ fn save_json<T: Serialize>(path: &str, data: &T) {
 
 fn run_batch_benchmark_mode() {
     println!();
-    println!("--- Batch Smoothness Benchmark Mode ---");
+    println!("--- Batch Smoothness Scaling Experiment ---");
     println!();
 
     use cado_evolve::batch;
 
-    println!("╔══════════════════════════════════════════════════╗");
-    println!("║    Batch Smoothness: Product Tree vs Trial Div   ║");
-    println!("╚══════════════════════════════════════════════════╝");
-    println!();
+    let output_dir = std::path::Path::new("results/scaling");
+    std::fs::create_dir_all(output_dir).expect("Failed to create output dir");
+    let output_path = output_dir.join("batch_smoothness_scaling.json");
 
-    let results = batch::run_scaling_benchmarks();
-
-    // Summary table
-    println!();
-    println!("┌──────────┬───────┬─────────┬──────────────┬──────────────┬─────────┐");
-    println!("│   B      │ bits  │  batch  │  product/s   │   trial/s    │ speedup │");
-    println!("├──────────┼───────┼─────────┼──────────────┼──────────────┼─────────┤");
-    for r in &results {
-        println!(
-            "│ {:>8} │ {:>5} │ {:>7} │ {:>12.0} │ {:>12.0} │ {:>6.2}× │",
-            r.config.smoothness_bound,
-            r.candidate_bits,
-            r.config.batch_size,
-            r.product_tree.throughput,
-            r.trial_division.throughput,
-            r.speedup,
-        );
+    match batch::run_batch_scaling_experiment(&output_path) {
+        Ok(result) => {
+            // Print summary table
+            println!();
+            println!("┌──────────┬───────┬─────────┬──────────────┬──────────────┬─────────┐");
+            println!("│   B      │ bits  │  batch  │  product/s   │   trial/s    │ speedup │");
+            println!("├──────────┼───────┼─────────┼──────────────┼──────────────┼─────────┤");
+            for e in &result.entries {
+                println!(
+                    "│ {:>8} │ {:>5} │ {:>7} │ {:>12.0} │ {:>12.0} │ {:>6.2}× │",
+                    e.smoothness_bound,
+                    e.candidate_bits,
+                    e.batch_size,
+                    e.product_tree_throughput,
+                    e.trial_div_throughput,
+                    e.speedup,
+                );
+            }
+            println!("└──────────┴───────┴─────────┴──────────────┴──────────────┴─────────┘");
+            println!();
+            println!("Slope difference: {:.4}", result.slope_analysis.slope_difference);
+            println!("  (near 0 = intercept-only, positive = product tree scales better)");
+        }
+        Err(e) => {
+            eprintln!("Batch scaling experiment failed: {e}");
+            std::process::exit(1);
+        }
     }
-    println!("└──────────┴───────┴─────────┴──────────────┴──────────────┴─────────┘");
-
-    // Compare against CADO-NFS sieve throughput
-    println!();
-    println!("CADO-NFS classical sieve throughput (from scaling protocol):");
-    println!("  c60 (199-bit): ~5,663 relations/sec");
-    println!("  c80 (266-bit): ~5,663 relations/sec (estimated from aggregate CPU)");
-    println!();
-    println!("Note: Batch smoothness tests raw candidates, not NFS lattice candidates.");
-    println!("The throughput comparison is indicative but not directly substitutable.");
 }

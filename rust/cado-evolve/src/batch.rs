@@ -14,6 +14,7 @@
 use num_bigint::BigUint;
 use num_integer::Integer;
 use num_traits::{One, Zero};
+use serde::Serialize;
 use std::time::{Duration, Instant};
 
 /// Result of a batch smoothness test.
@@ -402,6 +403,59 @@ pub struct BatchBenchmark {
     pub speedup: f64,
 }
 
+/// JSON-serializable version of a scaling benchmark entry.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScalingEntry {
+    pub smoothness_bound: u64,
+    pub candidate_bits: u32,
+    pub batch_size: usize,
+    pub factor_base_size: usize,
+    pub factor_base_product_bits: u64,
+    pub fb_build_secs: f64,
+    pub product_tree_throughput: f64,
+    pub product_tree_smooth_count: usize,
+    pub product_tree_secs: f64,
+    pub trial_div_throughput: f64,
+    pub trial_div_smooth_count: usize,
+    pub trial_div_secs: f64,
+    pub methods_agree: bool,
+    pub speedup: f64,
+}
+
+/// JSON-serializable scaling protocol result for batch smoothness.
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchScalingResult {
+    pub schema_version: String,
+    pub git_commit: String,
+    pub entries: Vec<ScalingEntry>,
+    pub slope_analysis: SlopeAnalysis,
+    pub started_at: String,
+    pub finished_at: String,
+}
+
+/// Linear regression of log(throughput) vs log(candidate_bits).
+///
+/// If product-tree changes the L[1/3] constant, its slope should differ
+/// from trial division's slope. If it's just an intercept shift, slopes
+/// should be parallel.
+#[derive(Debug, Clone, Serialize)]
+pub struct SlopeAnalysis {
+    /// Slope of log(product_tree_throughput) vs log(candidate_bits)
+    pub product_tree_slope: f64,
+    /// Intercept of log(product_tree_throughput) vs log(candidate_bits)
+    pub product_tree_intercept: f64,
+    /// Slope of log(trial_div_throughput) vs log(candidate_bits)
+    pub trial_div_slope: f64,
+    /// Intercept of log(trial_div_throughput) vs log(candidate_bits)
+    pub trial_div_intercept: f64,
+    /// Difference in slopes (product - trial). Near 0 = intercept-only.
+    pub slope_difference: f64,
+    /// R² of the product-tree fit
+    pub product_tree_r_squared: f64,
+    /// R² of the trial-division fit
+    pub trial_div_r_squared: f64,
+}
+
 impl std::fmt::Display for BatchBenchmark {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Batch Smoothness Benchmark")?;
@@ -546,6 +600,153 @@ pub fn run_scaling_benchmarks() -> Vec<BatchBenchmark> {
             result
         })
         .collect()
+}
+
+/// Convert a BatchBenchmark to a JSON-serializable ScalingEntry.
+impl From<&BatchBenchmark> for ScalingEntry {
+    fn from(b: &BatchBenchmark) -> Self {
+        ScalingEntry {
+            smoothness_bound: b.config.smoothness_bound,
+            candidate_bits: b.candidate_bits,
+            batch_size: b.config.batch_size,
+            factor_base_size: b.factor_base_size,
+            factor_base_product_bits: b.factor_base_product_bits,
+            fb_build_secs: b.fb_build_time.as_secs_f64(),
+            product_tree_throughput: b.product_tree.throughput,
+            product_tree_smooth_count: b.product_tree.smooth_count,
+            product_tree_secs: b.product_tree.wall_time.as_secs_f64(),
+            trial_div_throughput: b.trial_division.throughput,
+            trial_div_smooth_count: b.trial_division.smooth_count,
+            trial_div_secs: b.trial_division.wall_time.as_secs_f64(),
+            methods_agree: b.methods_agree,
+            speedup: b.speedup,
+        }
+    }
+}
+
+/// Simple linear regression: y = slope * x + intercept.
+/// Returns (slope, intercept, r_squared).
+fn linear_regression(x: &[f64], y: &[f64]) -> (f64, f64, f64) {
+    let n = x.len() as f64;
+    if x.len() < 2 {
+        return (0.0, 0.0, 0.0);
+    }
+    let sum_x: f64 = x.iter().sum();
+    let sum_y: f64 = y.iter().sum();
+    let sum_xy: f64 = x.iter().zip(y.iter()).map(|(a, b)| a * b).sum();
+    let sum_x2: f64 = x.iter().map(|a| a * a).sum();
+    let _sum_y2: f64 = y.iter().map(|a| a * a).sum();
+
+    let denom = n * sum_x2 - sum_x * sum_x;
+    if denom.abs() < 1e-15 {
+        return (0.0, sum_y / n, 0.0);
+    }
+
+    let slope = (n * sum_xy - sum_x * sum_y) / denom;
+    let intercept = (sum_y - slope * sum_x) / n;
+
+    let ss_res: f64 = x
+        .iter()
+        .zip(y.iter())
+        .map(|(xi, yi)| {
+            let pred = slope * xi + intercept;
+            (yi - pred).powi(2)
+        })
+        .sum();
+    let y_mean = sum_y / n;
+    let ss_tot: f64 = y.iter().map(|yi| (yi - y_mean).powi(2)).sum();
+    let r_squared = if ss_tot.abs() < 1e-15 {
+        1.0
+    } else {
+        1.0 - ss_res / ss_tot
+    };
+
+    (slope, intercept, r_squared)
+}
+
+/// Compute slope analysis from benchmark entries.
+fn compute_slope_analysis(entries: &[ScalingEntry]) -> SlopeAnalysis {
+    let log_bits: Vec<f64> = entries.iter().map(|e| (e.candidate_bits as f64).ln()).collect();
+    let log_pt: Vec<f64> = entries
+        .iter()
+        .map(|e| e.product_tree_throughput.max(1.0).ln())
+        .collect();
+    let log_td: Vec<f64> = entries
+        .iter()
+        .map(|e| e.trial_div_throughput.max(1.0).ln())
+        .collect();
+
+    let (pt_slope, pt_intercept, pt_r2) = linear_regression(&log_bits, &log_pt);
+    let (td_slope, td_intercept, td_r2) = linear_regression(&log_bits, &log_td);
+
+    SlopeAnalysis {
+        product_tree_slope: pt_slope,
+        product_tree_intercept: pt_intercept,
+        trial_div_slope: td_slope,
+        trial_div_intercept: td_intercept,
+        slope_difference: pt_slope - td_slope,
+        product_tree_r_squared: pt_r2,
+        trial_div_r_squared: td_r2,
+    }
+}
+
+/// Run the full batch smoothness scaling experiment with JSON output.
+///
+/// Tests product-tree vs trial-division at progressively larger sizes,
+/// fits log-log regression to detect whether the speedup is a slope
+/// change (L[1/3] constant improvement) or an intercept shift only.
+pub fn run_batch_scaling_experiment(
+    output_path: &std::path::Path,
+) -> Result<BatchScalingResult, String> {
+    let started_at = crate::scaling::iso_now();
+
+    eprintln!("╔══════════════════════════════════════════════════╗");
+    eprintln!("║   Batch Smoothness Scaling — Slope vs Intercept  ║");
+    eprintln!("╚══════════════════════════════════════════════════╝");
+    eprintln!();
+
+    let benchmarks = run_scaling_benchmarks();
+    let entries: Vec<ScalingEntry> = benchmarks.iter().map(ScalingEntry::from).collect();
+    let slope_analysis = compute_slope_analysis(&entries);
+
+    let finished_at = crate::scaling::iso_now();
+
+    let result = BatchScalingResult {
+        schema_version: "batch-scaling-v1".to_string(),
+        git_commit: crate::scaling::git_commit_hash(),
+        entries,
+        slope_analysis,
+        started_at,
+        finished_at,
+    };
+
+    // Save JSON
+    let json = serde_json::to_string_pretty(&result)
+        .map_err(|e| format!("Failed to serialize: {e}"))?;
+    std::fs::write(output_path, &json)
+        .map_err(|e| format!("Failed to write {}: {e}", output_path.display()))?;
+
+    // Print slope analysis
+    eprintln!();
+    eprintln!("═══ Slope Analysis (log-log regression) ═══");
+    eprintln!(
+        "  Product tree: slope={:.3}, R²={:.3}",
+        result.slope_analysis.product_tree_slope,
+        result.slope_analysis.product_tree_r_squared,
+    );
+    eprintln!(
+        "  Trial div:    slope={:.3}, R²={:.3}",
+        result.slope_analysis.trial_div_slope,
+        result.slope_analysis.trial_div_r_squared,
+    );
+    eprintln!(
+        "  Slope difference: {:.4} (near 0 = intercept-only improvement)",
+        result.slope_analysis.slope_difference,
+    );
+    eprintln!();
+    eprintln!("Saved to: {}", output_path.display());
+
+    Ok(result)
 }
 
 #[cfg(test)]
