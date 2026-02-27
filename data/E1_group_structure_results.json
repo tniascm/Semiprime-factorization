@@ -1,0 +1,288 @@
+{
+  "experiment": "E1: Group Structure Scaling Analysis",
+  "config": {
+    "bit_sizes": [
+      16,
+      20,
+      24,
+      28,
+      32,
+      40,
+      48,
+      56,
+      64
+    ],
+    "semiprimes_per_size": 20,
+    "seed": 42,
+    "smooth_bound": 100,
+    "smooth_trials": 500,
+    "carmichael_samples": 200,
+    "max_order": 100000,
+    "chebotarev_max_prime": 20,
+    "chebotarev_samples": 200,
+    "timeout_secs": 5.0
+  },
+  "per_bit_size": [
+    {
+      "bit_size": 16,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 17,
+        "total_count": 20,
+        "success_rate": 0.85,
+        "mean_time_ms": 110.46471465000002,
+        "median_time_ms": 131.85108400000001,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 20,
+        "total_count": 20,
+        "success_rate": 1.0,
+        "mean_time_ms": 44.625504199999995,
+        "median_time_ms": 51.612708,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 1,
+        "total_count": 20,
+        "success_rate": 0.05,
+        "mean_time_ms": 350.17627695000004,
+        "median_time_ms": 436.710958,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 20,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 11,
+        "total_count": 20,
+        "success_rate": 0.55,
+        "mean_time_ms": 664.95983125,
+        "median_time_ms": 680.2732500000001,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 18,
+        "total_count": 20,
+        "success_rate": 0.9,
+        "mean_time_ms": 258.15348344999995,
+        "median_time_ms": 231.725792,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 1,
+        "total_count": 20,
+        "success_rate": 0.05,
+        "mean_time_ms": 2087.6203853499997,
+        "median_time_ms": 2083.773209,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 24,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 4,
+        "total_count": 20,
+        "success_rate": 0.2,
+        "mean_time_ms": 1401.88159385,
+        "median_time_ms": 1491.0241250000001,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 17,
+        "total_count": 20,
+        "success_rate": 0.85,
+        "mean_time_ms": 563.5160417,
+        "median_time_ms": 592.197125,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 2,
+        "total_count": 20,
+        "success_rate": 0.1,
+        "mean_time_ms": 4479.035547949999,
+        "median_time_ms": 4737.467625,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 28,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 1,
+        "total_count": 20,
+        "success_rate": 0.05,
+        "mean_time_ms": 1517.53897295,
+        "median_time_ms": 1520.894625,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 2,
+        "total_count": 20,
+        "success_rate": 0.1,
+        "mean_time_ms": 606.89472305,
+        "median_time_ms": 607.346541,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 4853.935487650001,
+        "median_time_ms": 4851.141833,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 32,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 1,
+        "total_count": 20,
+        "success_rate": 0.05,
+        "mean_time_ms": 1527.8582146499998,
+        "median_time_ms": 1525.246875,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 611.5890521,
+        "median_time_ms": 607.8567919999999,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 4863.553920800001,
+        "median_time_ms": 4869.397459,
+        "timeout_count": 1
+      }
+    },
+    {
+      "bit_size": 40,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 3629.8802792999995,
+        "median_time_ms": 3622.7990839999998,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1453.63845625,
+        "median_time_ms": 1451.9672500000001,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1164.09781035,
+        "median_time_ms": 1161.276958,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 48,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 3607.9648624999995,
+        "median_time_ms": 3612.437,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1453.9187041,
+        "median_time_ms": 1447.7765840000002,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1163.3812167500002,
+        "median_time_ms": 1159.4446249999999,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 56,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 3649.0075292999986,
+        "median_time_ms": 3644.501542,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1460.5637792000002,
+        "median_time_ms": 1456.7731669999998,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1167.4306749,
+        "median_time_ms": 1168.1090000000002,
+        "timeout_count": 0
+      }
+    },
+    {
+      "bit_size": 64,
+      "n_semiprimes": 20,
+      "smooth_factor": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 3663.2382809999995,
+        "median_time_ms": 3663.386708,
+        "timeout_count": 0
+      },
+      "phi_recovery": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1468.7411938,
+        "median_time_ms": 1469.30825,
+        "timeout_count": 0
+      },
+      "chebotarev": {
+        "success_count": 0,
+        "total_count": 20,
+        "success_rate": 0.0,
+        "mean_time_ms": 1173.96600215,
+        "median_time_ms": 1172.555625,
+        "timeout_count": 0
+      }
+    }
+  ],
+  "scaling": {
+    "smooth_factor_exponent": 2.152845292215766,
+    "phi_recovery_exponent": 2.159040878382541,
+    "chebotarev_exponent": -0.07318155842801688,
+    "smooth_factor_success_trend": "EXPONENTIAL DECAY -- success drops to near-zero",
+    "phi_recovery_success_trend": "EXPONENTIAL DECAY -- success drops to near-zero",
+    "chebotarev_success_trend": "SIGNIFICANT DECAY -- success rate halves or worse"
+  },
+  "verdict": "EXPONENTIAL BARRIER -- all methods fail at 64-bit, success decays with N"
+}
