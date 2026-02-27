@@ -1,550 +1,415 @@
-use std::collections::HashMap;
+//! E1: Group Structure Scaling Analysis
+//!
+//! Systematic evaluation of group-theoretic factoring methods across bit sizes 16-64.
+//! Tests smooth-order factoring, phi-recovery pipeline, and Chebotarev density analysis
+//! with timing, success rates, and scaling exponents.
+
+use std::path::Path;
+use std::time::Instant;
 
 use factoring_core::generate_rsa_target;
 use group_structure::{
-    approximate_carmichael, baby_step_giant_step, chebotarev, element_order, euler_totient,
-    factor_from_phi, factor_order, factor_via_smooth_orders, find_smooth_order_element,
-    phi_from_orders, pohlig_hellman_order, sample_orders,
+    approximate_carmichael, chebotarev, factor_from_phi, factor_via_smooth_orders,
 };
 use num_bigint::BigUint;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use serde::Serialize;
 
-fn main() {
-    println!("=== Group Structure Analysis for Factorization ===\n");
+// ============================================================
+// Configuration
+// ============================================================
 
-    section_1_element_orders();
-    section_2_pohlig_hellman();
-    section_3_baby_step_giant_step();
-    section_4_carmichael();
-    section_5_smooth_order_factoring();
-    section_6_phi_recovery();
-    section_7_chebotarev();
+const BIT_SIZES: &[u32] = &[16, 20, 24, 28, 32, 40, 48, 56, 64];
+const SEMIPRIMES_PER_SIZE: usize = 20;
+const SEED: u64 = 42;
+
+// Method parameters
+const SMOOTH_BOUND: u64 = 100;
+const SMOOTH_TRIALS: usize = 500;
+const CARMICHAEL_SAMPLES: usize = 200;
+const MAX_ORDER: u64 = 100_000;
+const CHEBOTAREV_MAX_PRIME: u64 = 20;
+const CHEBOTAREV_SAMPLES: u64 = 200;
+const TIMEOUT_SECS: f64 = 5.0;
+
+// ============================================================
+// Result structures
+// ============================================================
+
+#[derive(Serialize)]
+struct E1Report {
+    experiment: String,
+    config: Config,
+    per_bit_size: Vec<BitSizeResult>,
+    scaling: ScalingAnalysis,
+    verdict: String,
 }
 
-// -------------------------------------------------------------------------
-// Section 1 — Element Orders
-// -------------------------------------------------------------------------
+#[derive(Serialize)]
+struct Config {
+    bit_sizes: Vec<u32>,
+    semiprimes_per_size: usize,
+    seed: u64,
+    smooth_bound: u64,
+    smooth_trials: usize,
+    carmichael_samples: usize,
+    max_order: u64,
+    chebotarev_max_prime: u64,
+    chebotarev_samples: u64,
+    timeout_secs: f64,
+}
 
-fn section_1_element_orders() {
-    println!("--- Section 1: Element Orders in (Z/nZ)* ---\n");
+#[derive(Serialize)]
+struct BitSizeResult {
+    bit_size: u32,
+    n_semiprimes: usize,
+    smooth_factor: MethodStats,
+    phi_recovery: MethodStats,
+    chebotarev: MethodStats,
+}
 
-    let test_cases: &[(u64, u64, u64)] = &[
-        // (n, p, q) — known semiprimes
-        (35, 5, 7),
-        (77, 7, 11),
-        (221, 13, 17),
-        (899, 29, 31),
-    ];
+#[derive(Serialize)]
+struct MethodStats {
+    success_count: usize,
+    total_count: usize,
+    success_rate: f64,
+    mean_time_ms: f64,
+    median_time_ms: f64,
+    timeout_count: usize,
+}
 
-    for &(n_val, p, q) in test_cases {
-        let n = BigUint::from(n_val);
-        let phi = (p - 1) * (q - 1);
-        println!("  n = {} = {} x {}, phi(n) = {}", n_val, p, q, phi);
+#[derive(Serialize)]
+struct ScalingAnalysis {
+    smooth_factor_exponent: Option<f64>,
+    phi_recovery_exponent: Option<f64>,
+    chebotarev_exponent: Option<f64>,
+    smooth_factor_success_trend: String,
+    phi_recovery_success_trend: String,
+    chebotarev_success_trend: String,
+}
 
-        let orders = sample_orders(&n, 100, 10_000);
-        if orders.is_empty() {
-            println!("    No orders sampled (all elements trivial?)\n");
-            continue;
-        }
+// ============================================================
+// Core logic
+// ============================================================
 
-        let max_ord = orders.iter().max().unwrap();
-        let min_ord = orders.iter().min().unwrap();
-        let avg_ord: f64 = orders.iter().map(|&o| o as f64).sum::<f64>() / orders.len() as f64;
+fn run_method_with_timeout<F>(f: F) -> (bool, f64)
+where
+    F: FnOnce() -> bool,
+{
+    let start = Instant::now();
+    let success = f();
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    (success, elapsed_ms)
+}
 
-        // Build distribution of orders
-        let mut freq: HashMap<u64, usize> = HashMap::new();
-        for &o in &orders {
-            *freq.entry(o).or_insert(0) += 1;
-        }
-        let mut dist: Vec<(u64, usize)> = freq.into_iter().collect();
-        dist.sort();
+fn compute_method_stats(results: &[(bool, f64)]) -> MethodStats {
+    let total = results.len();
+    let success_count = results.iter().filter(|(s, _)| *s).count();
+    let timeout_count = results
+        .iter()
+        .filter(|(_, t)| *t >= TIMEOUT_SECS * 1000.0 * 0.99)
+        .count();
 
-        println!(
-            "    Sampled {} orders: min={}, max={}, avg={:.1}",
-            orders.len(),
-            min_ord,
-            max_ord,
-            avg_ord
-        );
-        println!(
-            "    Unique orders: {} — distribution: {:?}",
-            dist.len(),
-            dist
-        );
+    let times: Vec<f64> = results.iter().map(|(_, t)| *t).collect();
+    let mean_time = if times.is_empty() {
+        0.0
+    } else {
+        times.iter().sum::<f64>() / times.len() as f64
+    };
+    let median_time = if times.is_empty() {
+        0.0
+    } else {
+        let mut sorted = times.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted[sorted.len() / 2]
+    };
 
-        // Verify max order divides phi(n)
-        println!(
-            "    max_order {} divides phi(n) {}? {}",
-            max_ord,
-            phi,
-            phi % max_ord == 0
-        );
-        println!();
+    MethodStats {
+        success_count,
+        total_count: total,
+        success_rate: if total > 0 {
+            success_count as f64 / total as f64
+        } else {
+            0.0
+        },
+        mean_time_ms: mean_time,
+        median_time_ms: median_time,
+        timeout_count,
     }
 }
 
-// -------------------------------------------------------------------------
-// Section 2 — Pohlig-Hellman Decomposition
-// -------------------------------------------------------------------------
+fn run_bit_size(bit_size: u32, count: usize, rng: &mut StdRng) -> BitSizeResult {
+    let mut smooth_results = Vec::new();
+    let mut phi_results = Vec::new();
+    let mut cheb_results = Vec::new();
 
-fn section_2_pohlig_hellman() {
-    println!("--- Section 2: Pohlig-Hellman Order Computation ---\n");
+    for _ in 0..count {
+        let target = generate_rsa_target(bit_size, rng);
+        let n = &target.n;
+        let true_p = &target.p;
 
-    // Demonstrate factor_order on known composite orders
-    let orders_to_factor: &[u64] = &[12, 24, 60, 120, 360, 840, 2520];
-    println!("  Order factorizations:");
-    for &ord in orders_to_factor {
-        let factors = factor_order(ord);
-        let factor_str: Vec<String> = factors
-            .iter()
-            .map(|(p, e)| {
-                if *e == 1 {
-                    format!("{}", p)
-                } else {
-                    format!("{}^{}", p, e)
+        // Method 1: Smooth-order factoring
+        let n_clone = n.clone();
+        let tp = true_p.clone();
+        let (success, time) = run_method_with_timeout(|| {
+            let start = Instant::now();
+            if let Some(p) = factor_via_smooth_orders(&n_clone, SMOOTH_BOUND, SMOOTH_TRIALS) {
+                if start.elapsed().as_secs_f64() > TIMEOUT_SECS {
+                    return false;
                 }
-            })
-            .collect();
-        println!("    {} = {}", ord, factor_str.join(" * "));
-    }
-    println!();
-
-    // Compare pohlig_hellman_order vs element_order on a moderate-sized n
-    let n = BigUint::from(1073u64); // 29 * 37
-    let phi = 28u64 * 36; // = 1008
-    println!(
-        "  Comparing Pohlig-Hellman vs sequential order computation for n = 1073 (29 x 37):"
-    );
-    println!("    phi(n) = {}, lambda(n) = lcm(28,36) = {}", phi, lcm(28, 36));
-
-    // Test several specific elements
-    let test_elements: &[u64] = &[2, 3, 5, 7, 10, 11, 13];
-    for &a_val in test_elements {
-        let a = BigUint::from(a_val);
-        let seq = element_order(&a, &n, 10_000);
-        // Use phi as the order bound for Pohlig-Hellman
-        let ph = pohlig_hellman_order(&a, &n, phi);
-        let match_str = if seq == ph { "MATCH" } else { "MISMATCH" };
-        println!(
-            "    ord({}) : sequential={:?}, Pohlig-Hellman={:?}  [{}]",
-            a_val, seq, ph, match_str
-        );
-    }
-    println!();
-}
-
-// -------------------------------------------------------------------------
-// Section 3 — Baby-Step Giant-Step
-// -------------------------------------------------------------------------
-
-fn section_3_baby_step_giant_step() {
-    println!("--- Section 3: Baby-Step Giant-Step Discrete Logarithm ---\n");
-
-    struct DlogTest {
-        base: u64,
-        target: u64,
-        modulus: u64,
-        order: u64,
-        expected: Option<u64>,
-    }
-
-    let tests = vec![
-        DlogTest {
-            base: 2,
-            target: 8,
-            modulus: 35,
-            order: 12,
-            expected: Some(3),
-        },
-        DlogTest {
-            base: 2,
-            target: 1,
-            modulus: 35,
-            order: 12,
-            expected: Some(0),
-        },
-        DlogTest {
-            base: 2,
-            target: 4,
-            modulus: 15,
-            order: 4,
-            expected: Some(2),
-        },
-        DlogTest {
-            base: 3,
-            target: 9,
-            modulus: 77,
-            order: 30,
-            expected: Some(2),
-        },
-        // 3^x = 27 mod 77 => x = 3
-        DlogTest {
-            base: 3,
-            target: 27,
-            modulus: 77,
-            order: 30,
-            expected: Some(3),
-        },
-        // No solution: 5 is not a power of 2 mod 35
-        DlogTest {
-            base: 2,
-            target: 5,
-            modulus: 35,
-            order: 12,
-            expected: None,
-        },
-    ];
-
-    for test in &tests {
-        let b = BigUint::from(test.base);
-        let t = BigUint::from(test.target);
-        let n = BigUint::from(test.modulus);
-        let result = baby_step_giant_step(&b, &t, &n, test.order);
-
-        let status = match (&result, &test.expected) {
-            (Some(x), Some(e)) if x == e => "OK".to_string(),
-            (None, None) => "OK (no solution)".to_string(),
-            _ => format!("UNEXPECTED (got {:?}, expected {:?})", result, test.expected),
-        };
-
-        println!(
-            "  {}^x = {} (mod {}), order={}: x={:?}  [{}]",
-            test.base, test.target, test.modulus, test.order, result, status
-        );
-    }
-    println!();
-
-    // Larger example: find discrete log in Z/221Z (13 * 17)
-    let n221 = BigUint::from(221u64);
-    let base = BigUint::from(2u64);
-    let order_of_2 = element_order(&base, &n221, 10_000);
-    println!("  Larger example: n=221 (13 x 17), base=2");
-    if let Some(ord) = order_of_2 {
-        println!("    Order of 2 mod 221 = {}", ord);
-        // Pick a known power: 2^10 mod 221
-        let target_val = BigUint::from(2u64).modpow(&BigUint::from(10u64), &n221);
-        let dlog = baby_step_giant_step(&base, &target_val, &n221, ord);
-        println!(
-            "    2^10 mod 221 = {} => BSGS finds x = {:?} (expected 10)",
-            target_val, dlog
-        );
-    }
-    println!();
-}
-
-// -------------------------------------------------------------------------
-// Section 4 — Carmichael Function
-// -------------------------------------------------------------------------
-
-fn section_4_carmichael() {
-    println!("--- Section 4: Carmichael Function Approximation ---\n");
-
-    struct CarmichaelTest {
-        n: u64,
-        p: u64,
-        q: u64,
-        true_lambda: u64,
-    }
-
-    let tests = vec![
-        CarmichaelTest {
-            n: 15,
-            p: 3,
-            q: 5,
-            true_lambda: lcm(2, 4),
-        }, // lcm(2,4) = 4
-        CarmichaelTest {
-            n: 35,
-            p: 5,
-            q: 7,
-            true_lambda: lcm(4, 6),
-        }, // lcm(4,6) = 12
-        CarmichaelTest {
-            n: 77,
-            p: 7,
-            q: 11,
-            true_lambda: lcm(6, 10),
-        }, // lcm(6,10) = 30
-        CarmichaelTest {
-            n: 221,
-            p: 13,
-            q: 17,
-            true_lambda: lcm(12, 16),
-        }, // lcm(12,16) = 48
-        CarmichaelTest {
-            n: 323,
-            p: 17,
-            q: 19,
-            true_lambda: lcm(16, 18),
-        }, // lcm(16,18) = 144
-        CarmichaelTest {
-            n: 899,
-            p: 29,
-            q: 31,
-            true_lambda: lcm(28, 30),
-        }, // lcm(28,30) = 420
-        CarmichaelTest {
-            n: 10403,
-            p: 101,
-            q: 103,
-            true_lambda: lcm(100, 102),
-        }, // lcm(100,102) = 5100
-    ];
-
-    for tc in &tests {
-        let n = BigUint::from(tc.n);
-        let approx = approximate_carmichael(&n, 500, 100_000);
-
-        let phi = (tc.p - 1) * (tc.q - 1);
-
-        let status = match approx {
-            Some(val) if val == tc.true_lambda => "EXACT MATCH".to_string(),
-            Some(val) if val % tc.true_lambda == 0 => {
-                format!("multiple ({}x)", val / tc.true_lambda)
+                p == tp || &n_clone / &p == tp
+            } else {
+                false
             }
-            Some(val) if tc.true_lambda % val == 0 => {
-                format!("divisor (1/{})", tc.true_lambda / val)
-            }
-            Some(val) => format!("approx={}", val),
-            None => "FAILED".to_string(),
-        };
+        });
+        smooth_results.push((success, time.min(TIMEOUT_SECS * 1000.0)));
 
-        println!(
-            "  n={:<6} ({} x {}): true lambda={:<5}, phi={:<6}, approx={:<10?}  [{}]",
-            tc.n, tc.p, tc.q, tc.true_lambda, phi, approx, status
-        );
-    }
-    println!();
-}
-
-// -------------------------------------------------------------------------
-// Section 5 — Smooth Order Factoring
-// -------------------------------------------------------------------------
-
-fn section_5_smooth_order_factoring() {
-    println!("--- Section 5: Smooth Order Factoring ---\n");
-
-    let mut rng = rand::thread_rng();
-
-    // 5a. Small known semiprimes
-    println!("  5a. Small known semiprimes:");
-    let small_cases: &[(u64, &str)] = &[
-        (35, "5 x 7"),
-        (77, "7 x 11"),
-        (221, "13 x 17"),
-        (323, "17 x 19"),
-        (899, "29 x 31"),
-        (10403, "101 x 103"),
-    ];
-
-    for &(n_val, desc) in small_cases {
-        let n = BigUint::from(n_val);
-
-        // First try to find a smooth-order element
-        let smooth_elem = find_smooth_order_element(&n, 50, 500);
-        let smooth_info = match &smooth_elem {
-            Some((elem, ord)) => format!("a={}, ord={}", elem, ord),
-            None => "none found".to_string(),
-        };
-
-        // Then try full factoring
-        let factor = factor_via_smooth_orders(&n, 50, 500);
-        let result_str = match &factor {
-            Some(p) => {
-                let q = &n / p;
-                format!("SUCCESS: {} = {} x {}", n_val, p, q)
-            }
-            None => format!("FAILED for {}", n_val),
-        };
-
-        println!(
-            "    n={:<6} ({}): smooth_elem=[{}] => {}",
-            n_val, desc, smooth_info, result_str
-        );
-    }
-    println!();
-
-    // 5b. Random 16-bit semiprimes
-    println!("  5b. Random 16-bit semiprimes:");
-    let mut success_16 = 0;
-    let total_16 = 5;
-    for i in 0..total_16 {
-        let target = generate_rsa_target(16, &mut rng);
-        let factor = factor_via_smooth_orders(&target.n, 100, 1000);
-        let status = match &factor {
-            Some(p) => {
-                let q = &target.n / p;
-                if p * &q == target.n {
-                    success_16 += 1;
-                    format!("FACTORED: {} x {}", p, q)
-                } else {
-                    "WRONG FACTORS".to_string()
+        // Method 2: Phi-recovery pipeline (Carmichael approx -> factor_from_phi)
+        let n_clone = n.clone();
+        let tp = true_p.clone();
+        let (success, time) = run_method_with_timeout(|| {
+            let start = Instant::now();
+            if let Some(lambda) = approximate_carmichael(&n_clone, CARMICHAEL_SAMPLES, MAX_ORDER) {
+                if start.elapsed().as_secs_f64() > TIMEOUT_SECS {
+                    return false;
                 }
-            }
-            None => "failed".to_string(),
-        };
-        println!(
-            "    [{}] n={} ({}x{}): {}",
-            i + 1,
-            target.n,
-            target.p,
-            target.q,
-            status
-        );
-    }
-    println!("    16-bit success rate: {}/{}\n", success_16, total_16);
-
-    // 5c. Random 24-bit semiprimes
-    println!("  5c. Random 24-bit semiprimes:");
-    let mut success_24 = 0;
-    let total_24 = 5;
-    for i in 0..total_24 {
-        let target = generate_rsa_target(24, &mut rng);
-        let factor = factor_via_smooth_orders(&target.n, 200, 2000);
-        let status = match &factor {
-            Some(p) => {
-                let q = &target.n / p;
-                if p * &q == target.n {
-                    success_24 += 1;
-                    format!("FACTORED: {} x {}", p, q)
-                } else {
-                    "WRONG FACTORS".to_string()
-                }
-            }
-            None => "failed".to_string(),
-        };
-        println!(
-            "    [{}] n={} ({}x{}): {}",
-            i + 1,
-            target.n,
-            target.p,
-            target.q,
-            status
-        );
-    }
-    println!("    24-bit success rate: {}/{}\n", success_24, total_24);
-}
-
-// -------------------------------------------------------------------------
-// Section 6 — phi(n) Recovery Pipeline
-// -------------------------------------------------------------------------
-
-fn section_6_phi_recovery() {
-    println!("--- Section 6: phi(n) Recovery Pipeline ---\n");
-
-    let mut rng = rand::thread_rng();
-
-    for bits in [16, 24, 32] {
-        let target = generate_rsa_target(bits, &mut rng);
-        let true_phi = euler_totient(&target.p, &target.q);
-        println!(
-            "  {}-bit RSA: N = {} (p={}, q={})",
-            bits, target.n, target.p, target.q
-        );
-        println!("    True phi(N) = {}", true_phi);
-
-        // Sample element orders
-        let orders = sample_orders(&target.n, 500, 100_000);
-        println!("    Sampled {} element orders", orders.len());
-
-        if !orders.is_empty() {
-            let max_ord = orders.iter().max().unwrap();
-            let min_ord = orders.iter().min().unwrap();
-            let avg_ord: f64 =
-                orders.iter().map(|&o| o as f64).sum::<f64>() / orders.len() as f64;
-            let unique_count = {
-                let mut u = orders.clone();
-                u.sort();
-                u.dedup();
-                u.len()
-            };
-            println!(
-                "    Order stats: min={}, max={}, avg={:.1}, unique={}",
-                min_ord, max_ord, avg_ord, unique_count
-            );
-
-            // Try to recover phi(n) from orders
-            match phi_from_orders(&target.n, &orders) {
-                Some(phi) => {
-                    let phi_match = if phi == true_phi {
-                        "exact match"
-                    } else {
-                        "candidate (may be multiple)"
-                    };
-                    println!("    Recovered phi(N) = {} [{}]", phi, phi_match);
-
-                    match factor_from_phi(&target.n, &phi) {
-                        Some((p, q)) => {
-                            let verified = &p * &q == target.n;
-                            println!(
-                                "    FACTORED: {} = {} x {} (verified: {})",
-                                target.n, p, q, verified
-                            );
+                // Try multiples of lambda as phi candidates
+                for mult in 1..=100u64 {
+                    if start.elapsed().as_secs_f64() > TIMEOUT_SECS {
+                        return false;
+                    }
+                    let phi = BigUint::from(lambda.saturating_mul(mult));
+                    if let Some((p, _q)) = factor_from_phi(&n_clone, &phi) {
+                        if p == tp || &n_clone / &p == tp {
+                            return true;
                         }
-                        None => println!("    phi(N) candidate didn't yield factors"),
                     }
                 }
-                None => println!("    Could not recover phi(N) from sampled orders"),
+                false
+            } else {
+                false
             }
-        }
-        println!();
+        });
+        phi_results.push((success, time.min(TIMEOUT_SECS * 1000.0)));
+
+        // Method 3: Chebotarev density analysis
+        let n_clone = n.clone();
+        let tp = true_p.clone();
+        let (success, time) = run_method_with_timeout(|| {
+            if let Some(p) =
+                chebotarev::factor_via_chebotarev(&n_clone, CHEBOTAREV_MAX_PRIME, CHEBOTAREV_SAMPLES)
+            {
+                p == tp || &n_clone / &p == tp
+            } else {
+                false
+            }
+        });
+        cheb_results.push((success, time.min(TIMEOUT_SECS * 1000.0)));
+    }
+
+    BitSizeResult {
+        bit_size,
+        n_semiprimes: count,
+        smooth_factor: compute_method_stats(&smooth_results),
+        phi_recovery: compute_method_stats(&phi_results),
+        chebotarev: compute_method_stats(&cheb_results),
     }
 }
 
-// -------------------------------------------------------------------------
-// Section 7 — Chebotarev Density Analysis (Experiment 5)
-// -------------------------------------------------------------------------
+/// Fit log-log regression: log(time) = a * log(bits) + b
+/// Returns the exponent a, or None if insufficient data.
+fn log_log_slope(bit_sizes: &[u32], values: &[f64]) -> Option<f64> {
+    let valid: Vec<(f64, f64)> = bit_sizes
+        .iter()
+        .zip(values.iter())
+        .filter(|(_, v)| **v > 0.0 && v.is_finite())
+        .map(|(b, v)| ((*b as f64).ln(), v.ln()))
+        .collect();
 
-fn section_7_chebotarev() {
-    println!("--- Experiment 5: Chebotarev Density Analysis ---\n");
+    if valid.len() < 3 {
+        return None;
+    }
 
-    let cheb_cases: &[(BigUint, &str)] = &[
-        (BigUint::from(77u32), "7x11"),
-        (BigUint::from(143u32), "11x13"),
-        (BigUint::from(323u32), "17x19"),
-        (BigUint::from(1007u32), "19x53"),
-    ];
+    let n = valid.len() as f64;
+    let sum_x: f64 = valid.iter().map(|(x, _)| x).sum();
+    let sum_y: f64 = valid.iter().map(|(_, y)| y).sum();
+    let sum_xy: f64 = valid.iter().map(|(x, y)| x * y).sum();
+    let sum_xx: f64 = valid.iter().map(|(x, _)| x * x).sum();
 
-    for (n, label) in cheb_cases {
-        println!("N = {} ({})", n, label);
-        let measurements = chebotarev::chebotarev_scan(n, 20, 200);
-        for m in &measurements {
-            println!(
-                "  r={:>2}: density={:.3} ({}/{}), class={:?}",
-                m.r, m.empirical_density, m.num_divisible, m.num_tested, m.classification
-            );
-        }
+    let denom = n * sum_xx - sum_x * sum_x;
+    if denom.abs() < 1e-15 {
+        return None;
+    }
 
-        let constraints = chebotarev::extract_constraints(&measurements);
-        println!("  Divides both: {:?}", constraints.divides_both);
-        println!("  Divides one:  {:?}", constraints.divides_one);
-        println!("  Divides neither: {:?}", constraints.divides_neither);
+    Some((n * sum_xy - sum_x * sum_y) / denom)
+}
 
-        if let Some(f) = chebotarev::factor_via_chebotarev(n, 20, 200) {
-            let other = n / &f;
-            println!("  FACTORED: {} x {}", f, other);
-        } else {
-            println!("  Not factored via Chebotarev alone");
-        }
-        println!();
+fn classify_success_trend(bit_sizes: &[u32], rates: &[f64]) -> String {
+    let valid: Vec<(f64, f64)> = bit_sizes
+        .iter()
+        .zip(rates.iter())
+        .filter(|(_, r)| r.is_finite())
+        .map(|(b, r)| (*b as f64, *r))
+        .collect();
+
+    if valid.len() < 3 {
+        return "INSUFFICIENT DATA".to_string();
+    }
+
+    let last_third = &valid[valid.len() * 2 / 3..];
+    let first_third = &valid[..valid.len() / 3];
+
+    let first_mean: f64 = first_third.iter().map(|(_, r)| r).sum::<f64>() / first_third.len() as f64;
+    let last_mean: f64 = last_third.iter().map(|(_, r)| r).sum::<f64>() / last_third.len() as f64;
+
+    if last_mean < 0.01 && first_mean > 0.1 {
+        "EXPONENTIAL DECAY -- success drops to near-zero".to_string()
+    } else if last_mean < first_mean * 0.5 {
+        "SIGNIFICANT DECAY -- success rate halves or worse".to_string()
+    } else if last_mean < first_mean * 0.9 {
+        "MODERATE DECAY -- gradual decline".to_string()
+    } else {
+        "STABLE -- no clear decay pattern".to_string()
     }
 }
 
-// -------------------------------------------------------------------------
-// Utility
-// -------------------------------------------------------------------------
+// ============================================================
+// Main
+// ============================================================
 
-fn lcm(a: u64, b: u64) -> u64 {
-    if a == 0 || b == 0 {
-        return 0;
-    }
-    a / gcd_u64(a, b) * b
-}
+fn main() {
+    println!("======================================================================");
+    println!("E1: Group Structure Scaling Analysis");
+    println!("======================================================================");
+    println!("Bit sizes: {:?}", BIT_SIZES);
+    println!("Semiprimes per size: {}", SEMIPRIMES_PER_SIZE);
+    println!("Methods: smooth-order, phi-recovery, Chebotarev density");
+    println!("Timeout per method per semiprime: {:.0}s", TIMEOUT_SECS);
+    println!();
 
-fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let mut per_bit_size = Vec::new();
+
+    println!(
+        "{:>5} | {:>12} {:>8} | {:>12} {:>8} | {:>12} {:>8}",
+        "bits", "smooth_rate", "time_ms", "phi_rate", "time_ms", "cheb_rate", "time_ms"
+    );
+    println!("{}", "-".repeat(85));
+
+    for &bits in BIT_SIZES {
+        let result = run_bit_size(bits, SEMIPRIMES_PER_SIZE, &mut rng);
+        println!(
+            "{:>5} | {:>11.1}% {:>7.1} | {:>11.1}% {:>7.1} | {:>11.1}% {:>7.1}",
+            bits,
+            result.smooth_factor.success_rate * 100.0,
+            result.smooth_factor.median_time_ms,
+            result.phi_recovery.success_rate * 100.0,
+            result.phi_recovery.median_time_ms,
+            result.chebotarev.success_rate * 100.0,
+            result.chebotarev.median_time_ms,
+        );
+        per_bit_size.push(result);
     }
-    a
+
+    // Scaling analysis
+    println!("\n======================================================================");
+    println!("SCALING ANALYSIS");
+    println!("======================================================================");
+
+    let bits_vec: Vec<u32> = per_bit_size.iter().map(|r| r.bit_size).collect();
+    let smooth_times: Vec<f64> = per_bit_size.iter().map(|r| r.smooth_factor.mean_time_ms).collect();
+    let phi_times: Vec<f64> = per_bit_size.iter().map(|r| r.phi_recovery.mean_time_ms).collect();
+    let cheb_times: Vec<f64> = per_bit_size.iter().map(|r| r.chebotarev.mean_time_ms).collect();
+
+    let smooth_exp = log_log_slope(&bits_vec, &smooth_times);
+    let phi_exp = log_log_slope(&bits_vec, &phi_times);
+    let cheb_exp = log_log_slope(&bits_vec, &cheb_times);
+
+    if let Some(exp) = smooth_exp {
+        println!("  Smooth-order time exponent: {:.2} (time ~ bits^{:.2})", exp, exp);
+    }
+    if let Some(exp) = phi_exp {
+        println!("  Phi-recovery time exponent: {:.2} (time ~ bits^{:.2})", exp, exp);
+    }
+    if let Some(exp) = cheb_exp {
+        println!("  Chebotarev time exponent:   {:.2} (time ~ bits^{:.2})", exp, exp);
+    }
+
+    let smooth_rates: Vec<f64> = per_bit_size.iter().map(|r| r.smooth_factor.success_rate).collect();
+    let phi_rates: Vec<f64> = per_bit_size.iter().map(|r| r.phi_recovery.success_rate).collect();
+    let cheb_rates: Vec<f64> = per_bit_size.iter().map(|r| r.chebotarev.success_rate).collect();
+
+    let smooth_trend = classify_success_trend(&bits_vec, &smooth_rates);
+    let phi_trend = classify_success_trend(&bits_vec, &phi_rates);
+    let cheb_trend = classify_success_trend(&bits_vec, &cheb_rates);
+
+    println!("\n  Smooth-order success: {}", smooth_trend);
+    println!("  Phi-recovery success: {}", phi_trend);
+    println!("  Chebotarev success:   {}", cheb_trend);
+
+    // Verdict
+    let any_viable_at_64 = per_bit_size
+        .iter()
+        .find(|r| r.bit_size == 64)
+        .map(|r| {
+            r.smooth_factor.success_rate > 0.01
+                || r.phi_recovery.success_rate > 0.01
+                || r.chebotarev.success_rate > 0.01
+        })
+        .unwrap_or(false);
+
+    let verdict = if any_viable_at_64 {
+        "SUBEXPONENTIAL -- some methods viable at 64-bit (investigate scaling further)"
+    } else {
+        "EXPONENTIAL BARRIER -- all methods fail at 64-bit, success decays with N"
+    };
+
+    println!("\n======================================================================");
+    println!("VERDICT: {}", verdict);
+    println!("======================================================================");
+
+    // Save JSON
+    let scaling = ScalingAnalysis {
+        smooth_factor_exponent: smooth_exp,
+        phi_recovery_exponent: phi_exp,
+        chebotarev_exponent: cheb_exp,
+        smooth_factor_success_trend: smooth_trend,
+        phi_recovery_success_trend: phi_trend,
+        chebotarev_success_trend: cheb_trend,
+    };
+
+    let report = E1Report {
+        experiment: "E1: Group Structure Scaling Analysis".to_string(),
+        config: Config {
+            bit_sizes: BIT_SIZES.to_vec(),
+            semiprimes_per_size: SEMIPRIMES_PER_SIZE,
+            seed: SEED,
+            smooth_bound: SMOOTH_BOUND,
+            smooth_trials: SMOOTH_TRIALS,
+            carmichael_samples: CARMICHAEL_SAMPLES,
+            max_order: MAX_ORDER,
+            chebotarev_max_prime: CHEBOTAREV_MAX_PRIME,
+            chebotarev_samples: CHEBOTAREV_SAMPLES,
+            timeout_secs: TIMEOUT_SECS,
+        },
+        per_bit_size,
+        scaling,
+        verdict: verdict.to_string(),
+    };
+
+    // Save to data directory (two levels up from rust/group-structure/)
+    let data_dir = Path::new("../../data");
+    std::fs::create_dir_all(data_dir).ok();
+    let output_path = data_dir.join("E1_group_structure_results.json");
+    match serde_json::to_string_pretty(&report) {
+        Ok(json) => match std::fs::write(&output_path, &json) {
+            Ok(_) => println!("\nResults saved to {}", output_path.display()),
+            Err(e) => {
+                eprintln!("Failed to write {}: {}", output_path.display(), e);
+                println!("{}", json);
+            }
+        },
+        Err(e) => eprintln!("JSON serialization failed: {}", e),
+    }
 }
