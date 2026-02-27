@@ -473,9 +473,62 @@ If φ(N) mod ℓ is PROVEN as hard as factoring:
 - It would resolve a 27-year-old open question (PHA independence)
 - It would likely require techniques beyond current complexity theory
 
-### 10.4 The Correct Framing
+### 10.4 The Three Walls and What Would Breach Them
+
+The problem is protected by three independent walls. An exploit requires breaching at least two simultaneously.
+
+#### Wall 1: Evaluation — can't compute even one φ(N) mod ℓ
+
+Every known method either CRT-decomposes or costs ≥ O(√N). Potential breaches:
+
+**A. A "reciprocity law" for φ(N) mod ℓ.** The Jacobi symbol (a/N) = (a/p)·(a/q) is a CRT product — yet computable without factoring, via quadratic reciprocity. Reciprocity swaps the "hard" modulus p for the "easy" modulus a. No analogous swap is known for (p-1)(q-1) mod ℓ. No proof one can't exist.
+
+**B. Exploiting the reducibility of ρ_{Δ,691}.** For most primes ℓ, the mod-ℓ Galois representation ρ_{Δ,ℓ} is irreducible with image ⊇ SL(2, F_ℓ). At ℓ = 691, it's **reducible**: ρ ≅ 1 ⊕ χ¹¹ (the Eisenstein congruence). Each 1-dimensional piece is a character computable in poly(log N). But extracting τ(N) mod 691 from these characters at composite N requires knowing how they combine — which is multiplicativity again.
+
+**C. Non-multiplicative Kloosterman series (MOST PLAUSIBLE).** The Petersson/Rademacher formula:
+```
+τ(N) = C · Σ_{c≥1} S(1,N;c)/c · J₁₁(4π√N/c)
+```
+is NOT term-by-term multiplicative. Could a truncated version yield τ(N) mod 691 from poly(log N) terms? Currently costs O(√N) to O(N) terms. The "beyond endoscopy" program (Altug) aims at exactly this cancellation. **Why it probably fails:** Kloosterman sums S(1,N;c) for c coprime to N are CRT-separable; the non-CRT terms occur at c = p, q, N — requiring knowledge of p, q to isolate.
+
+**D. Smooth conductor workaround.** Hiary's O(q^{1/3}) algorithm requires smooth modulus; squarefree N = pq gets no improvement. If someone found a covering/lifting trick embedding the squarefree-conductor problem into a smooth-conductor one, sub-√N evaluation would follow. No method known.
+
+#### Wall 2: Coppersmith Threshold — n/4 bits needed
+
+A single φ(N) mod 691 gives ~9.4 bits vs. the 512 bits needed for RSA-2048. Potential breaches:
+
+**E. Lower the threshold.** The n/4 = β² comes from Coppersmith's lattice dimension analysis with β = 1/2 for balanced semiprimes. Improving this requires fundamentally new lattice techniques or a non-lattice approach to finding small modular roots. Ryan (EUROCRYPT 2025) confirmed n/4 is optimal within the current framework.
+
+**F. Non-Coppersmith use of partial φ(N).** Could residues be used differently than CRT + Coppersmith? If φ(N) mod ℓ = 0, then ℓ | (p-1)(q-1), testable probabilistically (check g^{(N-1)/ℓ} ≡ 1 mod N). But this only handles the divisibility case. Knowledge of which primes divide p-1 could feed Pollard's p-1, but requires the residues to already be available.
+
+#### Wall 3: CRT Decomposition — structural barrier
+
+Every algebraic object over Z/NZ decomposes. Potential breaches:
+
+**G. A non-local computation with amplifiable signal.** Carry propagation is non-CRT (E10-E12 proved this), but signals decay as N^{-0.35}. Could a specific non-local function amplify rather than bury the factor signal? E11 tested 111 features across 9 categories — all flat.
+
+**H. Cross-structure interaction.** CRT decomposes each algebraic structure independently. Could the *interaction* between two structures (e.g., a homomorphism E(Z/NZ) → (Z/NZ)*) fail to decompose? Pairings are exactly this — but Galbraith-McKee proved pairing computation over Z/NZ implies factoring.
+
+#### Assessment of Attack Scenarios
+
+| Scenario | Wall Targeted | Plausibility | Obstruction |
+|----------|--------------|-------------|-------------|
+| A. Reciprocity law for φ mod ℓ | Wall 1 | Very low | No structural analogue of quadratic reciprocity |
+| B. Reducible ρ_{Δ,691} | Wall 1 | Very low | Characters combine via multiplicativity |
+| C. Kloosterman truncation | Wall 1 | Low (best hope) | Non-CRT terms at c=p,q require knowing factors |
+| D. Smooth conductor lift | Wall 1 | Very low | No embedding known |
+| E. Lower Coppersmith n/4 | Wall 2 | Very low | Optimal within lattice framework |
+| F. Non-Coppersmith partial φ | Wall 2 | Low | All known uses reduce to CRT + lattice |
+| G. Amplifiable non-local signal | Wall 3 | Very low | 111 features tested, all flat |
+| H. Cross-structure pairing | Wall 3 | Very low | Galbraith-McKee: pairing mod N ⟹ factoring |
+
+**The most plausible attack** would combine scenario C (Kloosterman series mod 691 with beyond-endoscopy cancellation) with scenario F (a non-Coppersmith use of the resulting partial information). But scenario C requires the Kloosterman terms at c coprime to N to cancel mod 691 faster than they cancel over Z — no evidence for this — and the non-CRT terms at c sharing factors with N are the very terms that encode the factorization.
+
+### 10.5 The Correct Framing
 
 The question "can we compute φ(N) mod ℓ?" is **not** a number theory question — it is a **complexity theory** question. All number-theoretic content has been extracted: the information exists (E13 proves 63 bits), the inversion is trivial (Newton's identity root-finding), and the evaluation barrier is structural (CRT + multiplicativity + dimensional). What remains is whether the evaluation barrier is provably hard, which is a question about computational models, not about number theory.
+
+The three-wall analysis shows that even a partial breach of one wall is insufficient — an attacker must simultaneously find an efficient evaluation method AND accumulate enough bits to exploit. The convergence of barriers from algebra, analysis, geometry, cryptography, complexity theory, and experiment makes this exceedingly unlikely.
 
 ---
 
