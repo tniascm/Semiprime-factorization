@@ -16,12 +16,17 @@ class SageEncoder(json.JSONEncoder):
             return float(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
+        # Try float before int: int() silently truncates 0.291 → 0
         try:
-            return int(obj)
+            f = float(obj)
+            # If it's actually an integer value, return int
+            if f == int(f) and not isinstance(obj, bool):
+                return int(f)
+            return f
         except (TypeError, ValueError):
             pass
         try:
-            return float(obj)
+            return int(obj)
         except (TypeError, ValueError):
             return str(obj)
 
