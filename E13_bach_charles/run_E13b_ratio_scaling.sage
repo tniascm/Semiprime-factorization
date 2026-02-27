@@ -216,7 +216,7 @@ def main():
                 'N': N_int, 'p': p_int, 'q': q_int, 'bits': n_bits,
                 'tau_N': tau_N_direct,
                 'eis_N': eis_N,
-                'eis_ratio': round(ratio, 6),
+                'eis_ratio': round(float(ratio), int(6)),
                 'method': 'q-expansion',
                 'verify': verify,
             })
@@ -293,9 +293,9 @@ def main():
                 'N': N_int, 'p': p_int, 'q': q_int, 'bits': n_bits,
                 'tau_N': int(tau_N),
                 'eis_N': int(eis_N),
-                'eis_ratio': round(ratio, 6),
+                'eis_ratio': round(float(ratio), int(6)),
                 'method': 'trace-formula-mult',
-                'time_secs': round(dt, 3),
+                'time_secs': round(float(dt), int(3)),
             })
 
     # ── Analysis: ratio statistics per bit size ──────────────────────
@@ -330,10 +330,10 @@ def main():
         summary_rows.append({
             'bits': bits,
             'count': n,
-            'mean_ratio': round(float(mean_r), 6),
-            'median_ratio': round(float(median_r), 6),
-            'min_ratio': round(float(min_r), 6),
-            'max_ratio': round(float(max_r), 6),
+            'mean_ratio': round(float(mean_r), int(6)),
+            'median_ratio': round(float(median_r), int(6)),
+            'min_ratio': round(float(min_r), int(6)),
+            'max_ratio': round(float(max_r), int(6)),
         })
 
     # ── Conclusion ───────────────────────────────────────────────────
@@ -380,10 +380,10 @@ def main():
         'qexp_threshold_bits': QEXP_THRESHOLD,
         'results': all_results,
         'summary': summary_rows,
-        'overall_mean_ratio': round(float(overall_mean), 6),
-        'overall_median_ratio': round(float(overall_median), 6),
-        'overall_min_ratio': round(float(overall_min), 6),
-        'median_of_medians': round(float(median_of_medians), 6),
+        'overall_mean_ratio': round(float(overall_mean), int(6)),
+        'overall_median_ratio': round(float(overall_median), int(6)),
+        'overall_min_ratio': round(float(overall_min), int(6)),
+        'median_of_medians': round(float(median_of_medians), int(6)),
         'conclusion': 'blocked' if blocked else 'investigate',
     }
     safe_json_dump(output, out_path)
