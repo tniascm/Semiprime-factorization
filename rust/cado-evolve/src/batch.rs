@@ -506,6 +506,36 @@ pub fn run_scaling_benchmarks() -> Vec<BatchBenchmark> {
             },
             100,
         ),
+        // NFS c80-scale: B=300000, 130-bit candidates, 200 batch
+        // Matches expert params: lim0=293K, lim1=340K, lpb=21
+        (
+            BatchConfig {
+                smoothness_bound: 300_000,
+                batch_size: 200,
+                use_product_tree: true,
+            },
+            130,
+        ),
+        // NFS c100-scale: B=800000, 170-bit candidates, 100 batch
+        // Matches expert params: lim0=650K, lim1=800K, lpb=25-26
+        (
+            BatchConfig {
+                smoothness_bound: 800_000,
+                batch_size: 100,
+                use_product_tree: true,
+            },
+            170,
+        ),
+        // NFS c120-scale: B=3000000, 200-bit candidates, 50 batch
+        // Matches expert params: lim0=2.5M, lim1=3.4M, lpb=27-28
+        (
+            BatchConfig {
+                smoothness_bound: 3_000_000,
+                batch_size: 50,
+                use_product_tree: true,
+            },
+            200,
+        ),
     ];
 
     configs
