@@ -36,13 +36,15 @@ pub fn collect_smooth_relations(
     let mut partial_count = 0;
 
     for hit in hits {
-        let rat_abs = hit.rational_norm.to_u64().unwrap_or(u64::MAX);
+        let rat_sign_neg = hit.rational_norm < 0;
+        let rat_abs = hit.rational_norm.clone().abs().to_u64().unwrap_or(u64::MAX);
         if rat_abs == u64::MAX || rat_abs == 0 {
             continue;
         }
         let (rat_factors, rat_remainder) = trial_divide(rat_abs, &fb.primes);
 
-        let alg_abs = hit.algebraic_norm.to_u64().unwrap_or(u64::MAX);
+        let alg_sign_neg = hit.algebraic_norm < 0;
+        let alg_abs = hit.algebraic_norm.clone().abs().to_u64().unwrap_or(u64::MAX);
         if alg_abs == u64::MAX || alg_abs == 0 {
             continue;
         }
@@ -54,8 +56,8 @@ pub fn collect_smooth_relations(
                 b: hit.b,
                 rational_factors: rat_factors,
                 algebraic_factors: alg_factors,
-                rational_sign_negative: hit.rational_norm < 0,
-                algebraic_sign_negative: hit.algebraic_norm < 0,
+                rational_sign_negative: rat_sign_neg,
+                algebraic_sign_negative: alg_sign_neg,
             });
         } else if rat_remainder <= large_prime_bound && alg_remainder <= large_prime_bound {
             partial_count += 1;

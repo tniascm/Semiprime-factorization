@@ -122,8 +122,8 @@ pub fn line_sieve(
                 hits.push(SieveHit {
                     a,
                     b,
-                    rational_norm: rational_norm.abs(),
-                    algebraic_norm: algebraic_norm.abs(),
+                    rational_norm,
+                    algebraic_norm,
                 });
             }
         }
