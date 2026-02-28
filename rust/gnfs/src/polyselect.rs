@@ -1,6 +1,7 @@
 use crate::arith::nth_root;
 use crate::types::PolynomialPair;
 use rug::Integer;
+use rug::ops::Pow;
 
 /// Choose polynomial degree based on digit count of N.
 pub fn choose_degree(digits: u32) -> u32 {
@@ -15,14 +16,25 @@ pub fn choose_degree(digits: u32) -> u32 {
 
 /// Base-m polynomial selection.
 ///
-/// Given N and degree d, compute m = floor(N^(1/(d+1))), then express N in base m:
+/// Given N and degree d, compute m = floor(N^(1/d)), then express N in base m:
 ///   N = c_d * m^d + c_{d-1} * m^{d-1} + ... + c_0
 /// This gives f(x) = c_d * x^d + ... + c_0 with f(m) = N ≡ 0 (mod N).
+/// Using m = floor(N^{1/d}) ensures the leading coefficient c_d = 1 (monic)
+/// for all N > 2^d, which is required for correct algebraic arithmetic in Z[α]/(f).
 /// The rational polynomial is g(x) = x - m, so g(m) = 0.
 /// We store: g0 = -m, g1 = 1.
 pub fn select_base_m(n: &Integer, degree: u32) -> PolynomialPair {
     let d = degree as usize;
-    let m = nth_root(n, degree + 1);
+    let mut m = nth_root(n, degree);
+    // Ensure monic: if leading coefficient > 1, increment m until it becomes 1
+    loop {
+        let m_pow_d = Integer::from(m.clone().pow(degree));
+        let lead = Integer::from(n / &m_pow_d);
+        if lead <= 1 {
+            break;
+        }
+        m += 1;
+    }
 
     // Express N in base m
     let mut coeffs = Vec::with_capacity(d + 1);
@@ -59,6 +71,9 @@ pub fn select_base_m(n: &Integer, degree: u32) -> PolynomialPair {
         }
         val == *n
     });
+
+    // Verify monic: leading coefficient must be 1
+    debug_assert_eq!(coeffs[d], Integer::from(1), "Polynomial must be monic");
 
     let neg_m = Integer::from(-&m);
     PolynomialPair::new(&coeffs, &neg_m, &Integer::from(1), &m, n)

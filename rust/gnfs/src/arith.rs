@@ -162,6 +162,190 @@ pub fn find_polynomial_roots_mod_p(coeffs: &[i64], p: u64) -> Vec<u64> {
     roots
 }
 
+/// Modular inverse of a mod m for rug::Integer. Returns None if not invertible.
+pub fn mod_inverse_int(a: &Integer, m: &Integer) -> Option<Integer> {
+    match a.clone().invert(m) {
+        Ok(inv) => Some(inv),
+        Err(_) => None,
+    }
+}
+
+/// Tonelli-Shanks for rug::Integer: find r such that r² ≡ n (mod p).
+pub fn tonelli_shanks_int(n: &Integer, p: &Integer) -> Option<Integer> {
+    let n_mod = Integer::from(n % p);
+    if n_mod == 0 {
+        return Some(Integer::from(0));
+    }
+    if *p == 2 {
+        return Some(n_mod);
+    }
+
+    // Euler's criterion
+    let exp = Integer::from(p - 1) / 2;
+    let legendre = n_mod.clone().pow_mod(&exp, p).unwrap();
+    if legendre != 1 {
+        return None;
+    }
+
+    // Factor p-1 = q * 2^s
+    let mut q = Integer::from(p - 1);
+    let mut s: u32 = 0;
+    while q.is_even() {
+        q /= 2;
+        s += 1;
+    }
+
+    if s == 1 {
+        let exp = Integer::from(p + 1) / 4;
+        let r = n_mod.pow_mod(&exp, p).unwrap();
+        return Some(r);
+    }
+
+    // Find quadratic non-residue
+    let mut z = Integer::from(2);
+    loop {
+        let l = z.clone().pow_mod(&exp, p).unwrap();
+        if l == Integer::from(p - 1) {
+            break;
+        }
+        z += 1;
+    }
+
+    let mut m_val = s;
+    let mut c = z.pow_mod(&q, p).unwrap();
+    let mut t = n_mod.clone().pow_mod(&q, p).unwrap();
+    let q_plus_1_half = Integer::from(&q + 1) / 2;
+    let mut r = n_mod.pow_mod(&q_plus_1_half, p).unwrap();
+
+    loop {
+        if t == 0 {
+            return Some(Integer::from(0));
+        }
+        if t == 1 {
+            return Some(r);
+        }
+
+        let mut i = 0u32;
+        let mut temp = t.clone();
+        let two = Integer::from(2);
+        while temp != 1 {
+            temp = temp.pow_mod(&two, p).unwrap();
+            i += 1;
+            if i == m_val {
+                return None;
+            }
+        }
+
+        let exp = Integer::from(1u64) << (m_val - i - 1);
+        let b = c.clone().pow_mod(&exp, p).unwrap();
+        m_val = i;
+        c = Integer::from(&b * &b) % p;
+        t = Integer::from(&t * &c) % p;
+        r = Integer::from(&r * &b) % p;
+    }
+}
+
+/// Evaluate polynomial with Integer coefficients at an Integer point, mod modulus.
+/// Coefficients are [c0, c1, ..., cd] (low-degree first). Uses Horner's method.
+pub fn eval_poly_int(coeffs: &[Integer], x: &Integer, modulus: &Integer) -> Integer {
+    let mut result = Integer::from(0);
+    for c in coeffs.iter().rev() {
+        result = Integer::from(Integer::from(&result * x) + c) % modulus;
+    }
+    if result < 0 {
+        result += modulus;
+    }
+    result
+}
+
+/// Evaluate polynomial derivative at an Integer point, mod modulus.
+/// f'(x) = c1 + 2*c2*x + 3*c3*x² + ...
+pub fn eval_poly_deriv_int(coeffs: &[Integer], x: &Integer, modulus: &Integer) -> Integer {
+    if coeffs.len() <= 1 {
+        return Integer::from(0);
+    }
+    let mut result = Integer::from(0);
+    for (i, c) in coeffs.iter().enumerate().skip(1).rev() {
+        result = Integer::from(Integer::from(&result * x) + Integer::from(c * i as u64)) % modulus;
+    }
+    if result < 0 {
+        result += modulus;
+    }
+    result
+}
+
+/// Lagrange interpolation mod modulus.
+/// Given points (xs[i], ys[i]), find polynomial of degree < d evaluated at result coefficients.
+/// Returns polynomial coefficients [c0, c1, ..., c_{d-1}].
+pub fn lagrange_interpolation_mod(
+    xs: &[Integer],
+    ys: &[Integer],
+    modulus: &Integer,
+) -> Vec<Integer> {
+    let d = xs.len();
+
+    // Build the polynomial using the coefficient form
+    // L_i(x) = y_i * prod_{j != i} (x - x_j) / (x_i - x_j)
+    // We accumulate coefficients directly.
+
+    let mut result = vec![Integer::from(0); d];
+
+    for i in 0..d {
+        // Compute denominator: prod_{j != i} (xs[i] - xs[j]) mod modulus
+        let mut denom = Integer::from(1);
+        for j in 0..d {
+            if j != i {
+                let diff = Integer::from(&xs[i] - &xs[j]) % modulus;
+                let diff = if diff < 0 { diff + modulus } else { diff };
+                denom = Integer::from(&denom * &diff) % modulus;
+            }
+        }
+        let denom_inv = match mod_inverse_int(&denom, modulus) {
+            Some(inv) => inv,
+            None => return vec![Integer::from(0); d], // shouldn't happen
+        };
+        let coeff = Integer::from(&ys[i] * &denom_inv) % modulus;
+
+        // Compute L_i(x) = prod_{j != i} (x - x_j) as polynomial coefficients
+        // Start with [1] and multiply by (x - x_j) for each j != i
+        let mut basis = vec![Integer::from(0); d];
+        basis[0] = Integer::from(1);
+        let mut deg = 0;
+
+        for j in 0..d {
+            if j == i {
+                continue;
+            }
+            let neg_xj = Integer::from(-&xs[j]) % modulus;
+            let neg_xj = if neg_xj < 0 { neg_xj + modulus } else { neg_xj };
+
+            // Multiply basis polynomial by (x - x_j)
+            // New coefficients: new[k] = basis[k-1] + (-x_j) * basis[k]
+            let mut new_basis = vec![Integer::from(0); d];
+            for k in (0..=deg + 1).rev() {
+                let from_shift = if k > 0 { &basis[k - 1] } else { &Integer::from(0) };
+                let from_scale = Integer::from(&basis[k] * &neg_xj) % modulus;
+                new_basis[k] = Integer::from(from_shift + &from_scale) % modulus;
+                if new_basis[k] < 0 {
+                    new_basis[k] += modulus;
+                }
+            }
+            basis = new_basis;
+            deg += 1;
+        }
+
+        // Add coeff * basis to result
+        for k in 0..d {
+            result[k] = Integer::from(&result[k] + Integer::from(&coeff * &basis[k])) % modulus;
+            if result[k] < 0 {
+                result[k] += modulus;
+            }
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

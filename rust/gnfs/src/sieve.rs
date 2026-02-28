@@ -72,9 +72,9 @@ pub fn line_sieve(
             let log_val = fb.log_p[i] as u16;
             let p_i64 = p as i64;
 
-            // Rational: a ≡ -b*m (mod p)
+            // Rational: a ≡ b*m (mod p), since rational norm = a - b*m
             let bm_mod_p = ((b as i128 * m.to_i128().unwrap_or(0)) % p as i128).unsigned_abs() as u64;
-            let rat_start = (p - (bm_mod_p % p)) % p;
+            let rat_start = bm_mod_p % p;
             let offset = ((rat_start as i64 + sieve_a_i64) % p_i64 + p_i64) % p_i64;
             let mut idx = offset as usize;
             while idx < sieve_len {

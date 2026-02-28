@@ -50,10 +50,10 @@ impl PolynomialPair {
         result
     }
 
-    /// Evaluate g(a, b) = a + b*m (rational norm).
+    /// Evaluate g(a, b) = a - b*m (rational norm, from g(x) = x - m).
     pub fn eval_g(&self, a: i64, b: u64) -> Integer {
         let m = self.m();
-        Integer::from(a) + Integer::from(b) * m
+        Integer::from(a) - Integer::from(b) * m
     }
 }
 
