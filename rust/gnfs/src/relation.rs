@@ -20,11 +20,24 @@ pub fn trial_divide(mut n: u64, primes: &[u64]) -> (Vec<(u32, u8)>, u64) {
     (factors, n)
 }
 
+/// Compute v_p(|val|) — the p-adic valuation of an integer.
+fn p_adic_val(mut val: u64, p: u64) -> u8 {
+    if val == 0 || p < 2 {
+        return 0;
+    }
+    let mut e = 0u8;
+    while val % p == 0 {
+        val /= p;
+        e += 1;
+    }
+    e
+}
+
 /// Collect smooth relations from sieve hits by trial division.
 ///
 /// For each hit, trial-divide both rational and algebraic norms by factor base primes.
-/// If the remainder is 1, it's a full relation.
-/// If the remainder fits within the large prime bound, it's a partial (counted but not used in M1).
+/// Algebraic factors are tracked per (prime, root) pair — one entry per degree-1 prime
+/// ideal — to ensure the GF(2) matrix correctly constrains individual ideal exponents.
 ///
 /// Returns (full_relations, partial_relation_count).
 pub fn collect_smooth_relations(
@@ -48,20 +61,61 @@ pub fn collect_smooth_relations(
         if alg_abs == u64::MAX || alg_abs == 0 {
             continue;
         }
-        let (alg_factors, alg_remainder) = trial_divide(alg_abs, &fb.primes);
+        let (alg_prime_factors, alg_remainder) = trial_divide(alg_abs, &fb.primes);
 
-        if rat_remainder == 1 && alg_remainder == 1 {
-            relations.push(Relation {
-                a: hit.a,
-                b: hit.b,
-                rational_factors: rat_factors,
-                algebraic_factors: alg_factors,
-                rational_sign_negative: rat_sign_neg,
-                algebraic_sign_negative: alg_sign_neg,
-            });
-        } else if rat_remainder <= large_prime_bound && alg_remainder <= large_prime_bound {
-            partial_count += 1;
+        let is_smooth = rat_remainder == 1 && alg_remainder == 1;
+        if !is_smooth {
+            if rat_remainder <= large_prime_bound && alg_remainder <= large_prime_bound {
+                partial_count += 1;
+            }
+            continue;
         }
+
+        // Decompose algebraic exponents per (prime, root) pair.
+        // For each prime p dividing the norm with roots r_1,...,r_k of f mod p:
+        //   v_{(p,r_i)}(a - b*alpha) = v_p(a - b*r_i)
+        // The residual (v_p(norm) - sum of per-root exponents) comes from
+        // higher-degree ideals; it's always even for degree-2 factors.
+        // Reject relations where the residual is odd (inert prime with odd mult).
+        let mut alg_pair_factors: Vec<(u32, u8)> = Vec::new();
+        let mut valid = true;
+
+        for &(prime_idx, total_exp) in &alg_prime_factors {
+            let p = fb.primes[prime_idx as usize];
+            let roots = &fb.algebraic_roots[prime_idx as usize];
+            let pair_base = fb.pair_offset(prime_idx as usize);
+
+            let mut root_exp_sum = 0u8;
+            for (root_idx, &r) in roots.iter().enumerate() {
+                // Compute v_p(|a - b*r|) using i128 to avoid overflow
+                let val_i128 = hit.a as i128 - hit.b as i128 * r as i128;
+                let val_abs = val_i128.unsigned_abs() as u64;
+                let e = p_adic_val(val_abs, p);
+                if e > 0 {
+                    alg_pair_factors.push(((pair_base + root_idx) as u32, e));
+                    root_exp_sum = root_exp_sum.saturating_add(e);
+                }
+            }
+
+            // Residual from higher-degree ideals must be even
+            if root_exp_sum < total_exp && (total_exp - root_exp_sum) % 2 != 0 {
+                valid = false;
+                break;
+            }
+        }
+
+        if !valid {
+            continue;
+        }
+
+        relations.push(Relation {
+            a: hit.a,
+            b: hit.b,
+            rational_factors: rat_factors,
+            algebraic_factors: alg_pair_factors,
+            rational_sign_negative: rat_sign_neg,
+            algebraic_sign_negative: alg_sign_neg,
+        });
     }
 
     (relations, partial_count)

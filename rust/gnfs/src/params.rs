@@ -69,9 +69,49 @@ impl GnfsParams {
         }
     }
 
+    /// Parameters for ~30-50 digit numbers (100-166 bits).
+    pub fn c30() -> Self {
+        Self {
+            name: "c30".into(),
+            degree: 3,
+            lim0: 10_000,
+            lim1: 10_000,
+            lpb0: 18,
+            lpb1: 18,
+            mfb0: 36,
+            mfb1: 36,
+            sieve_a: 100_000,
+            max_b: 20_000,
+            rels_wanted: 20_000,
+            qmin: 2_000,
+        }
+    }
+
+    /// Parameters for ~10-20 digit numbers (33-66 bits).
+    pub fn c20() -> Self {
+        Self {
+            name: "c20".into(),
+            degree: 3,
+            lim0: 5_000,
+            lim1: 5_000,
+            lpb0: 17,
+            lpb1: 17,
+            mfb0: 34,
+            mfb1: 34,
+            sieve_a: 50_000,
+            max_b: 10_000,
+            rels_wanted: 10_000,
+            qmin: 1_000,
+        }
+    }
+
     pub fn for_bits(bits: u64) -> Self {
-        if bits <= 100 {
+        if bits <= 40 {
             Self::test_small()
+        } else if bits <= 70 {
+            Self::c20()
+        } else if bits <= 100 {
+            Self::c30()
         } else if bits <= 200 {
             Self::c60()
         } else if bits <= 270 {
@@ -104,8 +144,12 @@ mod tests {
 
     #[test]
     fn test_params_for_bits() {
-        let small = GnfsParams::for_bits(50);
+        let small = GnfsParams::for_bits(30);
         assert_eq!(small.name, "test_small");
+        let c20 = GnfsParams::for_bits(50);
+        assert_eq!(c20.name, "c20");
+        let c30 = GnfsParams::for_bits(80);
+        assert_eq!(c30.name, "c30");
         let c60 = GnfsParams::for_bits(180);
         assert_eq!(c60.name, "c60");
     }

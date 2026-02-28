@@ -341,7 +341,6 @@ pub fn extract_factor(
 
     // Step 3: Compute algebraic square root(s) via Couveignes' method
     let y_values = algebraic_square_roots(&alg_product, f_coeffs, m, n);
-
     // Step 4: Try gcd(x ± y, N) for each algebraic square root
     for y in &y_values {
         let diff = Integer::from(Integer::from(&x - y) + n) % n;
@@ -432,7 +431,8 @@ mod tests {
         }
 
         let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, 30);
-        let (matrix, ncols) = build_matrix(&rels, fb.primes.len(), fb.primes.len(), &quad_chars);
+        let alg_pairs = fb.algebraic_pair_count();
+        let (matrix, ncols) = build_matrix(&rels, fb.primes.len(), alg_pairs, &quad_chars);
         let deps = find_dependencies(&matrix, ncols);
 
         if deps.is_empty() {

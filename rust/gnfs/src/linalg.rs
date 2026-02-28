@@ -7,20 +7,20 @@ use crate::types::BitRow;
 /// - Column 0: sign bit (rational side)
 /// - Columns 1..1+rat_fb_size: rational factor base exponents mod 2
 /// - Column 1+rat_fb_size: sign bit (algebraic side)
-/// - Columns 2+rat_fb_size..2+rat_fb_size+alg_fb_size: algebraic factor base
-///   exponents mod 2 (one column per factor base prime)
-/// - Columns 2+rat_fb_size+alg_fb_size..: quadratic character Legendre symbols
+/// - Columns 2+rat_fb_size..2+rat_fb_size+alg_pair_count: algebraic (prime,root)
+///   pair exponents mod 2 — one column per degree-1 prime ideal
+/// - Columns 2+rat_fb_size+alg_pair_count..: quadratic character Legendre symbols
 ///
-/// The quadratic characters handle unit/class group constraints needed for the
-/// algebraic product to be a perfect square in O_K.
+/// Per-(prime,root) tracking ensures each degree-1 prime ideal has even exponent
+/// in the product. Quadratic characters handle remaining unit/class group constraints.
 pub fn build_matrix(
     relations: &[crate::types::Relation],
     rat_fb_size: usize,
-    alg_fb_size: usize,
+    alg_pair_count: usize,
     quad_chars: &QuadCharSet,
 ) -> (Vec<BitRow>, usize) {
     let n_qc = quad_chars.primes.len();
-    let ncols = 2 + rat_fb_size + alg_fb_size + n_qc;
+    let ncols = 2 + rat_fb_size + alg_pair_count + n_qc;
     let mut rows = Vec::with_capacity(relations.len());
 
     for rel in relations {
@@ -40,9 +40,11 @@ pub fn build_matrix(
             row.set(1 + rat_fb_size);
         }
 
-        for &(idx, exp) in &rel.algebraic_factors {
+        // algebraic_factors stores (flat_pair_index, exp) where
+        // flat_pair_index uniquely identifies a (prime, root) pair
+        for &(pair_idx, exp) in &rel.algebraic_factors {
             if exp % 2 == 1 {
-                row.set(2 + rat_fb_size + idx as usize);
+                row.set(2 + rat_fb_size + pair_idx as usize);
             }
         }
 
@@ -56,7 +58,7 @@ pub fn build_matrix(
             let ls = crate::arith::legendre_symbol(val, q);
             if ls == q - 1 {
                 // Legendre symbol is -1 → set bit (odd in GF(2))
-                row.set(2 + rat_fb_size + alg_fb_size + i);
+                row.set(2 + rat_fb_size + alg_pair_count + i);
             }
         }
 

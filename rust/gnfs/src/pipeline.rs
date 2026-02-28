@@ -86,15 +86,20 @@ pub fn factor_gnfs(
         params.lim0
     ));
 
-    // Need more relations than matrix columns:
-    // 2 sign bits + rat_fb primes + alg_fb primes + 30 quad chars
+    // Need significantly MORE relations than matrix columns for useful dependencies.
+    // Dependencies of size < degree are provably trivial (no reduction mod f),
+    // and short dependencies are mostly trivial. Targeting 3x excess ensures
+    // the null space has enough dimension for long, useful dependencies.
     let n_quad_chars = 30usize;
-    let target_rels = fb.primes.len() * 2 + 2 + n_quad_chars + 20;
+    let alg_pairs = fb.algebraic_pair_count();
+    let ncols_est = fb.primes.len() + alg_pairs + 2 + n_quad_chars;
+    let excess_multiplier = 3usize; // Aim for 3x excess over matrix columns
+    let target_rels = ncols_est + ncols_est.max(20) * excess_multiplier;
     let mut all_hits = Vec::new();
     let mut sieve_a = params.sieve_a;
     let mut max_b = params.max_b;
 
-    for expansion in 0..5 {
+    for expansion in 0..10 {
         let hits = line_sieve(&poly, &fb, sieve_a, max_b);
         let (rels, partials) = collect_smooth_relations(&hits, &fb, params.large_prime_bound_0());
 
@@ -144,7 +149,7 @@ pub fn factor_gnfs(
     let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, 30);
     la_log.log(&format!("Quadratic characters: {} primes", quad_chars.primes.len()));
 
-    let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), fb.primes.len(), &quad_chars);
+    let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), alg_pairs, &quad_chars);
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
 
@@ -164,9 +169,21 @@ pub fn factor_gnfs(
     let mut sqrt_log = StageLogger::new("sqrt", output_dir);
     sqrt_log.start(&serde_json::json!({"dependencies": deps.len()}));
 
-    for (i, dep) in deps.iter().enumerate() {
+    // Filter: dependencies smaller than polynomial degree are provably trivial.
+    // When the product of k < d linear terms never reduces modulo f(α),
+    // P(m) = ∏(aᵢ - bᵢm) exactly, so γ(m) = ±√R = ±x always.
+    let min_dep_size = degree as usize;
+    let useful_deps: Vec<_> = deps.iter()
+        .filter(|d| d.len() >= min_dep_size)
+        .collect();
+    sqrt_log.log(&format!(
+        "Filtered: {} → {} useful dependencies (min size {})",
+        deps.len(), useful_deps.len(), min_dep_size
+    ));
+
+    for (i, dep) in useful_deps.iter().enumerate() {
         result.dependencies_tried = i + 1;
-        sqrt_log.log(&format!("Trying dependency {}/{} ({} relations)", i + 1, deps.len(), dep.len()));
+        sqrt_log.log(&format!("Trying dependency {}/{} ({} relations)", i + 1, useful_deps.len(), dep.len()));
 
         if let Some(factor) = extract_factor(&all_hits, dep, &f_coeffs, &m, n) {
             if Integer::from(n % &factor) == 0 && factor > 1 && factor < *n {

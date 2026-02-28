@@ -62,6 +62,8 @@ fn main() {
             println!("[{}] [init]   Seed: {}", utc_timestamp(), seed);
 
             let params = match params_name.as_str() {
+                "c20" => GnfsParams::c20(),
+                "c30" => GnfsParams::c30(),
                 "c60" => GnfsParams::c60(),
                 "c80" => GnfsParams::c80(),
                 "test" => GnfsParams::test_small(),
