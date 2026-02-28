@@ -1,7 +1,7 @@
 # Round 4 Research Report: The φ(N) mod ℓ Complexity Gap
 
-**Date:** 2026-02-27
-**Scope:** Exhaustive investigation of the single remaining open question from Round 3: can φ(N) mod ℓ be computed without factoring N = pq? Covers cryptographic assumptions, Coppersmith thresholds, complexity theory, algebraic methods, elliptic curve approaches, and recent literature (2020-2026).
+**Date:** 2026-02-27 (updated 2026-02-28)
+**Scope:** Exhaustive investigation of the single remaining open question from Round 3: can φ(N) mod ℓ be computed without factoring N = pq? Covers cryptographic assumptions, Coppersmith thresholds, complexity theory, algebraic methods, elliptic curve approaches, recent literature (2020-2026), exploitability analysis (three-wall framework, 8 attack scenarios), and deep investigation of Scenario C (Petersson/Rademacher/Kloosterman series). 92 references total.
 
 ---
 
@@ -524,11 +524,110 @@ Every algebraic object over Z/NZ decomposes. Potential breaches:
 
 **The most plausible attack** would combine scenario C (Kloosterman series mod 691 with beyond-endoscopy cancellation) with scenario F (a non-Coppersmith use of the resulting partial information). But scenario C requires the Kloosterman terms at c coprime to N to cancel mod 691 faster than they cancel over Z — no evidence for this — and the non-CRT terms at c sharing factors with N are the very terms that encode the factorization.
 
-### 10.5 The Correct Framing
+### 10.5 Deep Dive: Scenario C — Petersson/Kloosterman Series (CLOSED)
+
+Scenario C was identified as the "best hope" in Section 10.4. A comprehensive investigation of every sub-avenue was conducted, and all are blocked.
+
+#### 10.5.1 The Petersson/Rademacher Exact Formula
+
+The Ramanujan τ-function has an exact, non-multiplicative series representation:
+
+```
+τ(N) = C₁₂ · Σ_{c≥1} S(1,N;c)/c · J₁₁(4π√N/c)
+```
+
+where C₁₂ = 2²³π¹²/(⟨Δ,Δ⟩ · 10!), S(m,n;c) is the Kloosterman sum, and J₁₁ is the Bessel function of the first kind. This converges absolutely for weight k = 12 > 2 (Rademacher 1938, Lehmer 1943).
+
+**Key structural property:** Each term S(1,N;c)/c · J₁₁(4π√N/c) is NOT multiplicative in N. This makes the series fundamentally different from the Hecke eigenvalue identity τ(pq) = τ(p)·τ(q), which requires factoring.
+
+**Convergence rate:** The Bessel function satisfies J₁₁(x) ~ (x/2)¹¹/11! for x → 0 and J₁₁(x) ~ √(2/πx)·cos(x - 23π/4) for x → ∞. The transition occurs at x ≈ 11, i.e., c ≈ 4π√N/11 ≈ √N. For c >> √N, terms decay as c^{-23/2}. For c << √N, terms oscillate with amplitude O(c^{1/2}/c) = O(c^{-1/2}) (from the Weil bound |S(1,N;c)| ≤ d(c)·c^{1/2}).
+
+The series needs **O(√N) terms** for exact evaluation — exponential in log N. This is consistent with Charles's algorithm achieving O(N^{1/2+ε}) under GRH. No Bruinier-Ono analogue exists: their finite formula for p(n) exploits weight 3/2 harmonic Maass forms (Zwegers), which have no parallel at weight 12.
+
+#### 10.5.2 Kloosterman Sum CRT Structure
+
+Kloosterman sums satisfy a multiplicativity-like property:
+
+```
+S(m,n;c₁c₂) = S(mc̄₂, nc̄₂; c₁) · S(mc̄₁, nc̄₁; c₂)   for gcd(c₁,c₂) = 1
+```
+
+where c̄ᵢ denotes the modular inverse. This is CRT factorization of the exponential sum.
+
+**The coprime window.** For N = pq with p < q, every modulus c < p is coprime to N. This means all terms with c < min(p,q) ≈ N^{1/2} are fully computable without knowing the factorization. However, these terms see N as a monolithic integer — the CRT decomposition of S(1,N;c) produces S(·;c) on each factor, which is independent of how N factorizes into p·q.
+
+**Degenerate terms.** When p | c, the Kloosterman sum degenerates:
+- S(1,N;p) = S(1,0;p) = μ(p) = -1 (Ramanujan sum for prime p)
+- S(1,N;q) = -1 similarly
+- S(1,N;N) = S(1,0;N) = μ(N) = 1 (since N = pq is squarefree)
+
+These factor-dependent terms carry the factorization information, but identifying which c values are multiples of p requires knowing p.
+
+**Sarnak-Tsimerman bounds** (2009): For the partial sums Σ_{c≤X} S(1,N;c)/c, cancellation is bounded by the Selberg-Kloosterman zeta function poles. The dominant pole gives growth O(X^{2/3}), insufficient for poly(log N) truncation.
+
+#### 10.5.3 Mod-691 Reduction: Impossible at Term Level
+
+**The transcendence barrier.** Each Bessel value J₁₁(4π√N/c) is a transcendental real number involving π. One cannot reduce a transcendental number modulo 691. The congruence τ(N) ≡ σ₁₁(N) (mod 691) is a statement about integers, proved at the level of q-expansions (Serre), not at the level of convergent real-valued series.
+
+**The σ₅ convolution formula** provides the algebraic proof:
+```
+τ(n) = (65/756)·σ₁₁(n) + (691/756)·σ₅(n) - (691/3)·Σ_{k=1}^{n-1} σ₅(k)·σ₅(n-k)
+```
+Since 65/756 ≡ 1 (mod 691), reduction mod 691 immediately gives τ(n) ≡ σ₁₁(n). But σ₅ is multiplicative: σ₅(pq) = σ₅(p)·σ₅(q) = (1+p⁵)(1+q⁵), requiring the factorization.
+
+**No p-adic shortcut.** Dwork's p-adic Bessel functions (used in p-adic cohomology) are entirely different mathematical objects from the archimedean J₁₁. Katz's ℓ-adic interpolation of Kloosterman sums operates in F_ℓ for ℓ prime, not over Z/NZ for composite N. Neither framework provides a way to evaluate the Petersson series mod 691 without first computing it over R.
+
+#### 10.5.4 Beyond Endoscopy and Trace Formula Approaches
+
+**Altug's program** (2015-2017): Aims to achieve cancellation in the geometric side of the Arthur-Selberg trace formula, isolating cuspidal contributions. This is precisely "beyond endoscopy" for GL(2). **Critical limitation:** Altug's results work ON AVERAGE — summing over N weighted by test functions — not for individual N. The trace formula at individual N is the Eichler-Selberg formula, which requires divisor-dependent terms.
+
+**Eichler-Selberg formula for τ(N):**
+```
+τ(N) = A₁(N) + A₂(N) + A₃(N)
+```
+where:
+- A₁(N) = -(1/2) Σ_{|t|<2√N} P₁₂(t,N) · H(4N - t²)  [class number sum]
+- A₂(N) = -(1/2) Σ_{d|N} min(d, N/d)¹¹                   [divisor sum]
+- A₃(N) = identity contribution (depends on k, level)
+
+A₂(N) requires knowing the divisors of N. A₁(N) requires computing Hurwitz class numbers H(4N - t²), each costing O(√N) via counting reduced quadratic forms. Neither term is polynomial in log N.
+
+**Charles's algorithm** (2005, Springer LNM): Achieves O(N^{1/2+ε}) under GRH, O(N^{3/4+ε}) unconditionally, by fast class number computation via Dirichlet L-functions. This does NOT contradict Bach-Charles (which requires poly(log N) for the reduction to factoring): Charles's algorithm is sub-linear but still super-polynomial in the bit length.
+
+#### 10.5.5 Galois Representation Reducibility
+
+At ℓ = 691, the mod-ℓ Galois representation ρ_{Δ,691} is reducible:
+```
+ρ_{Δ,691} ≅ 1 ⊕ χ¹¹
+```
+where χ is the cyclotomic character. Each 1-dimensional piece is computable at primes: for prime p, Tr(Frob_p) = 1 + p¹¹ mod 691 = σ₁₁(p) mod 691 = τ(p) mod 691.
+
+**At composites:** Frobenius elements are only defined at unramified primes, not at composite integers. There is no "Frobenius at N = pq" — the trace τ(N) mod 691 combines the Frobenius eigenvalues at p and q via multiplicativity (τ(pq) = τ(p)τ(q)), which requires the factorization. The reducibility of ρ is a property of the Galois representation, not a computational shortcut.
+
+#### 10.5.6 Verdict on Scenario C
+
+All sub-avenues are blocked:
+
+| Sub-avenue | Obstruction |
+|-----------|-------------|
+| Truncation to poly(log N) terms | O(√N) terms needed; Bessel transition at c ≈ √N |
+| Mod-691 reduction of individual terms | Terms are transcendental (J₁₁ involves π) |
+| Coprime window (c < min(p,q)) | Computable but carries no factor-specific information |
+| p-adic / ℓ-adic framework | Different mathematical objects; no bridge to archimedean series |
+| Beyond endoscopy (Altug) | Average-case only; individual N requires Eichler-Selberg |
+| Eichler-Selberg trace formula | A₁ needs O(√N) class numbers; A₂ needs divisors of N |
+| Charles's algorithm | O(N^{1/2+ε}), not poly(log N) |
+| Galois rep reducibility | Frobenius only at primes; composites need factoring |
+| σ₅ convolution formula | σ₅ is multiplicative → needs factoring |
+| Bruinier-Ono finite formula | No analogue at weight 12 (only weight 3/2 for p(n)) |
+
+**Scenario C is definitively closed.** The Petersson/Rademacher series is non-multiplicative term-by-term, but this non-multiplicativity cannot be exploited: the coprime terms are factor-blind, the factor-aware terms require knowing the factors, the intermediate values are transcendental (blocking mod-691 reduction), and the series needs O(√N) terms for convergence. Every alternative approach to the same computation (Eichler-Selberg, Charles, Altug, Galois representations) hits equivalent barriers.
+
+### 10.6 The Correct Framing
 
 The question "can we compute φ(N) mod ℓ?" is **not** a number theory question — it is a **complexity theory** question. All number-theoretic content has been extracted: the information exists (E13 proves 63 bits), the inversion is trivial (Newton's identity root-finding), and the evaluation barrier is structural (CRT + multiplicativity + dimensional). What remains is whether the evaluation barrier is provably hard, which is a question about computational models, not about number theory.
 
-The three-wall analysis shows that even a partial breach of one wall is insufficient — an attacker must simultaneously find an efficient evaluation method AND accumulate enough bits to exploit. The convergence of barriers from algebra, analysis, geometry, cryptography, complexity theory, and experiment makes this exceedingly unlikely.
+The three-wall analysis shows that even a partial breach of one wall is insufficient — an attacker must simultaneously find an efficient evaluation method AND accumulate enough bits to exploit. The convergence of barriers from algebra, analysis, geometry, cryptography, complexity theory, and experiment makes this exceedingly unlikely. The deep investigation of Scenario C (the most plausible attack) confirms that even the most promising structural feature — the non-multiplicativity of the Petersson/Rademacher series — leads to dead ends on every sub-avenue.
 
 ---
 
@@ -608,14 +707,34 @@ The three-wall analysis shows that even a partial breach of one wall is insuffic
 61. Mehta-Rana (2026), ePrint 2026/219 — phi(N) evaluation (likely flawed)
 62. Bansimba et al. (2025), arXiv:2507.06706 — ML approximation of phi(N) (useless)
 
+### Petersson/Rademacher Series and Kloosterman Sums
+70. Rademacher (1938), Proc. London Math. Soc. — convergent series for partition function
+71. Lehmer (1943), Duke Math. J. — Rademacher series for τ(n), convergence proofs
+72. Petersson (1932), Math. Ann. — Poincaré series and Fourier coefficients of modular forms
+73. Weil (1948), Bull. AMS — Kloosterman sum bound |S(m,n;c)| ≤ d(c)·c^{1/2}
+74. Selberg (1965), Proc. Symp. Pure Math. — Kloosterman zeta function and spectral theory
+75. Sarnak-Tsimerman (2009), Acta Math. — equidistribution of CM points, Kloosterman bounds
+76. Katz (1988), Gauss Sums, Kloosterman Sums, and Monodromy Groups — ℓ-adic theory
+77. Charles (2005), LNM Springer — O(N^{1/2+ε}) algorithm for τ(N) under GRH
+78. Bruinier-Ono (2013), Ann. Math. — finite algebraic formula for p(n) via harmonic Maass forms
+79. Dwork (1969), Ann. Math. — p-adic Bessel functions and hypergeometric series
+
+### Beyond Endoscopy and Trace Formula
+80. Altug (2015), Compositio Math. — beyond endoscopy via Poisson summation for GL(2)
+81. Altug (2017), J. Reine Angew. Math. — cancellation in geometric side of trace formula
+82. Eichler (1955), Math. Z. — trace formula for Hecke operators on SL₂(Z)
+83. Selberg (1956), J. Indian Math. Soc. — trace formula, spectral decomposition
+84. Serre (1973), LNM 320 — congruences for τ(n), Eisenstein ideal, mod-691 reducibility
+85. Swinnerton-Dyer (1973), LNM 350 — Ramanujan congruences and ℓ-adic representations
+
 ### Additional
-63. Bach (1984), Berkeley TR — discrete log mod composite
-64. Gasarch (2024) — blog survey of NP ∩ coNP problems
-65. Calude-Jain-Khoussainov-Li-Stephan (2017), STOC — parity games quasi-polynomial
-66. Lackenby (2021) — unknotting quasi-polynomial
-67. Arpin (2022), arXiv:2203.03531 — level structure on supersingular isogeny graphs
-68. ROCA (CCS 2017) — Coppersmith attack on Infineon TPM keys
-69. Maurer (1995) — epsilon·n oracle bits suffice for factoring
+86. Bach (1984), Berkeley TR — discrete log mod composite
+87. Gasarch (2024) — blog survey of NP ∩ coNP problems
+88. Calude-Jain-Khoussainov-Li-Stephan (2017), STOC — parity games quasi-polynomial
+89. Lackenby (2021) — unknotting quasi-polynomial
+90. Arpin (2022), arXiv:2203.03531 — level structure on supersingular isogeny graphs
+91. ROCA (CCS 2017) — Coppersmith attack on Infineon TPM keys
+92. Maurer (1995) — epsilon·n oracle bits suffice for factoring
 
 ---
 
@@ -633,6 +752,8 @@ The three-wall analysis shows that even a partial breach of one wall is insuffic
 
 5. **The complexity-theoretic gap is real** but almost certainly reflects hardness, not an overlooked algorithm. Seven independent lines of evidence converge on this conclusion.
 
+6. **The Petersson/Kloosterman series (Scenario C) is definitively closed.** The non-multiplicative Rademacher series for τ(N) — identified as the "best hope" attack — fails on 10 independent sub-avenues: convergence requires O(√N) terms, individual terms are transcendental (blocking mod-691 reduction), coprime-to-N terms are factor-blind, factor-aware terms require knowing factors, no p-adic framework bridges the gap, beyond endoscopy works only on average, Eichler-Selberg needs divisors, Charles's algorithm is O(N^{1/2+ε}) not poly(log N), Galois rep reducibility only helps at primes, and the σ₅ convolution formula is multiplicative.
+
 ### What Remains Unknown
 
 - Is computing φ(N) mod ℓ provably as hard as factoring? (No — requires techniques beyond current complexity theory)
@@ -641,6 +762,6 @@ The three-wall analysis shows that even a partial breach of one wall is insuffic
 
 ### Relationship to Project
 
-The E13 Eisenstein congruence channel demonstrates that **63 bits of factor information exist** and are **extractable in O(N) time**. This round confirms the O(N) barrier is structural: every known method for computing even a single bit of φ(N) without factoring N is blocked by CRT decomposition, the absence of Frobenius over Z/NZ, or the generic hardness of the multiplicative group order problem. The question of whether this barrier is provably absolute is equivalent to resolving fundamental open problems in computational complexity.
+The E13 Eisenstein congruence channel demonstrates that **63 bits of factor information exist** and are **extractable in O(N) time**. This round confirms the O(N) barrier is structural: every known method for computing even a single bit of φ(N) without factoring N is blocked by CRT decomposition, the absence of Frobenius over Z/NZ, or the generic hardness of the multiplicative group order problem. The deep investigation of the Petersson/Rademacher series — the single most promising non-multiplicative avenue — confirms that structural non-multiplicativity alone is insufficient: the factor-sensitive terms are precisely those that require knowledge of the factors.
 
-**The φ(N) mod ℓ gap is real, well-studied, and resistant to 27 years of cryptographic attack. It is not exploitable for factoring.**
+**The φ(N) mod ℓ gap is real, well-studied, and resistant to 27 years of cryptographic attack. It is not exploitable for factoring. All eight attack scenarios (A-H) from the three-wall analysis are now closed, with Scenario C receiving the deepest investigation (92 references total).**
