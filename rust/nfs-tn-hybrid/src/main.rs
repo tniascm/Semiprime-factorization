@@ -162,7 +162,7 @@ struct BenchmarkReport {
 fn main() {
     let seed = 42u64;
     let bit_sizes: Vec<u32> = vec![32, 40, 48, 56, 64];
-    let count_per_size = 10;
+    let count_per_size = 5;
 
     println!("NFS-TN Hybrid Benchmark");
     println!("=======================");
@@ -286,17 +286,25 @@ fn main() {
         per_semiprime: all_results,
     };
 
-    let json_path = "../../data/nfs_tn_hybrid_benchmark.json";
+    // Output to project data directory
+    let json_path = std::path::PathBuf::from(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/nfs_tn_hybrid_benchmark.json")
+    );
+
     match serde_json::to_string_pretty(&report) {
         Ok(json) => {
-            if let Err(e) = std::fs::write(json_path, &json) {
-                eprintln!("Warning: could not write {}: {}", json_path, e);
-                // Try current directory
-                let alt_path = "nfs_tn_hybrid_benchmark.json";
-                std::fs::write(alt_path, &json).ok();
-                println!("Results written to {}", alt_path);
-            } else {
-                println!("Results written to {}", json_path);
+            // Ensure parent directory exists
+            if let Some(parent) = json_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            match std::fs::write(&json_path, &json) {
+                Ok(()) => println!("Results written to {}", json_path.display()),
+                Err(e) => {
+                    eprintln!("Warning: could not write {}: {}", json_path.display(), e);
+                    let alt_path = "nfs_tn_hybrid_benchmark.json";
+                    std::fs::write(alt_path, &json).ok();
+                    println!("Results written to {}", alt_path);
+                }
             }
         }
         Err(e) => eprintln!("JSON serialization error: {}", e),

@@ -1,0 +1,736 @@
+{
+  "experiment": "NFS-TN Hybrid vs Classical NFS",
+  "bit_sizes": [
+    32,
+    40,
+    48,
+    56,
+    64
+  ],
+  "count_per_size": 5,
+  "seed": 42,
+  "per_bit_size": [
+    {
+      "bits": 32,
+      "count": 5,
+      "nfs_tn": {
+        "success_rate": 0.0,
+        "mean_time_ms": 7.4517750000000005,
+        "median_time_ms": 6.849959
+      },
+      "classical_nfs": {
+        "success_rate": 0.0,
+        "mean_time_ms": 27.6574082,
+        "median_time_ms": 26.944833000000003
+      }
+    },
+    {
+      "bits": 40,
+      "count": 5,
+      "nfs_tn": {
+        "success_rate": 0.0,
+        "mean_time_ms": 110.3728748,
+        "median_time_ms": 110.460875
+      },
+      "classical_nfs": {
+        "success_rate": 0.0,
+        "mean_time_ms": 21.760908,
+        "median_time_ms": 21.642791000000003
+      }
+    },
+    {
+      "bits": 48,
+      "count": 5,
+      "nfs_tn": {
+        "success_rate": 0.0,
+        "mean_time_ms": 6.481741599999999,
+        "median_time_ms": 6.4527079999999994
+      },
+      "classical_nfs": {
+        "success_rate": 0.0,
+        "mean_time_ms": 378.4538918,
+        "median_time_ms": 343.84312500000004
+      }
+    },
+    {
+      "bits": 56,
+      "count": 5,
+      "nfs_tn": {
+        "success_rate": 0.0,
+        "mean_time_ms": 8.2293252,
+        "median_time_ms": 8.449917
+      },
+      "classical_nfs": {
+        "success_rate": 0.0,
+        "mean_time_ms": 2057.8321334,
+        "median_time_ms": 2294.157333
+      }
+    },
+    {
+      "bits": 64,
+      "count": 5,
+      "nfs_tn": {
+        "success_rate": 0.0,
+        "mean_time_ms": 11.1074916,
+        "median_time_ms": 11.613999999999999
+      },
+      "classical_nfs": {
+        "success_rate": 0.0,
+        "mean_time_ms": 16344.0548416,
+        "median_time_ms": 16145.374875000001
+      }
+    }
+  ],
+  "per_semiprime": [
+    {
+      "n": 1263474659,
+      "bits": 32,
+      "nfs_tn": {
+        "n": 1263474659,
+        "success": false,
+        "factor": 0,
+        "time_ms": 9.00225,
+        "poly_degree": 3,
+        "m": 188,
+        "num_vars": 18,
+        "bond_dim": 2,
+        "candidates_sampled": 99,
+        "valid_candidates": 63,
+        "rational_smooth": 12,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 13.844849729365036,
+        "mean_algebraic_norm_log2": 34.128609346855676
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 31.117083
+      }
+    },
+    {
+      "n": 3293579137,
+      "bits": 32,
+      "nfs_tn": {
+        "n": 3293579137,
+        "success": false,
+        "factor": 0,
+        "time_ms": 8.138875,
+        "poly_degree": 3,
+        "m": 239,
+        "num_vars": 18,
+        "bond_dim": 2,
+        "candidates_sampled": 78,
+        "valid_candidates": 48,
+        "rational_smooth": 9,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 14.37875379460658,
+        "mean_algebraic_norm_log2": 36.452370204230256
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 26.810208
+      }
+    },
+    {
+      "n": 3657286067,
+      "bits": 32,
+      "nfs_tn": {
+        "n": 3657286067,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.546291,
+        "poly_degree": 3,
+        "m": 245,
+        "num_vars": 18,
+        "bond_dim": 2,
+        "candidates_sampled": 86,
+        "valid_candidates": 54,
+        "rational_smooth": 12,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 14.218717616963428,
+        "mean_algebraic_norm_log2": 37.226730569811245
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 26.944833000000003
+      }
+    },
+    {
+      "n": 1901804291,
+      "bits": 32,
+      "nfs_tn": {
+        "n": 1901804291,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.849959,
+        "poly_degree": 3,
+        "m": 208,
+        "num_vars": 18,
+        "bond_dim": 2,
+        "candidates_sampled": 102,
+        "valid_candidates": 68,
+        "rational_smooth": 11,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 13.890291859741774,
+        "mean_algebraic_norm_log2": 35.880307292197
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 21.218833999999998
+      }
+    },
+    {
+      "n": 2786884381,
+      "bits": 32,
+      "nfs_tn": {
+        "n": 2786884381,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.7215,
+        "poly_degree": 3,
+        "m": 229,
+        "num_vars": 18,
+        "bond_dim": 2,
+        "candidates_sampled": 119,
+        "valid_candidates": 87,
+        "rational_smooth": 18,
+        "algebraic_smooth": 11,
+        "full_relations": 5,
+        "mean_rational_norm_log2": 11.744296363795039,
+        "mean_algebraic_norm_log2": 27.998395577447457
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 32.196083
+      }
+    },
+    {
+      "n": 334737189497,
+      "bits": 40,
+      "nfs_tn": {
+        "n": 334737189497,
+        "success": false,
+        "factor": 0,
+        "time_ms": 110.65383299999999,
+        "poly_degree": 3,
+        "m": 760,
+        "num_vars": 22,
+        "bond_dim": 2,
+        "candidates_sampled": 102,
+        "valid_candidates": 84,
+        "rational_smooth": 20,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 17.687198648330963,
+        "mean_algebraic_norm_log2": 45.25156229198202
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 21.642791000000003
+      }
+    },
+    {
+      "n": 487209814277,
+      "bits": 40,
+      "nfs_tn": {
+        "n": 487209814277,
+        "success": false,
+        "factor": 0,
+        "time_ms": 109.69783299999999,
+        "poly_degree": 3,
+        "m": 835,
+        "num_vars": 22,
+        "bond_dim": 2,
+        "candidates_sampled": 102,
+        "valid_candidates": 84,
+        "rational_smooth": 30,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 17.741609376776815,
+        "mean_algebraic_norm_log2": 45.81357830317182
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 21.766000000000002
+      }
+    },
+    {
+      "n": 399036397213,
+      "bits": 40,
+      "nfs_tn": {
+        "n": 399036397213,
+        "success": false,
+        "factor": 0,
+        "time_ms": 110.460875,
+        "poly_degree": 3,
+        "m": 794,
+        "num_vars": 22,
+        "bond_dim": 2,
+        "candidates_sampled": 108,
+        "valid_candidates": 70,
+        "rational_smooth": 17,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 17.9723486564452,
+        "mean_algebraic_norm_log2": 43.91249863796418
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 23.147583
+      }
+    },
+    {
+      "n": 545443598617,
+      "bits": 40,
+      "nfs_tn": {
+        "n": 545443598617,
+        "success": false,
+        "factor": 0,
+        "time_ms": 110.819333,
+        "poly_degree": 3,
+        "m": 859,
+        "num_vars": 22,
+        "bond_dim": 2,
+        "candidates_sampled": 102,
+        "valid_candidates": 84,
+        "rational_smooth": 20,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 17.86474513195651,
+        "mean_algebraic_norm_log2": 45.70110432040824
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 21.255458
+      }
+    },
+    {
+      "n": 801487239529,
+      "bits": 40,
+      "nfs_tn": {
+        "n": 801487239529,
+        "success": false,
+        "factor": 0,
+        "time_ms": 110.2325,
+        "poly_degree": 3,
+        "m": 946,
+        "num_vars": 22,
+        "bond_dim": 2,
+        "candidates_sampled": 102,
+        "valid_candidates": 84,
+        "rational_smooth": 18,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 18.00455279278288,
+        "mean_algebraic_norm_log2": 46.09600635901057
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 20.992708
+      }
+    },
+    {
+      "n": 195300037870513,
+      "bits": 48,
+      "nfs_tn": {
+        "n": 195300037870513,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.521083,
+        "poly_degree": 3,
+        "m": 3738,
+        "num_vars": 26,
+        "bond_dim": 2,
+        "candidates_sampled": 146,
+        "valid_candidates": 81,
+        "rational_smooth": 10,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 20.404453881813872,
+        "mean_algebraic_norm_log2": 53.08339503686596
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 443.458167
+      }
+    },
+    {
+      "n": 185219738991851,
+      "bits": 48,
+      "nfs_tn": {
+        "n": 185219738991851,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.435125,
+        "poly_degree": 3,
+        "m": 3689,
+        "num_vars": 26,
+        "bond_dim": 2,
+        "candidates_sampled": 147,
+        "valid_candidates": 66,
+        "rational_smooth": 10,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 20.420302443824532,
+        "mean_algebraic_norm_log2": 53.43604288466649
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 543.38775
+      }
+    },
+    {
+      "n": 147704485507297,
+      "bits": 48,
+      "nfs_tn": {
+        "n": 147704485507297,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.446791999999999,
+        "poly_degree": 3,
+        "m": 3486,
+        "num_vars": 26,
+        "bond_dim": 2,
+        "candidates_sampled": 149,
+        "valid_candidates": 65,
+        "rational_smooth": 9,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 21.467155044304487,
+        "mean_algebraic_norm_log2": 55.5335623255757
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 343.84312500000004
+      }
+    },
+    {
+      "n": 131347300633589,
+      "bits": 48,
+      "nfs_tn": {
+        "n": 131347300633589,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.553,
+        "poly_degree": 3,
+        "m": 3385,
+        "num_vars": 26,
+        "bond_dim": 2,
+        "candidates_sampled": 156,
+        "valid_candidates": 77,
+        "rational_smooth": 6,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 20.546888575429094,
+        "mean_algebraic_norm_log2": 52.57887585707741
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 266.999167
+      }
+    },
+    {
+      "n": 207583397970281,
+      "bits": 48,
+      "nfs_tn": {
+        "n": 207583397970281,
+        "success": false,
+        "factor": 0,
+        "time_ms": 6.4527079999999994,
+        "poly_degree": 3,
+        "m": 3795,
+        "num_vars": 26,
+        "bond_dim": 2,
+        "candidates_sampled": 178,
+        "valid_candidates": 125,
+        "rational_smooth": 18,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 20.65002054226368,
+        "mean_algebraic_norm_log2": 52.3598949298786
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 294.58125
+      }
+    },
+    {
+      "n": 31517483226887689,
+      "bits": 56,
+      "nfs_tn": {
+        "n": 31517483226887689,
+        "success": false,
+        "factor": 0,
+        "time_ms": 8.453334,
+        "poly_degree": 3,
+        "m": 13324,
+        "num_vars": 30,
+        "bond_dim": 2,
+        "candidates_sampled": 179,
+        "valid_candidates": 94,
+        "rational_smooth": 6,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 24.816682104622753,
+        "mean_algebraic_norm_log2": 62.18795908663923
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 2294.157333
+      }
+    },
+    {
+      "n": 32312127636232261,
+      "bits": 56,
+      "nfs_tn": {
+        "n": 32312127636232261,
+        "success": false,
+        "factor": 0,
+        "time_ms": 8.449917,
+        "poly_degree": 3,
+        "m": 13407,
+        "num_vars": 30,
+        "bond_dim": 2,
+        "candidates_sampled": 176,
+        "valid_candidates": 73,
+        "rational_smooth": 15,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 24.34637166415516,
+        "mean_algebraic_norm_log2": 61.738427514676516
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 1706.671083
+      }
+    },
+    {
+      "n": 48756013452816889,
+      "bits": 56,
+      "nfs_tn": {
+        "n": 48756013452816889,
+        "success": false,
+        "factor": 0,
+        "time_ms": 7.862582999999999,
+        "poly_degree": 3,
+        "m": 14859,
+        "num_vars": 30,
+        "bond_dim": 2,
+        "candidates_sampled": 160,
+        "valid_candidates": 64,
+        "rational_smooth": 10,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 24.157349531006016,
+        "mean_algebraic_norm_log2": 61.47485897067755
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 2332.719417
+      }
+    },
+    {
+      "n": 24687622545596833,
+      "bits": 56,
+      "nfs_tn": {
+        "n": 24687622545596833,
+        "success": false,
+        "factor": 0,
+        "time_ms": 8.455542,
+        "poly_degree": 3,
+        "m": 12534,
+        "num_vars": 30,
+        "bond_dim": 2,
+        "candidates_sampled": 168,
+        "valid_candidates": 44,
+        "rational_smooth": 8,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 25.32074555824997,
+        "mean_algebraic_norm_log2": 62.710734132987334
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 2453.367792
+      }
+    },
+    {
+      "n": 53982351356852657,
+      "bits": 56,
+      "nfs_tn": {
+        "n": 53982351356852657,
+        "success": false,
+        "factor": 0,
+        "time_ms": 7.92525,
+        "poly_degree": 3,
+        "m": 15242,
+        "num_vars": 30,
+        "bond_dim": 2,
+        "candidates_sampled": 147,
+        "valid_candidates": 74,
+        "rational_smooth": 10,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 25.27113623262354,
+        "mean_algebraic_norm_log2": 62.94954782363932
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 1502.245042
+      }
+    },
+    {
+      "n": 9660575693727386471,
+      "bits": 64,
+      "nfs_tn": {
+        "n": 9660575693727386471,
+        "success": false,
+        "factor": 0,
+        "time_ms": 9.876375,
+        "poly_degree": 3,
+        "m": 55750,
+        "num_vars": 34,
+        "bond_dim": 2,
+        "candidates_sampled": 229,
+        "valid_candidates": 140,
+        "rational_smooth": 5,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 28.408687024208955,
+        "mean_algebraic_norm_log2": 63.81983252918561
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 15576.667625
+      }
+    },
+    {
+      "n": 9103582955525843923,
+      "bits": 64,
+      "nfs_tn": {
+        "n": 9103582955525843923,
+        "success": false,
+        "factor": 0,
+        "time_ms": 12.405375,
+        "poly_degree": 3,
+        "m": 54929,
+        "num_vars": 34,
+        "bond_dim": 2,
+        "candidates_sampled": 223,
+        "valid_candidates": 58,
+        "rational_smooth": 5,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 29.481012216671203,
+        "mean_algebraic_norm_log2": 63.90865270013329
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 21666.349291
+      }
+    },
+    {
+      "n": 5603388553258785647,
+      "bits": 64,
+      "nfs_tn": {
+        "n": 5603388553258785647,
+        "success": false,
+        "factor": 0,
+        "time_ms": 11.613999999999999,
+        "poly_degree": 3,
+        "m": 48653,
+        "num_vars": 34,
+        "bond_dim": 2,
+        "candidates_sampled": 194,
+        "valid_candidates": 73,
+        "rational_smooth": 6,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 28.71773979174351,
+        "mean_algebraic_norm_log2": 63.90025787727283
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 16145.374875000001
+      }
+    },
+    {
+      "n": 12895211959231371521,
+      "bits": 64,
+      "nfs_tn": {
+        "n": 12895211959231371521,
+        "success": false,
+        "factor": 0,
+        "time_ms": 9.882458,
+        "poly_degree": 3,
+        "m": 59924,
+        "num_vars": 34,
+        "bond_dim": 2,
+        "candidates_sampled": 207,
+        "valid_candidates": 87,
+        "rational_smooth": 8,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 28.437974281208337,
+        "mean_algebraic_norm_log2": 63.572906771828904
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 10167.8635
+      }
+    },
+    {
+      "n": 9906107439026726129,
+      "bits": 64,
+      "nfs_tn": {
+        "n": 9906107439026726129,
+        "success": false,
+        "factor": 0,
+        "time_ms": 11.75925,
+        "poly_degree": 3,
+        "m": 56101,
+        "num_vars": 34,
+        "bond_dim": 2,
+        "candidates_sampled": 203,
+        "valid_candidates": 58,
+        "rational_smooth": 3,
+        "algebraic_smooth": 0,
+        "full_relations": 0,
+        "mean_rational_norm_log2": 29.47404847792912,
+        "mean_algebraic_norm_log2": 64.0
+      },
+      "classical_nfs": {
+        "success": false,
+        "factor": 0,
+        "time_ms": 18164.018917
+      }
+    }
+  ]
+}

@@ -86,9 +86,9 @@ impl NfsTnConfig {
             alpha_rational: 1.0,
             alpha_algebraic: 1.0,
             coprimality_penalty: 10.0,
-            bond_dim: 0, // auto
-            num_sweeps: 20,
-            num_samples: 500,
+            bond_dim: 2, // small for experiment speed
+            num_sweeps: 10, // MCMC annealing rounds
+            num_samples: 2000, // target number of unique configs
             factor_base_bound: fb_bound,
             rational_smooth_bound: fb_bound,
             algebraic_smooth_bound: fb_bound,

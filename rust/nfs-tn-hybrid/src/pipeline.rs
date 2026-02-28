@@ -11,15 +11,12 @@ use std::time::Instant;
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use rand::rngs::StdRng;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 
 use classical_nfs::polynomial::select_polynomial;
 use classical_nfs::sieve::{eval_homogeneous_abs, sieve_primes};
 
-use tnss_factoring::opes::{
-    beta_schedule_for_dimension, extract_best_configs, opes_sample_with_optimization, OpesConfig,
-};
-use tnss_factoring::ttn::{compute_paper_bond_dim, optimize_ttn_sweep, Ttn};
+use tnss_factoring::optimizer::CostHamiltonian;
 
 use crate::hamiltonian::{build_joint_hamiltonian, decode_ab};
 use crate::NfsTnConfig;
@@ -90,28 +87,22 @@ pub fn factor_nfs_tn(n: u64, config: &NfsTnConfig) -> NfsTnResult {
         10.0, // quadratization penalty
     );
 
-    // Step 3: Create and optimize TTN
+    // Step 3: Sample candidates using simulated annealing MCMC on the QUBO
+    // This is faster than TTN optimization for small variable counts and
+    // directly tests whether the NFS norm landscape yields smooth pairs.
     let mut rng = StdRng::seed_from_u64(config.seed);
-    let bond_dim = if config.bond_dim == 0 {
-        compute_paper_bond_dim(total_vars).max(2)
-    } else {
-        config.bond_dim
-    };
-    let mut ttn = Ttn::new_random(total_vars, bond_dim, &mut rng);
+    let bond_dim = config.bond_dim.max(2);
 
-    // Initial TTN optimization sweeps
-    optimize_ttn_sweep(&mut ttn, &hamiltonian, config.num_sweeps);
-
-    // Step 4: Sample candidates via OPES
-    let beta_schedule = beta_schedule_for_dimension(total_vars);
-    let opes_config = OpesConfig {
-        beta_schedule,
-        samples_per_temp: config.num_samples / 10,
-        sweeps_per_temp: 3,
-    };
-
-    let samples = opes_sample_with_optimization(&mut ttn, &hamiltonian, &opes_config, &mut rng);
-    let best_configs = extract_best_configs(&samples, config.num_samples);
+    let t_mcmc = Instant::now();
+    let best_configs = mcmc_sample_qubo(
+        &hamiltonian,
+        total_vars,
+        config.num_samples,
+        config.num_sweeps,
+        &mut rng,
+    );
+    eprintln!("    MCMC sample: {:.1}ms (vars={}, {} configs)",
+        t_mcmc.elapsed().as_secs_f64() * 1000.0, total_vars, best_configs.len());
 
     // Step 5: Decode candidates and check smoothness
     let rational_fb = sieve_primes(config.rational_smooth_bound);
@@ -335,6 +326,64 @@ fn gcd_u128(a: u128, b: u128) -> u128 {
     } else {
         gcd_u128(b, a % b)
     }
+}
+
+/// Simulated annealing MCMC sampler on the QUBO Hamiltonian.
+///
+/// Runs multiple independent chains at decreasing temperatures to find
+/// low-energy configurations (small NFS norms). Returns unique (config, energy)
+/// pairs sorted by energy.
+fn mcmc_sample_qubo(
+    hamiltonian: &CostHamiltonian,
+    num_vars: usize,
+    num_samples: usize,
+    num_rounds: usize,
+    rng: &mut StdRng,
+) -> Vec<(Vec<u8>, f64)> {
+    let mut all_configs: Vec<(Vec<u8>, f64)> = Vec::new();
+
+    // Temperature schedule for simulated annealing
+    let temps = [10.0, 5.0, 2.0, 1.0, 0.5, 0.1];
+
+    for _round in 0..num_rounds {
+        // Initialize random configuration
+        let mut current: Vec<u8> = (0..num_vars)
+            .map(|_| if rng.gen::<bool>() { 1 } else { 0 })
+            .collect();
+        let mut current_energy = hamiltonian.evaluate(&current);
+
+        for &temp in &temps {
+            let beta = 1.0 / temp;
+            let steps_per_temp = num_samples / (temps.len() * num_rounds).max(1);
+
+            for _ in 0..steps_per_temp.max(10) {
+                // Single-bit flip proposal
+                let flip_idx = rng.gen_range(0..num_vars);
+                current[flip_idx] ^= 1;
+                let new_energy = hamiltonian.evaluate(&current);
+
+                let delta_e = new_energy - current_energy;
+                let accept = if delta_e <= 0.0 {
+                    true
+                } else {
+                    rng.gen::<f64>() < (-beta * delta_e).exp()
+                };
+
+                if accept {
+                    current_energy = new_energy;
+                    all_configs.push((current.clone(), current_energy));
+                } else {
+                    current[flip_idx] ^= 1; // revert
+                }
+            }
+        }
+    }
+
+    // Sort by energy and deduplicate
+    all_configs.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    all_configs.dedup_by(|a, b| a.0 == b.0);
+    all_configs.truncate(num_samples);
+    all_configs
 }
 
 #[cfg(test)]
