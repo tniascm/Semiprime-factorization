@@ -2,12 +2,6 @@ use crate::arith::{find_polynomial_roots_mod_p, sieve_primes};
 use crate::types::{FactorBase, PolynomialPair};
 use rug::Integer;
 
-/// Evaluate polynomial with i64 coefficients at x mod p.
-/// Coefficients are [c0, c1, ..., cd] (low-degree first).
-fn eval_poly_mod_i64(coeffs: &[i64], x: u64, p: u64) -> u64 {
-    crate::arith::eval_poly_mod(coeffs, x, p)
-}
-
 /// Build the factor base: primes up to bound with roots of f(x) mod p.
 /// Only includes primes where f has at least one root mod p.
 pub fn build_factor_base(f_coeffs_i64: &[i64], bound: u64) -> FactorBase {
@@ -151,7 +145,7 @@ mod tests {
         assert!(fb.primes.contains(&5));
         for (i, p) in fb.primes.iter().enumerate() {
             for &r in &fb.algebraic_roots[i] {
-                let val = eval_poly_mod_i64(&[1, 0, 1], r, *p);
+                let val = crate::arith::eval_poly_mod(&[1, 0, 1], r, *p);
                 assert_eq!(val, 0, "Root {} of f mod {} should give 0", r, p);
             }
         }
