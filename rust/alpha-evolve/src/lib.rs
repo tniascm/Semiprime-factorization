@@ -14,6 +14,8 @@ pub mod symreg;
 
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use std::fmt;
 
 use crate::primitives::{
@@ -368,8 +370,8 @@ struct EvalState {
     found_factor: Option<BigUint>,
     /// The modulus (number to factor).
     n: BigUint,
-    /// RNG for random operations.
-    rng: rand::rngs::ThreadRng,
+    /// RNG for random operations (deterministic via ChaCha8).
+    rng: ChaCha8Rng,
     /// Memory slots for storing/recalling intermediate values.
     memory: [BigUint; 4],
     /// Dixon method accumulation state.
@@ -390,7 +392,7 @@ impl EvalState {
             max_ops: 1000,
             found_factor: None,
             n: n.clone(),
-            rng: rand::thread_rng(),
+            rng: ChaCha8Rng::seed_from_u64(0),
             memory: [
                 BigUint::zero(),
                 BigUint::zero(),
@@ -429,13 +431,20 @@ impl Program {
     /// Execute the program tree on the target number `n`.
     /// Returns a nontrivial factor if one is discovered, or None.
     /// Enforces a hard limit of 1000 operations to prevent infinite loops.
+    /// Uses default seed 0 for the internal RNG.
     pub fn evaluate(&self, n: &BigUint) -> Option<BigUint> {
+        self.evaluate_seeded(n, 0)
+    }
+
+    /// Execute the program tree with a specific RNG seed for reproducibility.
+    pub fn evaluate_seeded(&self, n: &BigUint, seed: u64) -> Option<BigUint> {
         let one = BigUint::one();
         if *n <= one {
             return None;
         }
 
         let mut eval = EvalState::new(n);
+        eval.rng = ChaCha8Rng::seed_from_u64(seed);
         execute_node(&self.root, &mut eval);
         eval.found_factor
     }
