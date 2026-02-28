@@ -11,6 +11,7 @@
 
 use num_bigint::BigUint;
 use num_traits::Zero;
+use rand::Rng;
 use std::time::Instant;
 
 use crate::novelty::BehaviorFingerprint;
@@ -52,19 +53,86 @@ pub struct MultiObjectiveFitness {
 /// Generate a ladder of test semiprimes.
 ///
 /// For each bit size in `bit_sizes`, generates `count_per_size` semiprimes
-/// using `factoring_core::generate_rsa_target`.
-pub fn semiprime_ladder(bit_sizes: &[u32], count_per_size: usize) -> Vec<(BigUint, u32)> {
-    let mut rng = rand::thread_rng();
+/// using `factoring_core::generate_rsa_target`. The RNG is caller-supplied
+/// for reproducibility.
+pub fn semiprime_ladder(bit_sizes: &[u32], count_per_size: usize, rng: &mut impl Rng) -> Vec<(BigUint, u32)> {
     let mut ladder: Vec<(BigUint, u32)> = Vec::with_capacity(bit_sizes.len() * count_per_size);
 
     for &bits in bit_sizes {
         for _ in 0..count_per_size {
-            let target = generate_rsa_target(bits, &mut rng);
+            let target = generate_rsa_target(bits, rng);
             ladder.push((target.n, bits));
         }
     }
 
     ladder
+}
+
+/// Evaluate a program's fitness against a pre-generated test suite.
+///
+/// This enables reproducible evaluation: generate the suite once from a seeded
+/// RNG, then evaluate ALL individuals against the SAME suite.
+///
+/// Uses cascaded logic: if fewer than `min_successes_to_advance` are achieved
+/// at a given bit size, evaluation stops early.
+pub fn evaluate_fitness_on_suite(program: &Program, suite: &[(BigUint, u32)], timeout_ms: u128) -> FitnessResult {
+    let mut success_count: u32 = 0;
+    let mut total_attempts: u32 = 0;
+    let mut max_bits_factored: u32 = 0;
+    let mut total_time_ms: u64 = 0;
+    let mut score: f64 = 0.0;
+
+    for (n, bits) in suite {
+        total_attempts += 1;
+
+        let program_clone = program.clone();
+        let n_clone = n.clone();
+        let bits_val = *bits;
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let start = Instant::now();
+            let factor = program_clone.evaluate(&n_clone);
+            let elapsed = start.elapsed();
+            (factor, elapsed)
+        }));
+
+        match result {
+            Ok((maybe_factor, elapsed)) => {
+                let elapsed_ms = elapsed.as_millis();
+                total_time_ms += elapsed_ms as u64;
+
+                if elapsed_ms > timeout_ms {
+                    continue;
+                }
+
+                if let Some(ref factor) = maybe_factor {
+                    if !factor.is_zero()
+                        && *factor > BigUint::from(1u32)
+                        && *factor < n_clone
+                        && (&n_clone % factor).is_zero()
+                    {
+                        success_count += 1;
+                        if bits_val > max_bits_factored {
+                            max_bits_factored = bits_val;
+                        }
+                        let time_factor = 100.0 / (elapsed_ms.max(1) as f64);
+                        score += bits_val as f64 * time_factor;
+                    }
+                }
+            }
+            Err(_) => {
+                continue;
+            }
+        }
+    }
+
+    FitnessResult {
+        success_count,
+        total_attempts,
+        max_bits_factored,
+        total_time_ms,
+        score,
+    }
 }
 
 /// Evaluate a program's fitness against the standard semiprime ladder.
@@ -78,12 +146,12 @@ pub fn semiprime_ladder(bit_sizes: &[u32], count_per_size: usize) -> Vec<(BigUin
 /// NOTE: The cascaded version (`evaluate_fitness_cascaded`) is preferred for
 /// production use as it avoids wasting compute on programs that cannot factor
 /// even small semiprimes.
-pub fn evaluate_fitness(program: &Program) -> FitnessResult {
+pub fn evaluate_fitness(program: &Program, rng: &mut impl Rng) -> FitnessResult {
     let bit_sizes: Vec<u32> = vec![16, 20, 24, 28, 32];
     let count_per_size: usize = 3;
     let timeout_ms: u128 = 100;
 
-    let ladder = semiprime_ladder(&bit_sizes, count_per_size);
+    let ladder = semiprime_ladder(&bit_sizes, count_per_size, rng);
 
     let mut success_count: u32 = 0;
     let mut total_attempts: u32 = 0;
@@ -159,7 +227,7 @@ struct CascadeLevel {
 /// Programs must pass easier levels before being tested on harder ones.
 /// This avoids wasting compute on programs that cannot factor small numbers.
 /// Levels proceed from 16-bit up to 36-bit semiprimes.
-pub fn evaluate_fitness_cascaded(program: &Program) -> FitnessResult {
+pub fn evaluate_fitness_cascaded(program: &Program, rng: &mut impl Rng) -> FitnessResult {
     let levels: Vec<CascadeLevel> = vec![
         CascadeLevel { bit_size: 16, count: 5, min_successes_to_advance: 2 },
         CascadeLevel { bit_size: 20, count: 4, min_successes_to_advance: 1 },
@@ -176,14 +244,12 @@ pub fn evaluate_fitness_cascaded(program: &Program) -> FitnessResult {
     let mut total_time_ms: u64 = 0;
     let mut score: f64 = 0.0;
 
-    let mut rng = rand::thread_rng();
-
     for level in &levels {
         let mut level_successes = 0u32;
 
         for _ in 0..level.count {
             total_attempts += 1;
-            let target = generate_rsa_target(level.bit_size, &mut rng);
+            let target = generate_rsa_target(level.bit_size, rng);
 
             let program_clone = program.clone();
             let n_clone = target.n.clone();
@@ -307,9 +373,7 @@ fn evaluate_single(program: &Program, n: &BigUint) -> (bool, u128) {
 /// Uses cascaded evaluation with 10 levels (16-bit through 64-bit).
 /// Returns a `MultiObjectiveFitness` with all component scores and a
 /// behavioral fingerprint for novelty archive integration.
-pub fn evaluate_fitness_multiobjective(program: &Program) -> MultiObjectiveFitness {
-    let mut rng = rand::thread_rng();
-
+pub fn evaluate_fitness_multiobjective(program: &Program, rng: &mut impl Rng) -> MultiObjectiveFitness {
     // Total test cases across all levels for fingerprint
     let total_tests: usize = MULTI_OBJECTIVE_LEVELS.iter().map(|(_, c, _)| *c as usize).sum();
     let mut fingerprint = BehaviorFingerprint::new(total_tests);
@@ -326,7 +390,7 @@ pub fn evaluate_fitness_multiobjective(program: &Program) -> MultiObjectiveFitne
 
         for _ in 0..count {
             total_attempts += 1;
-            let target = generate_rsa_target(bit_size, &mut rng);
+            let target = generate_rsa_target(bit_size, rng);
             let (success, elapsed_ms) = evaluate_single(program, &target.n);
 
             total_time_ms += elapsed_ms as u64;
@@ -400,7 +464,8 @@ mod tests {
 
     #[test]
     fn test_semiprime_ladder_sizes() {
-        let ladder = semiprime_ladder(&[16, 20], 2);
+        let mut rng = rand::thread_rng();
+        let ladder = semiprime_ladder(&[16, 20], 2, &mut rng);
         assert_eq!(ladder.len(), 4);
         // Check that each entry has the expected bit size label
         assert_eq!(ladder[0].1, 16);
@@ -412,7 +477,8 @@ mod tests {
     #[test]
     fn test_fitness_evaluation() {
         let program = seed_pollard_rho();
-        let result = evaluate_fitness(&program);
+        let mut rng = rand::thread_rng();
+        let result = evaluate_fitness(&program, &mut rng);
         // The rho seed should manage to factor at least some 16-bit semiprimes
         assert!(
             result.score > 0.0,
@@ -428,7 +494,8 @@ mod tests {
     #[test]
     fn test_cascaded_fitness_evaluation() {
         let program = seed_pollard_rho();
-        let result = evaluate_fitness_cascaded(&program);
+        let mut rng = rand::thread_rng();
+        let result = evaluate_fitness_cascaded(&program, &mut rng);
         assert!(
             result.score > 0.0,
             "Pollard rho seed should have positive cascaded fitness, got score={}",
@@ -448,7 +515,8 @@ mod tests {
     #[test]
     fn test_multiobjective_fitness() {
         let program = seed_pollard_rho();
-        let result = evaluate_fitness_multiobjective(&program);
+        let mut rng = rand::thread_rng();
+        let result = evaluate_fitness_multiobjective(&program, &mut rng);
 
         assert!(
             result.base.success_count > 0,
@@ -480,7 +548,8 @@ mod tests {
             .map(|(_, c, _)| *c as usize)
             .sum();
         let program = seed_pollard_rho();
-        let result = evaluate_fitness_multiobjective(&program);
+        let mut rng = rand::thread_rng();
+        let result = evaluate_fitness_multiobjective(&program, &mut rng);
         assert_eq!(
             result.fingerprint.bits.len(),
             total_tests,
@@ -491,7 +560,8 @@ mod tests {
     #[test]
     fn test_finalize_score() {
         let program = seed_pollard_rho();
-        let mut result = evaluate_fitness_multiobjective(&program);
+        let mut rng = rand::thread_rng();
+        let mut result = evaluate_fitness_multiobjective(&program, &mut rng);
         finalize_score(&mut result, 0.5);
         assert!(
             result.novelty_score > 0.0,
@@ -501,5 +571,18 @@ mod tests {
             result.combined_score > 0.0,
             "Combined score should be positive after finalize"
         );
+    }
+
+    #[test]
+    fn test_evaluate_fitness_on_suite() {
+        let program = seed_pollard_rho();
+        let mut rng = rand::thread_rng();
+        let suite = semiprime_ladder(&[16, 20], 3, &mut rng);
+        let result = evaluate_fitness_on_suite(&program, &suite, 100);
+        assert!(
+            result.score > 0.0,
+            "Pollard rho should score positively on suite"
+        );
+        assert_eq!(result.total_attempts, 6);
     }
 }
