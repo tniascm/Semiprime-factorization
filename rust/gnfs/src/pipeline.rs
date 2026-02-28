@@ -85,7 +85,9 @@ pub fn factor_gnfs(
         params.lim0
     ));
 
-    let target_rels = fb.primes.len() * 2 + 20;
+    // Need more relations than matrix columns: 2 sign + rat_fb + alg_fb + 30 quad chars
+    let n_quad_chars = 30usize;
+    let target_rels = fb.primes.len() * 2 + 2 + n_quad_chars + 20;
     let mut all_hits = Vec::new();
     let mut sieve_a = params.sieve_a;
     let mut max_b = params.max_b;
