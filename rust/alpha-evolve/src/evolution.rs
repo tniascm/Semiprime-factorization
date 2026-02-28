@@ -669,12 +669,13 @@ impl Population {
     /// Evolve one generation with Rayon-parallel fitness evaluation.
     ///
     /// Creates offspring sequentially (RNG-dependent), but evaluates fitness
-    /// of all offspring in parallel using Rayon's par_iter.
+    /// of all offspring in parallel using the provided Rayon thread pool.
     pub fn evolve_generation_parallel(
         &mut self,
         rng: &mut impl Rng,
         fitness_fn: &(dyn Fn(&Program) -> f64 + Sync),
         cache: &mut FitnessCache,
+        pool: &rayon::ThreadPool,
     ) {
         let pop_size = self.individuals.len();
         if pop_size == 0 {
@@ -683,16 +684,18 @@ impl Population {
 
         // Step 1: Evaluate fitness (check cache first, then parallel for uncached)
         let programs: Vec<Program> = self.individuals.iter().map(|i| i.program.clone()).collect();
-        let scores: Vec<f64> = programs
-            .par_iter()
-            .map(|program| {
-                if let Some(cached) = cache.get(program) {
-                    cached
-                } else {
-                    fitness_fn(program)
-                }
-            })
-            .collect();
+        let scores: Vec<f64> = pool.install(|| {
+            programs
+                .par_iter()
+                .map(|program| {
+                    if let Some(cached) = cache.get(program) {
+                        cached
+                    } else {
+                        fitness_fn(program)
+                    }
+                })
+                .collect()
+        });
 
         for (individual, &score) in self.individuals.iter_mut().zip(scores.iter()) {
             individual.fitness = score;
@@ -731,16 +734,18 @@ impl Population {
         }
 
         // Parallel fitness evaluation of offspring
-        let offspring_scores: Vec<f64> = offspring_programs
-            .par_iter()
-            .map(|program| {
-                if let Some(cached) = cache.get(program) {
-                    cached
-                } else {
-                    fitness_fn(program)
-                }
-            })
-            .collect();
+        let offspring_scores: Vec<f64> = pool.install(|| {
+            offspring_programs
+                .par_iter()
+                .map(|program| {
+                    if let Some(cached) = cache.get(program) {
+                        cached
+                    } else {
+                        fitness_fn(program)
+                    }
+                })
+                .collect()
+        });
 
         let mut offspring: Vec<Individual> = offspring_programs
             .into_iter()
@@ -924,16 +929,17 @@ impl IslandModel {
 
     /// Evolve all islands with parallel fitness evaluation.
     ///
-    /// Same migration/culling logic as `evolve_generation`, but uses Rayon
-    /// for parallel fitness evaluation within each island.
+    /// Same migration/culling logic as `evolve_generation`, but uses the
+    /// provided Rayon thread pool for parallel fitness evaluation.
     pub fn evolve_generation_parallel(
         &mut self,
         rng: &mut impl Rng,
         fitness_fn: &(dyn Fn(&Program) -> f64 + Sync),
         cache: &mut FitnessCache,
+        pool: &rayon::ThreadPool,
     ) {
         for island in &mut self.islands {
-            island.evolve_generation_parallel(rng, fitness_fn, cache);
+            island.evolve_generation_parallel(rng, fitness_fn, cache, pool);
         }
 
         self.generation += 1;
