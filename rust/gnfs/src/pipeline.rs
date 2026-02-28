@@ -1,6 +1,7 @@
 use rug::Integer;
 use std::path::Path;
 
+use crate::arith::select_quad_char_primes;
 use crate::log::StageLogger;
 use crate::linalg::{build_matrix, find_dependencies};
 use crate::params::GnfsParams;
@@ -135,7 +136,11 @@ pub fn factor_gnfs(
     let mut la_log = StageLogger::new("linalg", output_dir);
     la_log.start(&serde_json::json!({"relations": all_hits.len(), "fb_size": fb.primes.len()}));
 
-    let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), fb.primes.len());
+    // Select quadratic character primes (~30) to ensure algebraic product is a square in O_K
+    let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, 30);
+    la_log.log(&format!("Quadratic characters: {} primes", quad_chars.primes.len()));
+
+    let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), fb.primes.len(), &quad_chars);
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
 

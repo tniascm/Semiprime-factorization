@@ -346,6 +346,57 @@ pub fn lagrange_interpolation_mod(
     result
 }
 
+/// Quadratic character primes for GNFS: ensures algebraic product is a square in O_K.
+/// Each (q, r) pair represents a prime q not in the factor base where f(r) ≡ 0 (mod q).
+/// The Legendre symbol ((a - b*r) / q) must be +1 for all relations in a dependency
+/// to guarantee the algebraic product has a square root in the number field.
+pub struct QuadCharSet {
+    pub primes: Vec<u64>,
+    pub roots: Vec<u64>,
+}
+
+/// Select quadratic character primes: primes q not in the factor base where f has a root.
+pub fn select_quad_char_primes(
+    f_coeffs: &[i64],
+    fb_primes: &[u64],
+    count: usize,
+) -> QuadCharSet {
+    use std::collections::HashSet;
+    let fb_set: HashSet<u64> = fb_primes.iter().cloned().collect();
+    let mut result = QuadCharSet {
+        primes: Vec::with_capacity(count),
+        roots: Vec::with_capacity(count),
+    };
+
+    for &p in &sieve_primes(1_000_000) {
+        if p < 3 || fb_set.contains(&p) {
+            continue;
+        }
+        let roots = find_polynomial_roots_mod_p(f_coeffs, p);
+        if !roots.is_empty() {
+            result.primes.push(p);
+            result.roots.push(roots[0]);
+            if result.primes.len() >= count {
+                break;
+            }
+        }
+    }
+    result
+}
+
+/// Compute the Legendre symbol (a/p) for a ≥ 0, p odd prime.
+/// Returns 1 if a is a QR mod p, p-1 (i.e. -1 mod p) if QNR, 0 if p | a.
+pub fn legendre_symbol(a: u64, p: u64) -> u64 {
+    if a % p == 0 {
+        return 0;
+    }
+    let a_int = Integer::from(a);
+    let p_int = Integer::from(p);
+    let exp = Integer::from((p - 1) / 2);
+    let result = a_int.pow_mod(&exp, &p_int).unwrap();
+    result.to_u64().unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

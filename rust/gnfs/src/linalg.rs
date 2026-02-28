@@ -1,3 +1,4 @@
+use crate::arith::QuadCharSet;
 use crate::types::BitRow;
 
 /// Build the GF(2) exponent matrix from relations.
@@ -7,12 +8,18 @@ use crate::types::BitRow;
 /// - Columns 1..1+rat_fb_size: rational factor base exponents mod 2
 /// - Column 1+rat_fb_size: sign bit (algebraic side)
 /// - Columns 2+rat_fb_size..2+rat_fb_size+alg_fb_size: algebraic exponents mod 2
+/// - Columns 2+rat_fb_size+alg_fb_size..: quadratic character Legendre symbols
+///
+/// The quadratic characters ensure that the algebraic product ∏(a_i - b_i α)
+/// is a perfect square in O_K (not just that its norm is a square in Z).
 pub fn build_matrix(
     relations: &[crate::types::Relation],
     rat_fb_size: usize,
     alg_fb_size: usize,
+    quad_chars: &QuadCharSet,
 ) -> (Vec<BitRow>, usize) {
-    let ncols = 2 + rat_fb_size + alg_fb_size;
+    let n_qc = quad_chars.primes.len();
+    let ncols = 2 + rat_fb_size + alg_fb_size + n_qc;
     let mut rows = Vec::with_capacity(relations.len());
 
     for rel in relations {
@@ -35,6 +42,20 @@ pub fn build_matrix(
         for &(idx, exp) in &rel.algebraic_factors {
             if exp % 2 == 1 {
                 row.set(2 + rat_fb_size + idx as usize);
+            }
+        }
+
+        // Quadratic characters: Legendre symbol ((a - b*r) / q)
+        for (i, (&q, &r)) in quad_chars.primes.iter().zip(quad_chars.roots.iter()).enumerate() {
+            let q_i = q as i128;
+            let val = (rel.a as i128 - rel.b as i128 * r as i128).rem_euclid(q_i) as u64;
+            if val == 0 {
+                continue; // q divides (a - b*r), treat as +1
+            }
+            let ls = crate::arith::legendre_symbol(val, q);
+            if ls == q - 1 {
+                // Legendre symbol is -1 → set bit (odd in GF(2))
+                row.set(2 + rat_fb_size + alg_fb_size + i);
             }
         }
 

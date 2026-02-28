@@ -402,6 +402,7 @@ mod tests {
 
     #[test]
     fn test_full_factor_extraction_small() {
+        use crate::arith::select_quad_char_primes;
         use crate::polyselect::select_base_m;
         use crate::sieve::{build_factor_base, line_sieve, poly_coeffs_to_i64};
         use crate::relation::collect_smooth_relations;
@@ -421,7 +422,8 @@ mod tests {
             return;
         }
 
-        let (matrix, ncols) = build_matrix(&rels, fb.primes.len(), fb.primes.len());
+        let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, 30);
+        let (matrix, ncols) = build_matrix(&rels, fb.primes.len(), fb.primes.len(), &quad_chars);
         let deps = find_dependencies(&matrix, ncols);
 
         if deps.is_empty() {
