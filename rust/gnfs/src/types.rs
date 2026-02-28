@@ -76,6 +76,20 @@ pub struct FactorBase {
     pub log_p: Vec<u8>,
 }
 
+impl FactorBase {
+    /// Total number of (prime, root) pairs across all factor base primes.
+    /// Each pair corresponds to a degree-1 prime ideal above that prime.
+    pub fn algebraic_pair_count(&self) -> usize {
+        self.algebraic_roots.iter().map(|r| r.len()).sum()
+    }
+
+    /// Flat index offset for prime at index `prime_idx`.
+    /// The (prime_idx, root_idx) pair has flat index = pair_offset(prime_idx) + root_idx.
+    pub fn pair_offset(&self, prime_idx: usize) -> usize {
+        self.algebraic_roots[..prime_idx].iter().map(|r| r.len()).sum()
+    }
+}
+
 /// Sparse GF(2) matrix row, stored as a bitset.
 #[derive(Debug, Clone)]
 pub struct BitRow {

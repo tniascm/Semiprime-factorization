@@ -113,27 +113,25 @@ fn algebraic_square_roots(
     let mut ell = 0u64;
     let mut base_roots: Vec<u64> = Vec::new();
     let primes = sieve_primes(100_000);
+
     for &p in &primes {
-        if p < 3 {
-            continue;
-        }
+        if p < 3 { continue; }
         let roots = find_polynomial_roots_mod_p(&f_i64, p);
-        if roots.len() != d {
-            continue;
-        }
-        // Check that P(r) is a QR mod p for all roots
-        let all_qr = roots.iter().all(|&r| {
+        if roots.len() != d { continue; }
+        let all_nonzero_qr = roots.iter().all(|&r| {
             let r_int = Integer::from(r);
             let p_int = Integer::from(p);
             let val = eval_poly_int(product, &r_int, &p_int);
-            tonelli_shanks_int(&val, &p_int).is_some()
+            // P(r) must be nonzero mod ℓ for Hensel lifting of √P(r)
+            val != 0 && tonelli_shanks_int(&val, &p_int).is_some()
         });
-        if all_qr {
+        if all_nonzero_qr {
             ell = p;
             base_roots = roots;
             break;
         }
     }
+
     if ell == 0 {
         return vec![];
     }
@@ -144,7 +142,7 @@ fn algebraic_square_roots(
     // This is conservative but ensures correctness.
     let max_p = product.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
     let max_f = f_coeffs.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
-    let p_sqrt = Integer::from(max_p.sqrt_ref()) + 1;
+    let p_sqrt: Integer = Integer::from(max_p.sqrt_ref()) + 1;
     let df = Integer::from(&max_f * d as u64);
     let mut bound = p_sqrt;
     for _ in 0..d {
@@ -169,7 +167,7 @@ fn algebraic_square_roots(
 
     // Step 4: Hensel lift until modulus > target bound
     let max_lift_steps = 50;
-    for _step in 0..max_lift_steps {
+    for _ in 0..max_lift_steps {
         if modulus > target {
             break;
         }
@@ -214,6 +212,16 @@ fn algebraic_square_roots(
         modulus = new_mod;
     }
 
+    // Verify Hensel lifting correctness: s_i² ≡ P(r_i) mod ℓ^k
+    for i in 0..d {
+        let p_val = eval_poly_int(product, &roots[i], &modulus);
+        let s_sq = Integer::from(&sqrts[i] * &sqrts[i]) % &modulus;
+        let s_sq = if s_sq < 0 { s_sq + &modulus } else { s_sq };
+        if p_val != s_sq {
+            return vec![];
+        }
+    }
+
     // Step 5: Try all 2^d sign combinations with EXACT verification
     let half = Integer::from(&modulus / 2);
     let mut results = Vec::new();
@@ -256,13 +264,15 @@ fn algebraic_square_roots(
             continue;
         }
 
-        // γ is the correct algebraic square root! Evaluate γ(m) mod N
-        let mut y = Integer::from(0);
-        let mut m_pow = Integer::from(1);
+        // γ is the correct algebraic square root — evaluate γ(m) mod N
+        let mut y_exact = Integer::from(0);
+        let mut m_pow_exact = Integer::from(1);
         for c in &gamma_exact {
-            y = Integer::from(&y + Integer::from(c * &m_pow)) % n;
-            m_pow = Integer::from(&m_pow * m) % n;
+            y_exact += Integer::from(c * &m_pow_exact);
+            m_pow_exact *= m;
         }
+
+        let mut y = Integer::from(&y_exact % n);
         if y < 0 {
             y += n;
         }
@@ -330,7 +340,6 @@ pub fn extract_factor(
     }
 
     // Step 3: Compute algebraic square root(s) via Couveignes' method
-    // Tries all 2^d sign combinations and returns valid y values
     let y_values = algebraic_square_roots(&alg_product, f_coeffs, m, n);
 
     // Step 4: Try gcd(x ± y, N) for each algebraic square root

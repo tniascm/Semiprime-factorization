@@ -7,11 +7,12 @@ use crate::types::BitRow;
 /// - Column 0: sign bit (rational side)
 /// - Columns 1..1+rat_fb_size: rational factor base exponents mod 2
 /// - Column 1+rat_fb_size: sign bit (algebraic side)
-/// - Columns 2+rat_fb_size..2+rat_fb_size+alg_fb_size: algebraic exponents mod 2
+/// - Columns 2+rat_fb_size..2+rat_fb_size+alg_fb_size: algebraic factor base
+///   exponents mod 2 (one column per factor base prime)
 /// - Columns 2+rat_fb_size+alg_fb_size..: quadratic character Legendre symbols
 ///
-/// The quadratic characters ensure that the algebraic product ∏(a_i - b_i α)
-/// is a perfect square in O_K (not just that its norm is a square in Z).
+/// The quadratic characters handle unit/class group constraints needed for the
+/// algebraic product to be a perfect square in O_K.
 pub fn build_matrix(
     relations: &[crate::types::Relation],
     rat_fb_size: usize,

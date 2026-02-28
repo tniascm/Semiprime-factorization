@@ -80,12 +80,14 @@ pub fn factor_gnfs(
 
     let fb = build_factor_base(&f_i64, params.lim0.max(params.lim1));
     sieve_log.log(&format!(
-        "Factor base: {} primes (bound={})",
+        "Factor base: {} primes, {} (prime,root) pairs (bound={})",
         fb.primes.len(),
+        fb.algebraic_pair_count(),
         params.lim0
     ));
 
-    // Need more relations than matrix columns: 2 sign + rat_fb + alg_fb + 30 quad chars
+    // Need more relations than matrix columns:
+    // 2 sign bits + rat_fb primes + alg_fb primes + 30 quad chars
     let n_quad_chars = 30usize;
     let target_rels = fb.primes.len() * 2 + 2 + n_quad_chars + 20;
     let mut all_hits = Vec::new();
