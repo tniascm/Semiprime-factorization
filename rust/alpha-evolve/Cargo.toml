@@ -17,3 +17,5 @@ ecm = { path = "../ecm" }
 lattice-reduction = { path = "../lattice-reduction" }
 smooth-pilatte = { path = "../smooth-pilatte" }
 cf-factor-ms = { path = "../cf-factor-ms" }
+rand_chacha = { workspace = true }
+clap = { workspace = true }

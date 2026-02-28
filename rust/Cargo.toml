@@ -39,3 +39,10 @@ rand = "0.8"
 criterion = { version = "0.5", features = ["html_reports"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rand_chacha = "0.3"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
