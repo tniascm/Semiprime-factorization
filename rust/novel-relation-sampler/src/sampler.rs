@@ -1,5 +1,6 @@
-//! Uniform and MCMC samplers for NFS (a,b) pair generation.
+//! Uniform, MCMC, and lattice sieve samplers for NFS (a,b) pair generation.
 
+use std::collections::HashSet;
 use std::time::Instant;
 
 use num_traits::ToPrimitive;
@@ -7,7 +8,9 @@ use rand::rngs::StdRng;
 use rand::Rng;
 
 use classical_nfs::polynomial::NfsPolynomial;
-use classical_nfs::sieve::{eval_homogeneous_abs, sieve_primes};
+use classical_nfs::sieve::{
+    compute_polynomial_roots, eval_homogeneous_abs, line_sieve, sieve_primes, SieveConfig,
+};
 
 use crate::smoothness::{gcd, is_smooth};
 use crate::{MethodResult, SieveParams};
@@ -33,12 +36,15 @@ pub fn sample_uniform(
 ) -> MethodResult {
     let start = Instant::now();
     let factor_base = sieve_primes(params.fb_bound);
+    let mut seen: HashSet<(i64, i64)> = HashSet::new();
 
     let mut tested = 0usize;
     let mut valid = 0usize;
     let mut rat_smooth_count = 0usize;
     let mut alg_smooth_count = 0usize;
     let mut both_smooth_count = 0usize;
+    let mut unique_valid = 0usize;
+    let mut unique_both_smooth = 0usize;
     let mut sum_rat_log2 = 0.0f64;
     let mut sum_alg_log2 = 0.0f64;
     let mut sum_energy = 0.0f64;
@@ -58,6 +64,11 @@ pub fn sample_uniform(
         }
 
         valid += 1;
+        let is_new = seen.insert((a, b));
+        if is_new {
+            unique_valid += 1;
+        }
+
         sum_rat_log2 += (rat_norm as f64).log2();
         sum_alg_log2 += (alg_norm as f64).log2();
         sum_energy += energy;
@@ -72,6 +83,9 @@ pub fn sample_uniform(
         }
         if rs && als {
             both_smooth_count += 1;
+            if is_new {
+                unique_both_smooth += 1;
+            }
         }
     }
 
@@ -83,6 +97,8 @@ pub fn sample_uniform(
         rational_smooth: rat_smooth_count,
         algebraic_smooth: alg_smooth_count,
         both_smooth: both_smooth_count,
+        unique_valid,
+        unique_both_smooth,
         mean_rat_norm_log2: if valid > 0 { sum_rat_log2 / valid as f64 } else { 0.0 },
         mean_alg_norm_log2: if valid > 0 { sum_alg_log2 / valid as f64 } else { 0.0 },
         mean_energy: if valid > 0 { sum_energy / valid as f64 } else { 0.0 },
@@ -107,12 +123,15 @@ pub fn sample_mcmc(
     let start = Instant::now();
     let factor_base = sieve_primes(params.fb_bound);
     let steps_per_chain = num_candidates / num_chains.max(1);
+    let mut seen: HashSet<(i64, i64)> = HashSet::new();
 
     let mut tested = 0usize;
     let mut valid = 0usize;
     let mut rat_smooth_count = 0usize;
     let mut alg_smooth_count = 0usize;
     let mut both_smooth_count = 0usize;
+    let mut unique_valid = 0usize;
+    let mut unique_both_smooth = 0usize;
     let mut sum_rat_log2 = 0.0f64;
     let mut sum_alg_log2 = 0.0f64;
     let mut sum_energy = 0.0f64;
@@ -154,6 +173,11 @@ pub fn sample_mcmc(
             }
 
             valid += 1;
+            let is_new = seen.insert((cur_a, cur_b));
+            if is_new {
+                unique_valid += 1;
+            }
+
             sum_rat_log2 += (cur_rat as f64).log2();
             sum_alg_log2 += (cur_alg as f64).log2();
             sum_energy += cur_energy;
@@ -168,6 +192,9 @@ pub fn sample_mcmc(
             }
             if rs && als {
                 both_smooth_count += 1;
+                if is_new {
+                    unique_both_smooth += 1;
+                }
             }
         }
     }
@@ -180,6 +207,95 @@ pub fn sample_mcmc(
         rational_smooth: rat_smooth_count,
         algebraic_smooth: alg_smooth_count,
         both_smooth: both_smooth_count,
+        unique_valid,
+        unique_both_smooth,
+        mean_rat_norm_log2: if valid > 0 { sum_rat_log2 / valid as f64 } else { 0.0 },
+        mean_alg_norm_log2: if valid > 0 { sum_alg_log2 / valid as f64 } else { 0.0 },
+        mean_energy: if valid > 0 { sum_energy / valid as f64 } else { 0.0 },
+        time_ms: elapsed,
+    }
+}
+
+/// Run lattice sieve (the standard NFS baseline) over the sieve range.
+///
+/// Calls `line_sieve()` from classical-nfs to enumerate all (a,b) in the grid,
+/// accumulate log(p) for factor base primes dividing norms, then trial-divides
+/// sieve hits to confirm smoothness.
+pub fn sample_lattice_sieve(
+    poly: &NfsPolynomial,
+    m: u64,
+    params: &SieveParams,
+) -> MethodResult {
+    let start = Instant::now();
+    let factor_base = sieve_primes(params.fb_bound);
+
+    // Build SieveConfig from our SieveParams
+    let config = SieveConfig {
+        rational_bound: params.fb_bound,
+        algebraic_bound: params.fb_bound,
+        sieve_area: params.sieve_area,
+        max_b: params.max_b,
+        large_prime_multiplier: 1,
+        sieve_threshold: 0.0, // line_sieve computes dynamic thresholds
+    };
+
+    // Compute algebraic roots for sieving
+    let alg_roots = compute_polynomial_roots(poly, &factor_base);
+
+    // Run the line sieve
+    let hits = line_sieve(poly, &factor_base, &alg_roots, &config);
+
+    // Total grid size
+    let grid_size = (2 * params.sieve_area + 1) as usize * params.max_b as usize;
+
+    // Trial-divide each hit to confirm smoothness
+    let mut valid = 0usize;
+    let mut rat_smooth_count = 0usize;
+    let mut alg_smooth_count = 0usize;
+    let mut both_smooth_count = 0usize;
+    let mut sum_rat_log2 = 0.0f64;
+    let mut sum_alg_log2 = 0.0f64;
+    let mut sum_energy = 0.0f64;
+
+    for hit in &hits {
+        let rat_norm = (hit.a as i128 - (hit.b as i128) * (m as i128)).unsigned_abs() as u64;
+        let alg_norm_big = eval_homogeneous_abs(&poly.coefficients, hit.a, hit.b);
+        let alg_norm = alg_norm_big.to_u64().unwrap_or(u64::MAX);
+
+        if rat_norm == 0 || alg_norm == 0 {
+            continue;
+        }
+
+        valid += 1;
+        sum_rat_log2 += (rat_norm as f64).log2();
+        sum_alg_log2 += (alg_norm as f64).log2();
+        let energy = (rat_norm.max(1) as f64).ln() + (alg_norm.max(1) as f64).ln();
+        sum_energy += energy;
+
+        let rs = is_smooth(rat_norm, &factor_base);
+        let als = is_smooth(alg_norm, &factor_base);
+        if rs {
+            rat_smooth_count += 1;
+        }
+        if als {
+            alg_smooth_count += 1;
+        }
+        if rs && als {
+            both_smooth_count += 1;
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    MethodResult {
+        method: "lattice_sieve".to_string(),
+        candidates_tested: grid_size,
+        valid_candidates: valid,
+        rational_smooth: rat_smooth_count,
+        algebraic_smooth: alg_smooth_count,
+        both_smooth: both_smooth_count,
+        // Lattice sieve is exhaustive — no duplicates
+        unique_valid: valid,
+        unique_both_smooth: both_smooth_count,
         mean_rat_norm_log2: if valid > 0 { sum_rat_log2 / valid as f64 } else { 0.0 },
         mean_alg_norm_log2: if valid > 0 { sum_alg_log2 / valid as f64 } else { 0.0 },
         mean_energy: if valid > 0 { sum_energy / valid as f64 } else { 0.0 },
@@ -250,6 +366,8 @@ mod tests {
         let result = sample_uniform(&poly, 2, &params, 100, &mut rng);
         assert_eq!(result.candidates_tested, 100);
         assert!(result.valid_candidates > 0);
+        assert!(result.unique_valid <= result.valid_candidates);
+        assert!(result.unique_both_smooth <= result.both_smooth);
     }
 
     #[test]
@@ -259,5 +377,18 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let result = sample_mcmc(&poly, 2, &params, 100, 5, 10.0, 0.1, &mut rng);
         assert!(result.candidates_tested > 0);
+        assert!(result.unique_valid <= result.valid_candidates);
+        assert!(result.unique_both_smooth <= result.both_smooth);
+    }
+
+    #[test]
+    fn test_sample_lattice_sieve_runs() {
+        let poly = test_poly();
+        let params = SieveParams { sieve_area: 64, max_b: 16, fb_bound: 30, degree: 3 };
+        let result = sample_lattice_sieve(&poly, 2, &params);
+        assert!(result.candidates_tested > 0);
+        // Lattice sieve is exhaustive — unique counts equal total counts
+        assert_eq!(result.unique_valid, result.valid_candidates);
+        assert_eq!(result.unique_both_smooth, result.both_smooth);
     }
 }

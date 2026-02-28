@@ -69,6 +69,8 @@ pub struct MethodResult {
     pub rational_smooth: usize,
     pub algebraic_smooth: usize,
     pub both_smooth: usize,
+    pub unique_valid: usize,
+    pub unique_both_smooth: usize,
     pub mean_rat_norm_log2: f64,
     pub mean_alg_norm_log2: f64,
     pub mean_energy: f64,
@@ -83,6 +85,22 @@ impl MethodResult {
             self.both_smooth as f64 / self.valid_candidates as f64
         }
     }
+
+    pub fn unique_smooth_rate(&self) -> f64 {
+        if self.unique_valid == 0 {
+            0.0
+        } else {
+            self.unique_both_smooth as f64 / self.unique_valid as f64
+        }
+    }
+
+    pub fn relations_per_second(&self) -> f64 {
+        if self.time_ms <= 0.0 {
+            0.0
+        } else {
+            self.unique_both_smooth as f64 / (self.time_ms / 1000.0)
+        }
+    }
 }
 
 /// Per-semiprime comparison result.
@@ -94,5 +112,8 @@ pub struct ComparisonResult {
     pub m: u64,
     pub uniform: MethodResult,
     pub mcmc: MethodResult,
-    pub smooth_rate_ratio: f64,
+    pub lattice: MethodResult,
+    pub mcmc_vs_uniform_ratio: f64,
+    pub mcmc_vs_lattice_rate: f64,
+    pub mcmc_vs_lattice_throughput: f64,
 }

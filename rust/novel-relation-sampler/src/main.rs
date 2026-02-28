@@ -1,7 +1,7 @@
 //! E29 benchmark driver: novel relation collection via joint norm biasing.
 //!
-//! Compares MCMC sampling (biased toward small log-norm product) against
-//! uniform random sampling within the same NFS sieve range.
+//! Three-way comparison: uniform random vs MCMC (with dedup tracking) vs
+//! lattice sieve (standard NFS baseline) within the same NFS sieve range.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -16,7 +16,7 @@ use serde_json::json;
 use classical_nfs::polynomial::select_polynomial;
 
 use novel_relation_sampler::logger::{read_checkpoint, write_checkpoint, EventLogger};
-use novel_relation_sampler::sampler::{sample_mcmc, sample_uniform};
+use novel_relation_sampler::sampler::{sample_lattice_sieve, sample_mcmc, sample_uniform};
 use novel_relation_sampler::{ComparisonResult, E29Config, SieveParams};
 
 // --- Semiprime generation (from nfs-tn-hybrid) ---
@@ -100,17 +100,33 @@ fn mod_mul(a: u64, b: u64, m: u64) -> u64 {
 struct BitSizeSummary {
     bits: u32,
     count: usize,
+    // Smooth rates (total, including duplicates for MCMC)
     uniform_mean_smooth_rate: f64,
     mcmc_mean_smooth_rate: f64,
-    ratio: f64,
+    lattice_mean_smooth_rate: f64,
+    // Unique smooth rates (deduped)
+    mcmc_mean_unique_smooth_rate: f64,
+    // Ratios
+    mcmc_vs_uniform_ratio: f64,
+    mcmc_vs_lattice_ratio: f64,
+    // Throughput (unique relations per second)
+    uniform_mean_rels_per_sec: f64,
+    mcmc_mean_rels_per_sec: f64,
+    lattice_mean_rels_per_sec: f64,
+    // Timing
     uniform_mean_time_ms: f64,
     mcmc_mean_time_ms: f64,
-    uniform_mean_rat_log2: f64,
-    mcmc_mean_rat_log2: f64,
-    uniform_mean_alg_log2: f64,
-    mcmc_mean_alg_log2: f64,
+    lattice_mean_time_ms: f64,
+    // Dedup
+    mcmc_mean_duplicate_rate: f64,
+    // Counts
+    lattice_mean_sieve_hits: f64,
+    lattice_mean_both_smooth: f64,
+    mcmc_mean_unique_both_smooth: f64,
+    // Energy
     uniform_mean_energy: f64,
     mcmc_mean_energy: f64,
+    lattice_mean_energy: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,10 +156,10 @@ fn main() {
 
     logger.log("config", serde_json::to_value(&config).unwrap());
 
-    eprintln!("E29: Novel Relation Collection via Joint Norm Biasing");
-    eprintln!("=====================================================");
+    eprintln!("E29v2: Uniform vs MCMC vs Lattice Sieve (with deduplication)");
+    eprintln!("=============================================================");
     eprintln!(
-        "Bit sizes: {:?}, {} semiprimes each, {} candidates/method",
+        "Bit sizes: {:?}, {} semiprimes each, {} candidates/method (uniform+mcmc)",
         config.bit_sizes, config.semiprimes_per_size, config.candidates_per_method
     );
     if resume_from > 0 {
@@ -191,7 +207,7 @@ fn main() {
                 }),
             );
 
-            // Uniform sampling
+            // 1. Uniform sampling
             let mut rng_u = StdRng::seed_from_u64(config.seed + n);
             let uniform_result = sample_uniform(
                 &poly,
@@ -206,7 +222,7 @@ fn main() {
                 serde_json::to_value(&uniform_result).unwrap(),
             );
 
-            // MCMC sampling
+            // 2. MCMC sampling
             let mut rng_m = StdRng::seed_from_u64(config.seed + n + 1);
             let mcmc_result = sample_mcmc(
                 &poly,
@@ -224,10 +240,49 @@ fn main() {
                 serde_json::to_value(&mcmc_result).unwrap(),
             );
 
-            // Comparison
+            // 3. Lattice sieve (deterministic, no RNG)
+            let lattice_result = sample_lattice_sieve(&poly, m_u64, &sieve_params);
+
+            logger.log(
+                "method_result",
+                serde_json::to_value(&lattice_result).unwrap(),
+            );
+
+            // Comparison metrics
             let u_rate = uniform_result.smooth_rate();
             let m_rate = mcmc_result.smooth_rate();
-            let ratio = if u_rate > 0.0 { m_rate / u_rate } else if m_rate > 0.0 { f64::INFINITY } else { 1.0 };
+            let m_unique_rate = mcmc_result.unique_smooth_rate();
+            let l_rate = lattice_result.smooth_rate();
+
+            let mcmc_vs_uniform = if u_rate > 0.0 {
+                m_rate / u_rate
+            } else if m_rate > 0.0 {
+                f64::INFINITY
+            } else {
+                1.0
+            };
+
+            let mcmc_vs_lattice_rate = if l_rate > 0.0 {
+                m_unique_rate / l_rate
+            } else if m_unique_rate > 0.0 {
+                f64::INFINITY
+            } else {
+                1.0
+            };
+
+            let mcmc_rps = mcmc_result.relations_per_second();
+            let lattice_rps = lattice_result.relations_per_second();
+            let mcmc_vs_lattice_throughput = if lattice_rps > 0.0 {
+                mcmc_rps / lattice_rps
+            } else {
+                0.0
+            };
+
+            let mcmc_dup_rate = if mcmc_result.valid_candidates > 0 {
+                1.0 - (mcmc_result.unique_valid as f64 / mcmc_result.valid_candidates as f64)
+            } else {
+                0.0
+            };
 
             let comparison = ComparisonResult {
                 n,
@@ -236,7 +291,10 @@ fn main() {
                 m: m_u64,
                 uniform: uniform_result,
                 mcmc: mcmc_result,
-                smooth_rate_ratio: ratio,
+                lattice: lattice_result,
+                mcmc_vs_uniform_ratio: mcmc_vs_uniform,
+                mcmc_vs_lattice_rate,
+                mcmc_vs_lattice_throughput,
             };
 
             logger.log(
@@ -245,7 +303,15 @@ fn main() {
                     "n": n, "bits": bits,
                     "uniform_smooth_rate": u_rate,
                     "mcmc_smooth_rate": m_rate,
-                    "ratio": ratio,
+                    "mcmc_unique_smooth_rate": m_unique_rate,
+                    "lattice_smooth_rate": l_rate,
+                    "mcmc_vs_uniform": mcmc_vs_uniform,
+                    "mcmc_vs_lattice_rate": mcmc_vs_lattice_rate,
+                    "mcmc_vs_lattice_throughput": mcmc_vs_lattice_throughput,
+                    "mcmc_duplicate_rate": mcmc_dup_rate,
+                    "lattice_sieve_hits": comparison.lattice.valid_candidates,
+                    "lattice_both_smooth": comparison.lattice.both_smooth,
+                    "mcmc_unique_both_smooth": comparison.mcmc.unique_both_smooth,
                 }),
             );
 
@@ -262,18 +328,31 @@ fn main() {
             };
 
             eprintln!(
-                "  [{}/{}] N={} uniform={:.3}% mcmc={:.3}% ratio={:.2}x  {:.1}s  ETA {:.0}s",
+                "  [{}/{}] N={} uni={:.3}% mcmc={:.3}%(uniq={:.3}%,dup={:.0}%) lat={:.3}% mcmc/lat={:.2}x  {:.1}s  ETA {:.0}s",
                 global_index,
                 total_semiprimes,
                 n,
                 u_rate * 100.0,
                 m_rate * 100.0,
-                ratio,
+                m_unique_rate * 100.0,
+                mcmc_dup_rate * 100.0,
+                l_rate * 100.0,
+                mcmc_vs_lattice_rate,
                 sp_elapsed,
                 eta,
             );
 
-            // Sanity check
+            // Sanity checks
+            if comparison.lattice.valid_candidates == 0 {
+                logger.log(
+                    "error",
+                    json!({
+                        "message": "zero sieve hits from lattice sieve",
+                        "n": n, "bits": bits,
+                        "grid_size": comparison.lattice.candidates_tested,
+                    }),
+                );
+            }
             if comparison.uniform.valid_candidates == 0 || comparison.mcmc.valid_candidates == 0 {
                 logger.log(
                     "error",
@@ -301,32 +380,66 @@ fn main() {
 
             let u_smooth = mean(&|r| r.uniform.smooth_rate());
             let m_smooth = mean(&|r| r.mcmc.smooth_rate());
+            let m_unique = mean(&|r| r.mcmc.unique_smooth_rate());
+            let l_smooth = mean(&|r| r.lattice.smooth_rate());
 
             let summary = BitSizeSummary {
                 bits,
                 count,
                 uniform_mean_smooth_rate: u_smooth,
                 mcmc_mean_smooth_rate: m_smooth,
-                ratio: if u_smooth > 0.0 { m_smooth / u_smooth } else { 0.0 },
+                lattice_mean_smooth_rate: l_smooth,
+                mcmc_mean_unique_smooth_rate: m_unique,
+                mcmc_vs_uniform_ratio: if u_smooth > 0.0 { m_smooth / u_smooth } else { 0.0 },
+                mcmc_vs_lattice_ratio: if l_smooth > 0.0 { m_unique / l_smooth } else { 0.0 },
+                uniform_mean_rels_per_sec: mean(&|r| r.uniform.relations_per_second()),
+                mcmc_mean_rels_per_sec: mean(&|r| r.mcmc.relations_per_second()),
+                lattice_mean_rels_per_sec: mean(&|r| r.lattice.relations_per_second()),
                 uniform_mean_time_ms: mean(&|r| r.uniform.time_ms),
                 mcmc_mean_time_ms: mean(&|r| r.mcmc.time_ms),
-                uniform_mean_rat_log2: mean(&|r| r.uniform.mean_rat_norm_log2),
-                mcmc_mean_rat_log2: mean(&|r| r.mcmc.mean_rat_norm_log2),
-                uniform_mean_alg_log2: mean(&|r| r.uniform.mean_alg_norm_log2),
-                mcmc_mean_alg_log2: mean(&|r| r.mcmc.mean_alg_norm_log2),
+                lattice_mean_time_ms: mean(&|r| r.lattice.time_ms),
+                mcmc_mean_duplicate_rate: mean(&|r| {
+                    if r.mcmc.valid_candidates > 0 {
+                        1.0 - (r.mcmc.unique_valid as f64 / r.mcmc.valid_candidates as f64)
+                    } else {
+                        0.0
+                    }
+                }),
+                lattice_mean_sieve_hits: mean(&|r| r.lattice.valid_candidates as f64),
+                lattice_mean_both_smooth: mean(&|r| r.lattice.both_smooth as f64),
+                mcmc_mean_unique_both_smooth: mean(&|r| r.mcmc.unique_both_smooth as f64),
                 uniform_mean_energy: mean(&|r| r.uniform.mean_energy),
                 mcmc_mean_energy: mean(&|r| r.mcmc.mean_energy),
+                lattice_mean_energy: mean(&|r| r.lattice.mean_energy),
             };
 
             eprintln!(
-                "  Summary: uniform={:.4}% mcmc={:.4}% ratio={:.2}x",
+                "  Smooth rates: uni={:.4}% mcmc={:.4}%(uniq={:.4}%) lattice={:.4}%",
                 summary.uniform_mean_smooth_rate * 100.0,
                 summary.mcmc_mean_smooth_rate * 100.0,
-                summary.ratio,
+                summary.mcmc_mean_unique_smooth_rate * 100.0,
+                summary.lattice_mean_smooth_rate * 100.0,
             );
             eprintln!(
-                "  Energy: uniform={:.1} mcmc={:.1} (lower is better)",
-                summary.uniform_mean_energy, summary.mcmc_mean_energy,
+                "  MCMC dup={:.1}%  mcmc/lat rate={:.2}x  throughput={:.2}x",
+                summary.mcmc_mean_duplicate_rate * 100.0,
+                summary.mcmc_vs_lattice_ratio,
+                if summary.lattice_mean_rels_per_sec > 0.0 {
+                    summary.mcmc_mean_rels_per_sec / summary.lattice_mean_rels_per_sec
+                } else {
+                    0.0
+                },
+            );
+            eprintln!(
+                "  Counts: lattice_smooth={:.0} mcmc_uniq_smooth={:.0}",
+                summary.lattice_mean_both_smooth,
+                summary.mcmc_mean_unique_both_smooth,
+            );
+            eprintln!(
+                "  Energy: uni={:.1} mcmc={:.1} lat={:.1}",
+                summary.uniform_mean_energy,
+                summary.mcmc_mean_energy,
+                summary.lattice_mean_energy,
             );
             eprintln!();
 
@@ -338,7 +451,7 @@ fn main() {
 
     // Write summary JSON
     let report = E29Report {
-        experiment: "E29: Novel Relation Collection via Joint Norm Biasing".to_string(),
+        experiment: "E29v2: Uniform vs MCMC vs Lattice Sieve".to_string(),
         config,
         per_bit_size: per_bit_summaries,
         per_semiprime: all_results,
