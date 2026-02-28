@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["gnfs"]
 members = [
     "factoring-core",
     "classical-nfs",
@@ -27,6 +28,7 @@ members = [
     "cado-evolve",
     "path-sum-degree",
     "eigenvector-character",
+    "nfs-tn-hybrid",
 ]
 
 [workspace.dependencies]
