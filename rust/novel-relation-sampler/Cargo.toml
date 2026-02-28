@@ -6,6 +6,7 @@ description = "E29: Novel relation collection via joint norm biasing for NFS"
 
 [dependencies]
 classical-nfs = { path = "../classical-nfs" }
+factoring-core = { path = "../factoring-core" }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 num-integer = { workspace = true }
@@ -13,3 +14,7 @@ rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
+
+[[bin]]
+name = "e29-scaling"
+path = "src/scaling.rs"

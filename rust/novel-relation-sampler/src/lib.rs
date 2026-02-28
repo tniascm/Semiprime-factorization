@@ -54,8 +54,20 @@ impl SieveParams {
             Self { sieve_area: 1 << 15, max_b: 1 << 10, fb_bound: 1 << 11, degree: 3 }
         } else if bits <= 70 {
             Self { sieve_area: 1 << 16, max_b: 1 << 11, fb_bound: 1 << 12, degree: 3 }
+        } else if bits <= 80 {
+            Self { sieve_area: 1 << 17, max_b: 1 << 12, fb_bound: 1 << 13, degree: 3 }
+        } else if bits <= 96 {
+            Self { sieve_area: 1 << 18, max_b: 1 << 12, fb_bound: 1 << 14, degree: 3 }
+        } else if bits <= 112 {
+            Self { sieve_area: 1 << 19, max_b: 1 << 13, fb_bound: 1 << 15, degree: 4 }
+        } else if bits <= 128 {
+            Self { sieve_area: 1 << 20, max_b: 1 << 13, fb_bound: 1 << 16, degree: 4 }
+        } else if bits <= 160 {
+            Self { sieve_area: 1 << 20, max_b: 1 << 13, fb_bound: 1 << 17, degree: 5 }
+        } else if bits <= 200 {
+            Self { sieve_area: 1 << 21, max_b: 1 << 14, fb_bound: 1 << 18, degree: 5 }
         } else {
-            Self { sieve_area: 1 << 17, max_b: 1 << 12, fb_bound: 1 << 14, degree: 3 }
+            Self { sieve_area: 1 << 22, max_b: 1 << 14, fb_bound: 1 << 19, degree: 5 }
         }
     }
 }

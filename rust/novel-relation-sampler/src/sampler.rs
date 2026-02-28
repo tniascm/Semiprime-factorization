@@ -26,6 +26,27 @@ fn compute_energy(a: i64, b: i64, m: u64, poly: &NfsPolynomial) -> (u64, u64, f6
     (rat_norm, alg_norm, energy)
 }
 
+const LN_2: f64 = std::f64::consts::LN_2;
+
+/// Compute energy with accurate BigUint handling for large N.
+///
+/// Returns (rat_norm, alg_norm_option, energy):
+/// - alg_norm_option is None when the algebraic norm exceeds u64, meaning
+///   it's almost certainly not B-smooth for any reasonable factor base.
+/// - Energy is computed accurately even for huge norms using bits()*ln(2).
+pub fn compute_energy_big(a: i64, b: i64, m: u64, poly: &NfsPolynomial) -> (u64, Option<u64>, f64) {
+    let rat_norm = (a as i128 - (b as i128) * (m as i128)).unsigned_abs() as u64;
+    let alg_norm_big = eval_homogeneous_abs(&poly.coefficients, a, b);
+
+    let rat_energy = (rat_norm.max(1) as f64).ln();
+    let (alg_norm_opt, alg_energy) = match alg_norm_big.to_u64() {
+        Some(alg) => (Some(alg), (alg.max(1) as f64).ln()),
+        None => (None, alg_norm_big.bits() as f64 * LN_2),
+    };
+
+    (rat_norm, alg_norm_opt, rat_energy + alg_energy)
+}
+
 /// Run uniform random sampling over the sieve range.
 pub fn sample_uniform(
     poly: &NfsPolynomial,
@@ -296,6 +317,200 @@ pub fn sample_lattice_sieve(
         // Lattice sieve is exhaustive — no duplicates
         unique_valid: valid,
         unique_both_smooth: both_smooth_count,
+        mean_rat_norm_log2: if valid > 0 { sum_rat_log2 / valid as f64 } else { 0.0 },
+        mean_alg_norm_log2: if valid > 0 { sum_alg_log2 / valid as f64 } else { 0.0 },
+        mean_energy: if valid > 0 { sum_energy / valid as f64 } else { 0.0 },
+        time_ms: elapsed,
+    }
+}
+
+/// Run uniform random sampling with accurate BigUint energy.
+pub fn sample_uniform_big(
+    poly: &NfsPolynomial,
+    m: u64,
+    params: &SieveParams,
+    num_candidates: usize,
+    rng: &mut StdRng,
+) -> MethodResult {
+    let start = Instant::now();
+    let factor_base = sieve_primes(params.fb_bound);
+    let mut seen: HashSet<(i64, i64)> = HashSet::new();
+
+    let mut tested = 0usize;
+    let mut valid = 0usize;
+    let mut rat_smooth_count = 0usize;
+    let mut alg_smooth_count = 0usize;
+    let mut both_smooth_count = 0usize;
+    let mut unique_valid = 0usize;
+    let mut unique_both_smooth = 0usize;
+    let mut sum_rat_log2 = 0.0f64;
+    let mut sum_alg_log2 = 0.0f64;
+    let mut sum_energy = 0.0f64;
+
+    while tested < num_candidates {
+        let a = rng.gen_range(-params.sieve_area..=params.sieve_area);
+        let b = rng.gen_range(1..=params.max_b);
+        tested += 1;
+
+        if gcd(a.unsigned_abs(), b as u64) > 1 {
+            continue;
+        }
+
+        let (rat_norm, alg_norm_opt, energy) = compute_energy_big(a, b, m, poly);
+        if rat_norm == 0 {
+            continue;
+        }
+        match alg_norm_opt {
+            Some(0) | None => continue,
+            _ => {}
+        }
+        let alg_norm = alg_norm_opt.unwrap();
+
+        valid += 1;
+        let is_new = seen.insert((a, b));
+        if is_new {
+            unique_valid += 1;
+        }
+
+        sum_rat_log2 += (rat_norm as f64).log2();
+        sum_alg_log2 += (alg_norm as f64).log2();
+        sum_energy += energy;
+
+        let rs = is_smooth(rat_norm, &factor_base);
+        let als = is_smooth(alg_norm, &factor_base);
+        if rs {
+            rat_smooth_count += 1;
+        }
+        if als {
+            alg_smooth_count += 1;
+        }
+        if rs && als {
+            both_smooth_count += 1;
+            if is_new {
+                unique_both_smooth += 1;
+            }
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    MethodResult {
+        method: "uniform".to_string(),
+        candidates_tested: tested,
+        valid_candidates: valid,
+        rational_smooth: rat_smooth_count,
+        algebraic_smooth: alg_smooth_count,
+        both_smooth: both_smooth_count,
+        unique_valid,
+        unique_both_smooth,
+        mean_rat_norm_log2: if valid > 0 { sum_rat_log2 / valid as f64 } else { 0.0 },
+        mean_alg_norm_log2: if valid > 0 { sum_alg_log2 / valid as f64 } else { 0.0 },
+        mean_energy: if valid > 0 { sum_energy / valid as f64 } else { 0.0 },
+        time_ms: elapsed,
+    }
+}
+
+/// Run MCMC sampling with accurate BigUint energy for large N.
+pub fn sample_mcmc_big(
+    poly: &NfsPolynomial,
+    m: u64,
+    params: &SieveParams,
+    num_candidates: usize,
+    num_chains: usize,
+    t_start: f64,
+    t_end: f64,
+    rng: &mut StdRng,
+) -> MethodResult {
+    let start = Instant::now();
+    let factor_base = sieve_primes(params.fb_bound);
+    let steps_per_chain = num_candidates / num_chains.max(1);
+    let mut seen: HashSet<(i64, i64)> = HashSet::new();
+
+    let mut tested = 0usize;
+    let mut valid = 0usize;
+    let mut rat_smooth_count = 0usize;
+    let mut alg_smooth_count = 0usize;
+    let mut both_smooth_count = 0usize;
+    let mut unique_valid = 0usize;
+    let mut unique_both_smooth = 0usize;
+    let mut sum_rat_log2 = 0.0f64;
+    let mut sum_alg_log2 = 0.0f64;
+    let mut sum_energy = 0.0f64;
+
+    let log_ratio = (t_end / t_start).ln();
+
+    for _chain in 0..num_chains {
+        let mut cur_a = rng.gen_range(-params.sieve_area..=params.sieve_area);
+        let mut cur_b = rng.gen_range(1..=params.max_b);
+        let (mut cur_rat, mut cur_alg_opt, mut cur_energy) =
+            compute_energy_big(cur_a, cur_b, m, poly);
+
+        for step in 0..steps_per_chain {
+            let frac = step as f64 / (steps_per_chain.max(1) - 1).max(1) as f64;
+            let temp = t_start * (frac * log_ratio).exp();
+            let beta = 1.0 / temp;
+
+            let (prop_a, prop_b) = propose(cur_a, cur_b, params, rng);
+            let (prop_rat, prop_alg_opt, prop_energy) =
+                compute_energy_big(prop_a, prop_b, m, poly);
+            let delta_e = prop_energy - cur_energy;
+
+            let accept = delta_e <= 0.0 || rng.gen::<f64>() < (-beta * delta_e).exp();
+
+            if accept {
+                cur_a = prop_a;
+                cur_b = prop_b;
+                cur_rat = prop_rat;
+                cur_alg_opt = prop_alg_opt;
+                cur_energy = prop_energy;
+            }
+
+            tested += 1;
+            if gcd(cur_a.unsigned_abs(), cur_b as u64) > 1 || cur_rat == 0 {
+                continue;
+            }
+
+            let cur_alg = match cur_alg_opt {
+                Some(0) | None => continue,
+                Some(v) => v,
+            };
+
+            valid += 1;
+            let is_new = seen.insert((cur_a, cur_b));
+            if is_new {
+                unique_valid += 1;
+            }
+
+            sum_rat_log2 += (cur_rat as f64).log2();
+            sum_alg_log2 += (cur_alg as f64).log2();
+            sum_energy += cur_energy;
+
+            let rs = is_smooth(cur_rat, &factor_base);
+            let als = is_smooth(cur_alg, &factor_base);
+            if rs {
+                rat_smooth_count += 1;
+            }
+            if als {
+                alg_smooth_count += 1;
+            }
+            if rs && als {
+                both_smooth_count += 1;
+                if is_new {
+                    unique_both_smooth += 1;
+                }
+            }
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    MethodResult {
+        method: "mcmc".to_string(),
+        candidates_tested: tested,
+        valid_candidates: valid,
+        rational_smooth: rat_smooth_count,
+        algebraic_smooth: alg_smooth_count,
+        both_smooth: both_smooth_count,
+        unique_valid,
+        unique_both_smooth,
         mean_rat_norm_log2: if valid > 0 { sum_rat_log2 / valid as f64 } else { 0.0 },
         mean_alg_norm_log2: if valid > 0 { sum_alg_log2 / valid as f64 } else { 0.0 },
         mean_energy: if valid > 0 { sum_energy / valid as f64 } else { 0.0 },
