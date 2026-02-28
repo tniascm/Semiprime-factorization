@@ -1,0 +1,19 @@
+[package]
+name = "nfs-tn-hybrid"
+version = "0.1.0"
+edition = "2021"
+description = "NFS-Tensor Network hybrid: encode NFS norm minimization as QUBO for TTN optimization"
+
+[dependencies]
+classical-nfs = { path = "../classical-nfs" }
+tnss-factoring = { path = "../tnss-factoring" }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "nfs-tn-hybrid"
+path = "src/main.rs"
