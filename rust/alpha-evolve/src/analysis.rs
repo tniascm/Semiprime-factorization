@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use num_bigint::BigUint;
 use num_traits::Zero;
+use rand::Rng;
 use serde::Serialize;
 
 use crate::macros::MacroKind;
@@ -519,9 +520,8 @@ pub fn analyze_scaling_curves(
     programs: &[(Program, f64)],
     bit_sizes: &[u32],
     samples_per_size: usize,
+    rng: &mut impl Rng,
 ) -> Vec<ScalingCurve> {
-    let mut rng = rand::thread_rng();
-
     programs
         .iter()
         .take(10) // Top 10 programs
@@ -533,7 +533,7 @@ pub fn analyze_scaling_curves(
                 let mut total_time = 0u128;
 
                 for _ in 0..samples_per_size {
-                    let target = factoring_core::generate_rsa_target(bits, &mut rng);
+                    let target = factoring_core::generate_rsa_target(bits, rng);
                     let start = Instant::now();
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         program.evaluate(&target.n)
@@ -613,14 +613,14 @@ pub fn analyze_baseline_comparison(
     baselines: &[(&str, Program)],
     bit_sizes: &[u32],
     samples: usize,
+    rng: &mut impl Rng,
 ) -> Vec<BaselineComparison> {
-    let mut rng = rand::thread_rng();
     let mut results = Vec::new();
 
     for &bits in bit_sizes {
         // Generate test semiprimes (shared across all comparisons for fairness)
         let targets: Vec<factoring_core::RsaTarget> = (0..samples)
-            .map(|_| factoring_core::generate_rsa_target(bits, &mut rng))
+            .map(|_| factoring_core::generate_rsa_target(bits, rng))
             .collect();
 
         // Test evolved program
@@ -771,6 +771,7 @@ pub fn generate_report(
     top_programs: &[(Program, f64)],
     baselines: &[(&str, Program)],
     novelty_archive: &NoveltyArchive,
+    rng: &mut impl Rng,
 ) -> AnalysisReport {
     let bit_sizes: Vec<u32> = vec![16, 20, 24, 28, 32, 36, 40, 48];
     let samples_per_size = 5;
@@ -785,7 +786,7 @@ pub fn generate_report(
     let structural_motifs = analyze_structural_motifs(top_programs, 2);
 
     // 4. Scaling curves for top 10
-    let scaling_curves = analyze_scaling_curves(top_programs, &bit_sizes, samples_per_size);
+    let scaling_curves = analyze_scaling_curves(top_programs, &bit_sizes, samples_per_size, rng);
 
     // 5. Co-occurrence matrix
     let co_occurrence = analyze_co_occurrence(top_programs);
@@ -797,6 +798,7 @@ pub fn generate_report(
             baselines,
             &[16, 24, 32, 40, 48],
             samples_per_size,
+            rng,
         )
     } else {
         Vec::new()
@@ -1081,7 +1083,8 @@ mod tests {
     #[test]
     fn test_scaling_curves_no_panic() {
         let programs = vec![(seed_pollard_rho(), 100.0)];
-        let curves = analyze_scaling_curves(&programs, &[16], 2);
+        let mut rng = rand::thread_rng();
+        let curves = analyze_scaling_curves(&programs, &[16], 2, &mut rng);
         assert_eq!(curves.len(), 1);
         assert_eq!(curves[0].bit_results.len(), 1);
         assert_eq!(curves[0].bit_results[0].attempts, 2);
