@@ -1,0 +1,15 @@
+[package]
+name = "novel-relation-sampler"
+version = "0.1.0"
+edition = "2021"
+description = "E29: Novel relation collection via joint norm biasing for NFS"
+
+[dependencies]
+classical-nfs = { path = "../classical-nfs" }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
