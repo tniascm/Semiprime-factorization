@@ -842,9 +842,48 @@ fn eval_homogeneous_u128(coeffs_u64: &[u64], a: i64, b: i64) -> Option<u128> {
     Some(positive_sum.abs_diff(negative_sum))
 }
 
+/// Strip all powers of primes from val, returning just the cofactor.
+/// No allocation — only computes the cofactor, not exponents.
+#[inline]
+fn cofactor_only_u64(mut val: u64, primes: &[u64]) -> u64 {
+    for &p in primes {
+        if p == 0 {
+            continue;
+        }
+        while val % p == 0 {
+            val /= p;
+        }
+        if val == 1 {
+            return 1;
+        }
+    }
+    val
+}
+
+#[inline]
+fn cofactor_only_u128(mut val: u128, primes: &[u64]) -> u128 {
+    for &p in primes {
+        if p == 0 {
+            continue;
+        }
+        // Switch to u64 path once val fits
+        if val <= u64::MAX as u128 {
+            return cofactor_only_u64(val as u64, primes) as u128;
+        }
+        let p128 = p as u128;
+        while val % p128 == 0 {
+            val /= p128;
+        }
+        if val == 1 {
+            return 1;
+        }
+    }
+    val
+}
+
 /// Cofactorize a candidate (a, b) from a special-q lattice.
-/// The algebraic norm is guaranteed divisible by q. Supports 2LP.
-/// Uses u128 fast path for algebraic norms, falling back to BigUint.
+/// Two-phase approach: first check cofactors cheaply (no alloc),
+/// then full trial division only for surviving candidates.
 fn try_cofactorize_sq(
     a: i64,
     b: i64,
@@ -859,35 +898,28 @@ fn try_cofactorize_sq(
         return None;
     }
 
-    // Trial divide rational side FIRST (cheap, rejects ~80% of candidates)
-    let (rat_exps, rat_cofactor) = if rat_norm <= u64::MAX as u128 {
-        let (e, c) = trial_divide(rat_norm as u64, &shared.primes);
-        (e, c as u128)
+    let cofactor_bound = if shared.allow_2lp {
+        shared.lpb_bound_sq
     } else {
-        trial_divide_u128(rat_norm, &shared.primes)
+        shared.lpb_bound as u128
     };
 
-    // Quick reject rational cofactor
-    let rat_cofactor_u64 = rat_cofactor as u64;
-    if rat_cofactor > 1 {
-        let bound = if shared.allow_2lp {
-            shared.lpb_bound_sq
-        } else {
-            shared.lpb_bound as u128
-        };
-        if rat_cofactor > bound {
+    // Phase 1: Quick cofactor check (no allocation)
+    let rat_cofactor = if rat_norm <= u64::MAX as u128 {
+        cofactor_only_u64(rat_norm as u64, &shared.primes) as u128
+    } else {
+        cofactor_only_u128(rat_norm, &shared.primes)
+    };
+    if rat_cofactor > cofactor_bound {
+        return None;
+    }
+    if rat_cofactor > shared.lpb_bound as u128 && shared.allow_2lp {
+        if !can_split_2lp(rat_cofactor as u64, shared.lpb_bound) {
             return None;
         }
     }
 
-    // Verify rational 2LP if needed
-    if rat_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
-        if !can_split_2lp(rat_cofactor_u64, shared.lpb_bound) {
-            return None;
-        }
-    }
-
-    // Algebraic norm: try u128 fast path first, then BigUint fallback.
+    // Algebraic norm: u128 fast path, BigUint fallback
     let alg_norm: u128 = if let Some(norm) = eval_homogeneous_u128(
         &shared.coeffs_u64,
         a,
@@ -914,35 +946,34 @@ fn try_cofactorize_sq(
         }
     };
 
-    // Trial divide algebraic side (use u64 fast path when possible)
-    let (alg_exps, alg_cofactor) = if alg_norm <= u64::MAX as u128 {
+    let alg_cofactor = if alg_norm <= u64::MAX as u128 {
+        cofactor_only_u64(alg_norm as u64, &shared.primes) as u128
+    } else {
+        cofactor_only_u128(alg_norm, &shared.primes)
+    };
+    if alg_cofactor > cofactor_bound {
+        return None;
+    }
+    if alg_cofactor > shared.lpb_bound as u128 && shared.allow_2lp {
+        if !can_split_2lp(alg_cofactor as u64, shared.lpb_bound) {
+            return None;
+        }
+    }
+
+    // Phase 2: Full trial division to get exponents (only for survivors)
+    let (rat_exps, _) = if rat_norm <= u64::MAX as u128 {
+        let (e, c) = trial_divide(rat_norm as u64, &shared.primes);
+        (e, c as u128)
+    } else {
+        trial_divide_u128(rat_norm, &shared.primes)
+    };
+    let (alg_exps, _) = if alg_norm <= u64::MAX as u128 {
         let (e, c) = trial_divide(alg_norm as u64, &shared.primes);
         (e, c as u128)
     } else {
         trial_divide_u128(alg_norm, &shared.primes)
     };
 
-    // Quick reject algebraic cofactor
-    let alg_cofactor_u64 = alg_cofactor as u64;
-    if alg_cofactor > 1 {
-        let bound = if shared.allow_2lp {
-            shared.lpb_bound_sq
-        } else {
-            shared.lpb_bound as u128
-        };
-        if alg_cofactor > bound {
-            return None;
-        }
-    }
-
-    // Verify algebraic 2LP if needed
-    if alg_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
-        if !can_split_2lp(alg_cofactor_u64, shared.lpb_bound) {
-            return None;
-        }
-    }
-
-    // Build factor lists (including q on the algebraic side)
     let rat_factors: Vec<(u64, u32)> = shared
         .primes
         .iter()
@@ -965,8 +996,8 @@ fn try_cofactorize_sq(
         b,
         rat_factors,
         alg_factors,
-        rat_cofactor: rat_cofactor_u64,
-        alg_cofactor: alg_cofactor_u64,
+        rat_cofactor: rat_cofactor as u64,
+        alg_cofactor: alg_cofactor as u64,
     })
 }
 
