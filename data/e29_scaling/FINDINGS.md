@@ -12,19 +12,22 @@
 
 ## Results
 
-| Bits | Degree | MCMC Unique Rate | MCMC Dup% | Smooth/SP | Uniform Rate | Lattice Rate | MCMC/Lattice |
-|------|--------|------------------|-----------|-----------|--------------|--------------|--------------|
-| 32   | 3      | 1.57%            | 83%       | 23.9      | 0.008%       | 0.010%       | 154x         |
-| 40   | 3      | 0.67%            | 83%       | 10.5      | 0.003%       | 0.010%       | 68x          |
-| 48   | 3      | 1.59%            | 80%       | 28.1      | 0.007%       | 0.004%       | 357x         |
-| 56   | 3      | 1.95%            | 80%       | 35.9      | 0.003%       | 0.005%       | 392x         |
-| 64   | 3      | 2.18%            | 79%       | 39.7      | 0.006%       | 0.003%       | 706x         |
-| 80   | 3      | 1.82%            | 78%       | 15.8      | 0%           | 0.001%       | 1797x        |
-| 96   | 3      | 1.08%            | 81%       | 8.5       | 0%           | —            | —            |
-| 112  | 4      | 0.90%            | 85%       | 4.3       | 0%           | —            | —            |
-| 128  | 4      | 0.67%            | 87%       | 2.0       | 0%           | —            | —            |
-| 160  | 5      | 0%               | —         | 0         | 0%           | —            | —            |
-| 200  | 5      | 0%               | —         | 0         | 0%           | —            | —            |
+| Bits | Degree | MCMC Unique Rate | MCMC Dup% | Smooth/SP | Uniform Rate | Lattice Rate | MCMC/Lattice | MCMC Rels/s | CADO Rels/s | MCMC/CADO |
+|------|--------|------------------|-----------|-----------|--------------|--------------|--------------|-------------|-------------|-----------|
+| 32   | 3      | 1.57%            | 83%       | 23.9      | 0.008%       | 0.010%       | 154x         | 3,630       | —           | —         |
+| 40   | 3      | 0.67%            | 83%       | 10.5      | 0.003%       | 0.010%       | 68x          | 1,451       | —           | —         |
+| 48   | 3      | 1.59%            | 80%       | 28.1      | 0.007%       | 0.004%       | 357x         | 3,500       | —           | —         |
+| 56   | 3      | 1.95%            | 80%       | 35.9      | 0.003%       | 0.005%       | 392x         | 3,964       | —           | —         |
+| 64   | 3      | 2.18%            | 79%       | 39.7      | 0.006%       | 0.003%       | 706x         | 3,519       | —           | —         |
+| 80   | 3      | 1.82%            | 78%       | 15.8      | 0%           | 0.001%       | 1797x        | 2,109       | —           | —         |
+| 96   | 3      | 1.08%            | 81%       | 8.5       | 0%           | —            | —            | 720         | 79,261      | 0.009x    |
+| 112  | 4      | 0.90%            | 85%       | 4.3       | 0%           | —            | —            | 288         | 88,960      | 0.003x    |
+| 128  | 4      | 0.67%            | 87%       | 2.0       | 0%           | —            | —            | 102         | 50,411      | 0.002x    |
+| 160  | 5      | 0%               | —         | 0         | 0%           | —            | —            | 0           | 21,739      | 0         |
+| 200  | 5      | 0%               | —         | 0         | 0%           | —            | —            | 0           | 5,358       | 0         |
+
+CADO-NFS: production special-q lattice siever with ECM cofactorization, 4 threads.
+MCMC/CADO ratio < 1 means CADO is faster. Sizes 32-80 below CADO's minimum parameter file (c30).
 
 ## Scaling Analysis (linear regression on 32-128 bit data)
 
@@ -78,23 +81,48 @@ energy basins as N grows. Still acceptable: 13% of candidates are unique at
 - Lattice sieve: 16 rels/sec (32-bit) → 1.3 rels/sec (80-bit)
 - MCMC is 35-1600x faster per relation found.
 
+### 7. CADO-NFS head-to-head (96-200 bits)
+
+CADO-NFS (production special-q lattice siever with ECM cofactorization) was run
+on 3 semiprimes per bit size from the same set used by MCMC, with 4 threads.
+
+- **CADO is 100-500x faster** at relation collection across all tested sizes
+- CADO: 79K rels/sec (96-bit) → 5.4K rels/sec (200-bit)
+- MCMC: 720 rels/sec (96-bit) → 0 rels/sec (160+)
+- MCMC/CADO ratio: 0.009x (96-bit) → 0.002x (128-bit) → 0 (160+)
+- CADO's advantage **grows** with N: the ratio worsens from 0.009x to 0.002x
+- At 160-200 bits, CADO still finds 20K-50K relations while MCMC finds zero
+  (u64 smoothness boundary)
+
+The gap has three components:
+1. **Special-q lattice sieve** vs random walk: CADO exploits algebraic structure
+   (lattice reduction per special-q) to enumerate smooth candidates systematically
+2. **ECM cofactorization**: CADO accepts partial smoothness (large primes) and uses
+   ECM to factor cofactors, dramatically increasing the yield per candidate
+3. **Parallelism**: CADO's 4 threads vs MCMC's single-threaded chains
+
 ## Interpretation
 
-MCMC energy-biased sampling provides a genuine constant-factor optimization for
-NFS relation collection. The advantage grows with N because energy biasing
-concentrates on the increasingly thin smooth tail of the norm distribution. At
-practical NFS sizes (512+ bits), extending the smoothness check beyond u64
-(via ECM or sub-exponential methods) would be needed to realize this advantage.
+MCMC energy-biased sampling beats naive uniform and line sieve approaches by
+100-1800x, but is **100-500x slower than CADO-NFS** (production special-q
+lattice siever). The MCMC advantage over uniform/line-sieve is real but
+misleading — it compares against weak baselines. Against state-of-the-art
+sieving, MCMC is not competitive.
 
-The experiment quantifies the constant-factor improvement trajectory, not a
-complexity breakthrough. The L[1/3] exponent of NFS is unchanged — MCMC
-improves the constant in the relation collection phase by directing sampling
-toward low-energy (small-norm) regions.
+The fundamental issue is that CADO-NFS exploits multiplicative structure
+(special-q lattice reduction, per-prime sieving) that random-walk MCMC cannot
+replicate. MCMC finds small norms but doesn't exploit the factorization
+structure needed for efficient smoothness detection. The gap widens with N.
+
+The L[1/3] exponent of NFS is unchanged. MCMC does not improve the constant
+in a way that matters against production implementations.
 
 ## Limitations
 
 - Lattice sieve only tested ≤80 bits (line sieve too slow beyond)
-- u64 smoothness check prevents measurement at 160+ bits
+- u64 smoothness check prevents MCMC measurement at 160+ bits
 - Factor bases are small (≤2^19) — real NFS uses much larger bases
-- No special-q lattice sieve implementation for comparison at scale
-- 10 semiprimes per size gives limited statistical power
+- MCMC uses trial division only; CADO uses ECM cofactorization (unfair but realistic)
+- CADO uses 4 threads; MCMC is single-threaded (parallelism accounts for ~4x of gap)
+- 3 semiprimes per size for CADO comparison gives limited statistical power
+- CADO parameter files not available below 30 digits (~100 bits)
