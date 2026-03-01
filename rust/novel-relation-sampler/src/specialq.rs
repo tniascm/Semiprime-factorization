@@ -441,6 +441,7 @@ struct SQSharedData {
     m_f64: f64,
     coeffs_f64: Vec<f64>,
     coeffs_u64: Vec<u64>,
+    scan_degree: usize,
     lpb_bound: u64,
     lpb_bound_sq: u128,
     lpb_f32: f32,
@@ -509,6 +510,7 @@ pub fn collect_relations_specialq(
         m_f64: m as f64,
         coeffs_f64,
         coeffs_u64,
+        scan_degree: poly.degree,
         lpb_bound,
         lpb_bound_sq: (lpb_bound as u128) * (lpb_bound as u128),
         lpb_f32: config.lpb as f32,
@@ -704,7 +706,7 @@ fn sieve_one_specialq(
         let scan_start = Instant::now();
 
         let j_f64 = j as f64;
-        let d = shared.coeffs_f64.len() - 1; // actual degree from coefficients
+        let d = shared.scan_degree; // declared degree for approximate threshold
         let lpb_f32 = shared.lpb_f32;
         let q_f64 = q as f64;
 
