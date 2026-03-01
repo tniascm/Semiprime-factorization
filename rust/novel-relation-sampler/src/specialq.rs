@@ -842,48 +842,8 @@ fn eval_homogeneous_u128(coeffs_u64: &[u64], a: i64, b: i64) -> Option<u128> {
     Some(positive_sum.abs_diff(negative_sum))
 }
 
-/// Strip all powers of primes from val, returning just the cofactor.
-/// No allocation — only computes the cofactor, not exponents.
-#[inline]
-fn cofactor_only_u64(mut val: u64, primes: &[u64]) -> u64 {
-    for &p in primes {
-        if p == 0 {
-            continue;
-        }
-        while val % p == 0 {
-            val /= p;
-        }
-        if val == 1 {
-            return 1;
-        }
-    }
-    val
-}
-
-#[inline]
-fn cofactor_only_u128(mut val: u128, primes: &[u64]) -> u128 {
-    for &p in primes {
-        if p == 0 {
-            continue;
-        }
-        // Switch to u64 path once val fits
-        if val <= u64::MAX as u128 {
-            return cofactor_only_u64(val as u64, primes) as u128;
-        }
-        let p128 = p as u128;
-        while val % p128 == 0 {
-            val /= p128;
-        }
-        if val == 1 {
-            return 1;
-        }
-    }
-    val
-}
-
 /// Cofactorize a candidate (a, b) from a special-q lattice.
-/// Two-phase approach: first check cofactors cheaply (no alloc),
-/// then full trial division only for surviving candidates.
+/// Uses single-pass trial division with cofactor bound tracking.
 fn try_cofactorize_sq(
     a: i64,
     b: i64,
@@ -904,17 +864,20 @@ fn try_cofactorize_sq(
         shared.lpb_bound as u128
     };
 
-    // Phase 1: Quick cofactor check (no allocation)
-    let rat_cofactor = if rat_norm <= u64::MAX as u128 {
-        cofactor_only_u64(rat_norm as u64, &shared.primes) as u128
+    // Trial divide rational side
+    let (rat_exps, rat_cofactor) = if rat_norm <= u64::MAX as u128 {
+        let (e, c) = trial_divide(rat_norm as u64, &shared.primes);
+        (e, c as u128)
     } else {
-        cofactor_only_u128(rat_norm, &shared.primes)
+        trial_divide_u128(rat_norm, &shared.primes)
     };
+
     if rat_cofactor > cofactor_bound {
         return None;
     }
-    if rat_cofactor > shared.lpb_bound as u128 && shared.allow_2lp {
-        if !can_split_2lp(rat_cofactor as u64, shared.lpb_bound) {
+    let rat_cofactor_u64 = rat_cofactor as u64;
+    if rat_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
+        if !can_split_2lp(rat_cofactor_u64, shared.lpb_bound) {
             return None;
         }
     }
@@ -946,33 +909,23 @@ fn try_cofactorize_sq(
         }
     };
 
-    let alg_cofactor = if alg_norm <= u64::MAX as u128 {
-        cofactor_only_u64(alg_norm as u64, &shared.primes) as u128
-    } else {
-        cofactor_only_u128(alg_norm, &shared.primes)
-    };
-    if alg_cofactor > cofactor_bound {
-        return None;
-    }
-    if alg_cofactor > shared.lpb_bound as u128 && shared.allow_2lp {
-        if !can_split_2lp(alg_cofactor as u64, shared.lpb_bound) {
-            return None;
-        }
-    }
-
-    // Phase 2: Full trial division to get exponents (only for survivors)
-    let (rat_exps, _) = if rat_norm <= u64::MAX as u128 {
-        let (e, c) = trial_divide(rat_norm as u64, &shared.primes);
-        (e, c as u128)
-    } else {
-        trial_divide_u128(rat_norm, &shared.primes)
-    };
-    let (alg_exps, _) = if alg_norm <= u64::MAX as u128 {
+    // Trial divide algebraic side (u64 fast path when possible)
+    let (alg_exps, alg_cofactor) = if alg_norm <= u64::MAX as u128 {
         let (e, c) = trial_divide(alg_norm as u64, &shared.primes);
         (e, c as u128)
     } else {
         trial_divide_u128(alg_norm, &shared.primes)
     };
+
+    if alg_cofactor > cofactor_bound {
+        return None;
+    }
+    let alg_cofactor_u64 = alg_cofactor as u64;
+    if alg_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
+        if !can_split_2lp(alg_cofactor_u64, shared.lpb_bound) {
+            return None;
+        }
+    }
 
     let rat_factors: Vec<(u64, u32)> = shared
         .primes
@@ -996,8 +949,8 @@ fn try_cofactorize_sq(
         b,
         rat_factors,
         alg_factors,
-        rat_cofactor: rat_cofactor as u64,
-        alg_cofactor: alg_cofactor as u64,
+        rat_cofactor: rat_cofactor_u64,
+        alg_cofactor: alg_cofactor_u64,
     })
 }
 
