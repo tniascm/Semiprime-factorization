@@ -1,5 +1,4 @@
 use rug::Integer;
-use rug::ops::Pow;
 use crate::types::Relation;
 
 /// Compute the rational square root for a dependency.
@@ -136,21 +135,19 @@ fn algebraic_square_roots(
         return vec![];
     }
 
-    // Step 2: Compute bound for γ coefficients
-    // For γ² = P in Z[α]/(f), a safe bound is:
-    //   ||γ||_∞ ≤ ||P||_∞^{1/2} * (d * ||f||_∞)^{d} * d^d
-    // This is conservative but ensures correctness.
+    // Step 2: Adaptive Hensel lifting with early exit
+    //
+    // Instead of computing a tight theoretical bound for ||γ||_∞ (which is
+    // tricky to get right for general number fields), we use an adaptive approach:
+    // - min_target: modulus > 2*sqrt(||P||_∞), the minimum for any chance of success
+    // - After reaching min_target, try exact verification after each Hensel step
+    // - max_target: modulus > 2*||P||_∞, well beyond any realistic γ coefficient
+    // - If max_target exceeded with no valid γ, P is not a perfect square
+    //
+    // Cost: at most 1-2 extra Hensel steps vs a tight bound (each step is cheap).
     let max_p = product.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
-    let max_f = f_coeffs.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
-    let p_sqrt: Integer = Integer::from(max_p.sqrt_ref()) + 1;
-    let df = Integer::from(&max_f * d as u64);
-    let mut bound = p_sqrt;
-    for _ in 0..d {
-        bound *= &df;
-    }
-    // Add extra safety margin
-    bound *= Integer::from(d as u64).pow(d as u32);
-    let target = Integer::from(&bound * 2);
+    let min_target: Integer = Integer::from(max_p.sqrt_ref()) * 2 + 2;
+    let max_target: Integer = Integer::from(&max_p * 2) + 2;
 
     // Step 3: Initialize roots and sqrt values mod ℓ
     let mut roots: Vec<Integer> = base_roots.iter().map(|&r| Integer::from(r)).collect();
@@ -165,13 +162,11 @@ fn algebraic_square_roots(
         }
     }
 
-    // Step 4: Hensel lift until modulus > target bound
+    // Step 4: Hensel lift with adaptive verification
     let max_lift_steps = 50;
-    for _ in 0..max_lift_steps {
-        if modulus > target {
-            break;
-        }
+    let mut results = Vec::new();
 
+    for _step in 0..max_lift_steps {
         let new_mod = Integer::from(&modulus * &modulus);
 
         // Lift roots of f using Newton's method
@@ -210,74 +205,93 @@ fn algebraic_square_roots(
         }
 
         modulus = new_mod;
-    }
 
-    // Verify Hensel lifting correctness: s_i² ≡ P(r_i) mod ℓ^k
-    for i in 0..d {
-        let p_val = eval_poly_int(product, &roots[i], &modulus);
-        let s_sq = Integer::from(&sqrts[i] * &sqrts[i]) % &modulus;
-        let s_sq = if s_sq < 0 { s_sq + &modulus } else { s_sq };
-        if p_val != s_sq {
-            return vec![];
-        }
-    }
-
-    // Step 5: Try all 2^d sign combinations with EXACT verification
-    let half = Integer::from(&modulus / 2);
-    let mut results = Vec::new();
-
-    for mask in 0..(1u64 << d) {
-        let signed_sqrts: Vec<Integer> = sqrts
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                if mask & (1 << i) != 0 {
-                    Integer::from(&modulus - s) % &modulus
-                } else {
-                    s.clone()
-                }
-            })
-            .collect();
-
-        // Lagrange interpolation to reconstruct γ from values at roots
-        let gamma_coeffs = lagrange_interpolation_mod(&roots, &signed_sqrts, &modulus);
-
-        // Centered lift to exact integer coefficients
-        let gamma_exact: Vec<Integer> = gamma_coeffs
-            .iter()
-            .map(|c| {
-                let r = Integer::from(c % &modulus);
-                let r = if r < 0 { r + &modulus } else { r };
-                if r > half {
-                    r - &modulus
-                } else {
-                    r
-                }
-            })
-            .collect();
-
-        // EXACT verification: γ² must equal P exactly in Z[α]/(f)
-        let gamma_sq = nf_multiply(&gamma_exact, &gamma_exact, f_coeffs);
-        let exact_match = gamma_sq.len() == product.len()
-            && gamma_sq.iter().zip(product.iter()).all(|(a, b)| a == b);
-        if !exact_match {
+        // Once modulus exceeds minimum target, try exact verification
+        if modulus <= min_target {
             continue;
         }
 
-        // γ is the correct algebraic square root — evaluate γ(m) mod N
-        let mut y_exact = Integer::from(0);
-        let mut m_pow_exact = Integer::from(1);
-        for c in &gamma_exact {
-            y_exact += Integer::from(c * &m_pow_exact);
-            m_pow_exact *= m;
+        // Verify Hensel lifting correctness: s_i² ≡ P(r_i) mod ℓ^k
+        let mut hensel_ok = true;
+        for i in 0..d {
+            let p_val = eval_poly_int(product, &roots[i], &modulus);
+            let s_sq = Integer::from(&sqrts[i] * &sqrts[i]) % &modulus;
+            let s_sq = if s_sq < 0 { s_sq + &modulus } else { s_sq };
+            if p_val != s_sq {
+                hensel_ok = false;
+                break;
+            }
+        }
+        if !hensel_ok {
+            return vec![];
         }
 
-        let mut y = Integer::from(&y_exact % n);
-        if y < 0 {
-            y += n;
+        // Step 5: Try all 2^d sign combinations with EXACT verification
+        let half = Integer::from(&modulus / 2);
+
+        for mask in 0..(1u64 << d) {
+            let signed_sqrts: Vec<Integer> = sqrts
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    if mask & (1 << i) != 0 {
+                        Integer::from(&modulus - s) % &modulus
+                    } else {
+                        s.clone()
+                    }
+                })
+                .collect();
+
+            // Lagrange interpolation to reconstruct γ from values at roots
+            let gamma_coeffs = lagrange_interpolation_mod(&roots, &signed_sqrts, &modulus);
+
+            // Centered lift to exact integer coefficients
+            let gamma_exact: Vec<Integer> = gamma_coeffs
+                .iter()
+                .map(|c| {
+                    let r = Integer::from(c % &modulus);
+                    let r = if r < 0 { r + &modulus } else { r };
+                    if r > half {
+                        r - &modulus
+                    } else {
+                        r
+                    }
+                })
+                .collect();
+
+            // EXACT verification: γ² must equal P exactly in Z[α]/(f)
+            let gamma_sq = nf_multiply(&gamma_exact, &gamma_exact, f_coeffs);
+            let exact_match = gamma_sq.len() == product.len()
+                && gamma_sq.iter().zip(product.iter()).all(|(a, b)| a == b);
+            if !exact_match {
+                continue;
+            }
+
+            // γ is the correct algebraic square root — evaluate γ(m) mod N
+            let mut y_exact = Integer::from(0);
+            let mut m_pow_exact = Integer::from(1);
+            for c in &gamma_exact {
+                y_exact += Integer::from(c * &m_pow_exact);
+                m_pow_exact *= m;
+            }
+
+            let mut y = Integer::from(&y_exact % n);
+            if y < 0 {
+                y += n;
+            }
+
+            results.push(y);
         }
 
-        results.push(y);
+        // If we found valid sqrt(s), done
+        if !results.is_empty() {
+            break;
+        }
+
+        // If modulus exceeds max_target, P is not a perfect square
+        if modulus > max_target {
+            break;
+        }
     }
 
     results

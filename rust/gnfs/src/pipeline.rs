@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::arith::select_quad_char_primes;
 use crate::log::StageLogger;
-use crate::linalg::{build_matrix, find_dependencies};
+use crate::linalg::{build_matrix, find_dependencies, randomize_dependencies};
 use crate::params::GnfsParams;
 use crate::polyselect::select_base_m;
 use crate::relation::collect_smooth_relations;
@@ -93,8 +93,11 @@ pub fn factor_gnfs(
     let n_quad_chars = 30usize;
     let alg_pairs = fb.algebraic_pair_count();
     let ncols_est = fb.primes.len() + alg_pairs + 2 + n_quad_chars;
-    let excess_multiplier = 3usize; // Aim for 3x excess over matrix columns
-    let target_rels = ncols_est + ncols_est.max(20) * excess_multiplier;
+    // Excess needed: small matrices need high excess (short deps → trivial gcd),
+    // larger matrices produce long deps naturally. Randomized dep XOR helps even at
+    // moderate excess. Conservative values to avoid excessive sieving.
+    let excess_frac = if ncols_est < 200 { 3.0 } else if ncols_est < 500 { 2.0 } else if ncols_est < 2000 { 1.0 } else { 0.5 };
+    let target_rels = ncols_est + ((ncols_est as f64 * excess_frac) as usize).max(50);
     let mut all_hits = Vec::new();
     let mut sieve_a = params.sieve_a;
     let mut max_b = params.max_b;
@@ -155,11 +158,19 @@ pub fn factor_gnfs(
 
     la_log.log(&format!("Matrix: {} rows × {} cols", matrix.len(), ncols));
 
-    let deps = find_dependencies(&matrix, ncols);
+    let ge_deps = find_dependencies(&matrix, ncols);
+
+    // Randomize: combine GE basis vectors to produce decorrelated dependencies.
+    // GE basis vectors are short and correlated → trivial gcd. Random XOR
+    // combinations produce longer deps with ~50% nontrivial-factor probability.
+    let n_random = ge_deps.len().min(5000);
+    let k = 3; // combine k basis vectors per random dep
+    let deps = randomize_dependencies(&ge_deps, n_random, k, 42);
     result.dependencies_found = deps.len();
 
-    la_log.log(&format!("Dependencies found: {}", deps.len()));
-    la_log.finish(&serde_json::json!({"deps": deps.len(), "rows": matrix.len(), "cols": ncols}));
+    la_log.log(&format!("Dependencies: {} GE basis + {} random combinations = {} total",
+        ge_deps.len(), deps.len() - ge_deps.len(), deps.len()));
+    la_log.finish(&serde_json::json!({"ge_deps": ge_deps.len(), "random_deps": deps.len() - ge_deps.len(), "total_deps": deps.len()}));
 
     if deps.is_empty() {
         return result;
@@ -173,12 +184,16 @@ pub fn factor_gnfs(
     // When the product of k < d linear terms never reduces modulo f(α),
     // P(m) = ∏(aᵢ - bᵢm) exactly, so γ(m) = ±√R = ±x always.
     let min_dep_size = degree as usize;
-    let useful_deps: Vec<_> = deps.iter()
+    let mut useful_deps: Vec<&Vec<usize>> = deps.iter()
         .filter(|d| d.len() >= min_dep_size)
         .collect();
+    // Sort by size descending: longer deps (random combinations) tried first,
+    // as they have higher probability of giving nontrivial factors.
+    useful_deps.sort_by(|a, b| b.len().cmp(&a.len()));
     sqrt_log.log(&format!(
-        "Filtered: {} → {} useful dependencies (min size {})",
-        deps.len(), useful_deps.len(), min_dep_size
+        "Filtered: {} → {} useful dependencies (min size {}, largest {})",
+        deps.len(), useful_deps.len(), min_dep_size,
+        useful_deps.first().map_or(0, |d| d.len())
     ));
 
     for (i, dep) in useful_deps.iter().enumerate() {
