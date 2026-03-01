@@ -9,18 +9,22 @@ use crate::types::BitRow;
 /// - Column 1+rat_fb_size: sign bit (algebraic side)
 /// - Columns 2+rat_fb_size..2+rat_fb_size+alg_pair_count: algebraic (prime,root)
 ///   pair exponents mod 2 — one column per degree-1 prime ideal
-/// - Columns 2+rat_fb_size+alg_pair_count..: quadratic character Legendre symbols
+/// - Columns 2+rat_fb_size+alg_pair_count..+alg_hd_count: higher-degree ideal
+///   exponents mod 2 — one column per prime with fewer roots than degree
+/// - Remaining columns: quadratic character Legendre symbols
 ///
-/// Per-(prime,root) tracking ensures each degree-1 prime ideal has even exponent
-/// in the product. Quadratic characters handle remaining unit/class group constraints.
+/// Per-(prime,root) tracking ensures each degree-1 prime ideal has even exponent.
+/// HD ideal columns ensure higher-degree ideals also have even exponent.
+/// Quadratic characters handle remaining unit/class group constraints.
 pub fn build_matrix(
     relations: &[crate::types::Relation],
     rat_fb_size: usize,
     alg_pair_count: usize,
+    alg_hd_count: usize,
     quad_chars: &QuadCharSet,
 ) -> (Vec<BitRow>, usize) {
     let n_qc = quad_chars.primes.len();
-    let ncols = 2 + rat_fb_size + alg_pair_count + n_qc;
+    let ncols = 2 + rat_fb_size + alg_pair_count + alg_hd_count + n_qc;
     let mut rows = Vec::with_capacity(relations.len());
 
     for rel in relations {
@@ -40,11 +44,12 @@ pub fn build_matrix(
             row.set(1 + rat_fb_size);
         }
 
-        // algebraic_factors stores (flat_pair_index, exp) where
-        // flat_pair_index uniquely identifies a (prime, root) pair
-        for &(pair_idx, exp) in &rel.algebraic_factors {
+        // algebraic_factors stores (flat_index, exp) where flat_index is:
+        // - [0, alg_pair_count): per-(prime,root) pair columns
+        // - [alg_pair_count, alg_pair_count+alg_hd_count): HD ideal columns
+        for &(flat_idx, exp) in &rel.algebraic_factors {
             if exp % 2 == 1 {
-                row.set(2 + rat_fb_size + pair_idx as usize);
+                row.set(2 + rat_fb_size + flat_idx as usize);
             }
         }
 
@@ -58,7 +63,7 @@ pub fn build_matrix(
             let ls = crate::arith::legendre_symbol(val, q);
             if ls == q - 1 {
                 // Legendre symbol is -1 → set bit (odd in GF(2))
-                row.set(2 + rat_fb_size + alg_pair_count + i);
+                row.set(2 + rat_fb_size + alg_pair_count + alg_hd_count + i);
             }
         }
 

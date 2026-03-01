@@ -44,6 +44,7 @@ pub fn collect_smooth_relations(
     hits: &[SieveHit],
     fb: &FactorBase,
     large_prime_bound: u64,
+    poly_degree: usize,
 ) -> (Vec<Relation>, usize) {
     let mut relations = Vec::new();
     let mut partial_count = 0;
@@ -97,10 +98,22 @@ pub fn collect_smooth_relations(
                 }
             }
 
-            // Residual from higher-degree ideals must be even
-            if root_exp_sum < total_exp && (total_exp - root_exp_sum) % 2 != 0 {
-                valid = false;
-                break;
+            // Higher-degree ideal: residual = total_exp - root_exp_sum
+            // For a prime with k roots of a degree-d poly, the HD ideal has degree (d - k).
+            // The residual in the norm = hd_degree * v_{HD}(a-bα), so must divide evenly.
+            if root_exp_sum < total_exp {
+                let residual = total_exp - root_exp_sum;
+                let hd_degree = poly_degree - roots.len();
+                if hd_degree == 0 || residual as usize % hd_degree != 0 {
+                    valid = false;
+                    break;
+                }
+                let hd_exp = residual as usize / hd_degree;
+                // Store HD ideal exponent using flat index after per-root columns
+                if let Some(hd_off) = fb.hd_offset(prime_idx as usize, poly_degree) {
+                    let hd_flat_idx = fb.algebraic_pair_count() + hd_off;
+                    alg_pair_factors.push((hd_flat_idx as u32, hd_exp as u8));
+                }
             }
         }
 
@@ -166,7 +179,7 @@ mod tests {
 
         let hits = line_sieve(&poly, &fb, 500, 100);
         let (relations, _partial_count) = collect_smooth_relations(
-            &hits, &fb, 1 << 16,
+            &hits, &fb, 1 << 16, 3,
         );
         assert!(!relations.is_empty(), "Should find smooth relations for 8051");
     }

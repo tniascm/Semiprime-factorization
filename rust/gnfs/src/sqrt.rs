@@ -305,6 +305,14 @@ fn algebraic_square_roots(
 /// 3. Use Couveignes' method to find γ with γ² = algebraic product
 /// 4. Evaluate y = γ(m) mod N
 /// 5. Try gcd(x ± y, N) to extract factor
+/// Diagnostic: why did extract_factor fail?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FactorFailure {
+    RationalNotSquare,
+    AlgebraicNotSquare,
+    TrivialGcd,
+}
+
 pub fn extract_factor(
     relations: &[Relation],
     dependency: &[usize],
@@ -312,6 +320,17 @@ pub fn extract_factor(
     m: &Integer,
     n: &Integer,
 ) -> Option<Integer> {
+    extract_factor_diagnostic(relations, dependency, f_coeffs, m, n).0
+}
+
+/// Like extract_factor but also returns failure reason if None.
+pub fn extract_factor_diagnostic(
+    relations: &[Relation],
+    dependency: &[usize],
+    f_coeffs: &[Integer],
+    m: &Integer,
+    n: &Integer,
+) -> (Option<Integer>, Option<FactorFailure>) {
     let d = f_coeffs.len() - 1;
 
     // Step 1: Compute product of rational norms (a - b*m) and take sqrt
@@ -331,7 +350,7 @@ pub fn extract_factor(
     let rat_sqrt = rat_product.clone().sqrt();
 
     if Integer::from(&rat_sqrt * &rat_sqrt) != rat_product {
-        return None; // Not a perfect square
+        return (None, Some(FactorFailure::RationalNotSquare));
     }
 
     let x = if sign {
@@ -355,21 +374,26 @@ pub fn extract_factor(
 
     // Step 3: Compute algebraic square root(s) via Couveignes' method
     let y_values = algebraic_square_roots(&alg_product, f_coeffs, m, n);
+
+    if y_values.is_empty() {
+        return (None, Some(FactorFailure::AlgebraicNotSquare));
+    }
+
     // Step 4: Try gcd(x ± y, N) for each algebraic square root
     for y in &y_values {
         let diff = Integer::from(Integer::from(&x - y) + n) % n;
         let g = n.clone().gcd(&diff);
         if g > 1 && g < *n {
-            return Some(g);
+            return (Some(g), None);
         }
         let sum = Integer::from(&x + y) % n;
         let g = n.clone().gcd(&sum);
         if g > 1 && g < *n {
-            return Some(g);
+            return (Some(g), None);
         }
     }
 
-    None
+    (None, Some(FactorFailure::TrivialGcd))
 }
 
 #[cfg(test)]
@@ -437,7 +461,7 @@ mod tests {
         let fb = build_factor_base(&f_i64, 300);
 
         let hits = line_sieve(&poly, &fb, 1000, 200);
-        let (rels, _) = collect_smooth_relations(&hits, &fb, 1 << 16);
+        let (rels, _) = collect_smooth_relations(&hits, &fb, 1 << 16, 3);
 
         if rels.len() < fb.primes.len() + 2 {
             eprintln!("Not enough relations ({}) for matrix. Skipping.", rels.len());
@@ -446,7 +470,8 @@ mod tests {
 
         let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, 30);
         let alg_pairs = fb.algebraic_pair_count();
-        let (matrix, ncols) = build_matrix(&rels, fb.primes.len(), alg_pairs, &quad_chars);
+        let alg_hd = fb.higher_degree_ideal_count(3);
+        let (matrix, ncols) = build_matrix(&rels, fb.primes.len(), alg_pairs, alg_hd, &quad_chars);
         let deps = find_dependencies(&matrix, ncols);
 
         if deps.is_empty() {

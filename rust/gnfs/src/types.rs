@@ -88,6 +88,28 @@ impl FactorBase {
     pub fn pair_offset(&self, prime_idx: usize) -> usize {
         self.algebraic_roots[..prime_idx].iter().map(|r| r.len()).sum()
     }
+
+    /// Count of primes that have a higher-degree ideal factor.
+    /// For a degree-d polynomial, primes with k < d roots have a residual ideal
+    /// of degree (d - k). We need one matrix column per such prime.
+    pub fn higher_degree_ideal_count(&self, poly_degree: usize) -> usize {
+        self.algebraic_roots.iter()
+            .filter(|roots| !roots.is_empty() && roots.len() < poly_degree)
+            .count()
+    }
+
+    /// Flat offset for the higher-degree ideal column of prime at `prime_idx`.
+    /// Returns None if this prime has no HD ideal (fully splits or no roots).
+    pub fn hd_offset(&self, prime_idx: usize, poly_degree: usize) -> Option<usize> {
+        let roots = &self.algebraic_roots[prime_idx];
+        if roots.is_empty() || roots.len() >= poly_degree {
+            return None;
+        }
+        let offset = self.algebraic_roots[..prime_idx].iter()
+            .filter(|r| !r.is_empty() && r.len() < poly_degree)
+            .count();
+        Some(offset)
+    }
 }
 
 /// Sparse GF(2) matrix row, stored as a bitset.

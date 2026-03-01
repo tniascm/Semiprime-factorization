@@ -8,7 +8,7 @@ use crate::params::GnfsParams;
 use crate::polyselect::select_base_m;
 use crate::relation::collect_smooth_relations;
 use crate::sieve::{build_factor_base, line_sieve, poly_coeffs_to_i64};
-use crate::sqrt::extract_factor;
+use crate::sqrt::{extract_factor_diagnostic, FactorFailure};
 
 /// Result of the GNFS pipeline.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -92,7 +92,8 @@ pub fn factor_gnfs(
     // the null space has enough dimension for long, useful dependencies.
     let n_quad_chars = 30usize;
     let alg_pairs = fb.algebraic_pair_count();
-    let ncols_est = fb.primes.len() + alg_pairs + 2 + n_quad_chars;
+    let alg_hd = fb.higher_degree_ideal_count(degree as usize);
+    let ncols_est = fb.primes.len() + alg_pairs + alg_hd + 2 + n_quad_chars;
     // Excess needed: small matrices need high excess (short deps → trivial gcd),
     // larger matrices produce long deps naturally. Randomized dep XOR helps even at
     // moderate excess. Conservative values to avoid excessive sieving.
@@ -104,7 +105,7 @@ pub fn factor_gnfs(
 
     for expansion in 0..10 {
         let hits = line_sieve(&poly, &fb, sieve_a, max_b);
-        let (rels, partials) = collect_smooth_relations(&hits, &fb, params.large_prime_bound_0());
+        let (rels, partials) = collect_smooth_relations(&hits, &fb, params.large_prime_bound_0(), degree as usize);
 
         sieve_log.log(&format!(
             "Expansion {}: sieve_a={}, max_b={} → {} hits, {} smooth, {} partial",
@@ -152,7 +153,8 @@ pub fn factor_gnfs(
     let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, 30);
     la_log.log(&format!("Quadratic characters: {} primes", quad_chars.primes.len()));
 
-    let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), alg_pairs, &quad_chars);
+    la_log.log(&format!("HD ideal primes: {} (columns for degree-2+ ideals)", alg_hd));
+    let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), alg_pairs, alg_hd, &quad_chars);
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
 
@@ -196,13 +198,20 @@ pub fn factor_gnfs(
         useful_deps.first().map_or(0, |d| d.len())
     ));
 
+    let mut fail_rat = 0usize;
+    let mut fail_alg = 0usize;
+    let mut fail_gcd = 0usize;
+
     for (i, dep) in useful_deps.iter().enumerate() {
         result.dependencies_tried = i + 1;
         sqrt_log.log(&format!("Trying dependency {}/{} ({} relations)", i + 1, useful_deps.len(), dep.len()));
 
-        if let Some(factor) = extract_factor(&all_hits, dep, &f_coeffs, &m, n) {
+        let (factor_opt, failure) = extract_factor_diagnostic(&all_hits, dep, &f_coeffs, &m, n);
+        if let Some(factor) = factor_opt {
             if Integer::from(n % &factor) == 0 && factor > 1 && factor < *n {
                 sqrt_log.log(&format!("Factor found: {}", factor));
+                sqrt_log.log(&format!("Failures up to this point: rat_not_sq={}, alg_not_sq={}, trivial_gcd={}",
+                    fail_rat, fail_alg, fail_gcd));
                 result.factor = Some(factor.to_string());
 
                 if let Some(dir) = output_dir {
@@ -224,9 +233,16 @@ pub fn factor_gnfs(
                 return result;
             }
         }
+        match failure {
+            Some(FactorFailure::RationalNotSquare) => fail_rat += 1,
+            Some(FactorFailure::AlgebraicNotSquare) => fail_alg += 1,
+            Some(FactorFailure::TrivialGcd) => fail_gcd += 1,
+            None => {}
+        }
     }
 
-    sqrt_log.log("No factor extracted from any dependency");
+    sqrt_log.log(&format!("No factor extracted — rat_not_sq={}, alg_not_sq={}, trivial_gcd={}",
+        fail_rat, fail_alg, fail_gcd));
     sqrt_log.finish(&serde_json::json!({"factor": serde_json::Value::Null, "deps_tried": deps.len()}));
     result.total_secs = sqrt_log.elapsed_secs();
     result
