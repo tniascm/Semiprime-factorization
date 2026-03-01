@@ -9,11 +9,10 @@ use crate::types::BitRow;
 /// - Column 1+rat_fb_size: sign bit (algebraic side)
 /// - Columns 2+rat_fb_size..2+rat_fb_size+alg_pair_count: algebraic (prime,root)
 ///   pair exponents mod 2 — one column per degree-1 prime ideal
-/// - Remaining columns: quadratic character Legendre symbols
+/// - Columns 2+rat_fb_size+alg_pair_count..: quadratic character Legendre symbols
 ///
-/// Per-(prime,root) tracking ensures each degree-1 prime ideal has even exponent.
-/// Only relations fully explained by degree-1 ideals are accepted (no HD ideal columns).
-/// Quadratic characters handle remaining unit/class group constraints.
+/// Per-(prime,root) tracking ensures each degree-1 prime ideal has even exponent
+/// in the product. Quadratic characters handle remaining unit/class group constraints.
 pub fn build_matrix(
     relations: &[crate::types::Relation],
     rat_fb_size: usize,
@@ -73,9 +72,6 @@ pub fn build_matrix(
 ///
 /// Returns a list of dependencies, where each dependency is a list of row indices
 /// whose XOR is the zero vector (i.e., the corresponding relations form a square product).
-///
-/// Uses BitRow-based history tracking (O(nrows/64) per XOR) instead of Vec<usize>
-/// (O(n) per symmetric difference), which is critical for performance on large matrices.
 pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
     let nrows = rows.len();
     if nrows == 0 || ncols == 0 {
@@ -83,14 +79,7 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
     }
 
     let mut matrix: Vec<BitRow> = rows.to_vec();
-    // Track which original rows compose each current row using BitRows
-    let mut history: Vec<BitRow> = (0..nrows)
-        .map(|i| {
-            let mut h = BitRow::new(nrows);
-            h.set(i);
-            h
-        })
-        .collect();
+    let mut history: Vec<Vec<usize>> = (0..nrows).map(|i| vec![i]).collect();
 
     let mut pivot_row = 0;
     for col in 0..ncols {
@@ -117,78 +106,27 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
                 let pivot_data = matrix[pivot_row].clone();
                 matrix[r].xor_with(&pivot_data);
                 let pivot_hist = history[pivot_row].clone();
-                history[r].xor_with(&pivot_hist);
+                for &idx in &pivot_hist {
+                    if let Some(pos) = history[r].iter().position(|&x| x == idx) {
+                        history[r].remove(pos);
+                    } else {
+                        history[r].push(idx);
+                    }
+                }
             }
         }
 
         pivot_row += 1;
     }
 
-    // Extract dependencies: zero rows whose history has ≥2 original rows
     let mut deps = Vec::new();
     for r in 0..nrows {
-        if matrix[r].is_zero() {
-            let dep: Vec<usize> = (0..nrows).filter(|&i| history[r].get(i)).collect();
-            if dep.len() >= 2 {
-                deps.push(dep);
-            }
+        if matrix[r].is_zero() && history[r].len() >= 2 {
+            deps.push(history[r].clone());
         }
     }
 
     deps
-}
-
-/// Combine null-space basis vectors into randomized dependencies.
-///
-/// GE produces short, correlated null-space vectors that often give γ(m) ≡ ±x (mod N)
-/// in the sqrt stage. Random linear combinations (XOR of random subsets) produce
-/// longer, decorrelated dependencies with ~50% probability of nontrivial factors.
-///
-/// Returns the original basis deps plus `n_random` random combinations, each
-/// combining `k` randomly chosen basis vectors.
-pub fn randomize_dependencies(
-    basis_deps: &[Vec<usize>],
-    n_random: usize,
-    k: usize,
-    seed: u64,
-) -> Vec<Vec<usize>> {
-    use std::collections::HashSet;
-
-    let n = basis_deps.len();
-    if n < 2 || k < 2 {
-        return basis_deps.to_vec();
-    }
-
-    let mut all_deps = basis_deps.to_vec();
-    let mut rng_state = seed;
-
-    for _ in 0..n_random {
-        // Simple LCG for deterministic PRNG
-        let mut chosen = HashSet::new();
-        while chosen.len() < k.min(n) {
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            let idx = (rng_state >> 33) as usize % n;
-            chosen.insert(idx);
-        }
-
-        // XOR of the chosen basis vectors: symmetric difference of relation indices
-        let mut combined: HashSet<usize> = HashSet::new();
-        for &basis_idx in &chosen {
-            for &rel_idx in &basis_deps[basis_idx] {
-                if !combined.remove(&rel_idx) {
-                    combined.insert(rel_idx);
-                }
-            }
-        }
-
-        if combined.len() >= 3 {
-            let mut dep: Vec<usize> = combined.into_iter().collect();
-            dep.sort_unstable();
-            all_deps.push(dep);
-        }
-    }
-
-    all_deps
 }
 
 #[cfg(test)]

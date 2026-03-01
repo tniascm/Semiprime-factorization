@@ -38,8 +38,6 @@ fn p_adic_val(mut val: u64, p: u64) -> u8 {
 /// For each hit, trial-divide both rational and algebraic norms by factor base primes.
 /// Algebraic factors are tracked per (prime, root) pair — one entry per degree-1 prime
 /// ideal — to ensure the GF(2) matrix correctly constrains individual ideal exponents.
-/// Relations where per-root exponents don't fully account for the norm (indicating
-/// higher-degree or ramified ideals) are rejected to guarantee matrix correctness.
 ///
 /// Returns (full_relations, partial_relation_count).
 pub fn collect_smooth_relations(
@@ -76,11 +74,9 @@ pub fn collect_smooth_relations(
         // Decompose algebraic exponents per (prime, root) pair.
         // For each prime p dividing the norm with roots r_1,...,r_k of f mod p:
         //   v_{(p,r_i)}(a - b*alpha) = v_p(a - b*r_i)
-        // Only accept relations where per-root exponents fully account for
-        // the total exponent. This guarantees all algebraic factors come from
-        // degree-1 ideals, which the GF(2) matrix tracks correctly.
-        // Relations involving higher-degree or ramified ideals are rejected
-        // to avoid ideal-tracking errors.
+        // The residual (v_p(norm) - sum of per-root exponents) comes from
+        // higher-degree ideals; it's always even for degree-2 factors.
+        // Reject relations where the residual is odd (inert prime with odd mult).
         let mut alg_pair_factors: Vec<(u32, u8)> = Vec::new();
         let mut valid = true;
 
@@ -101,8 +97,8 @@ pub fn collect_smooth_relations(
                 }
             }
 
-            // Reject if degree-1 ideals don't fully explain the exponent
-            if root_exp_sum != total_exp {
+            // Residual from higher-degree ideals must be even
+            if root_exp_sum < total_exp && (total_exp - root_exp_sum) % 2 != 0 {
                 valid = false;
                 break;
             }
