@@ -862,10 +862,13 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "classical-nfs",
+ "ecm",
+ "factoring-core",
  "num-bigint",
  "num-integer",
  "num-traits",
  "rand",
+ "rayon",
  "serde",
  "serde_json",
 ]
