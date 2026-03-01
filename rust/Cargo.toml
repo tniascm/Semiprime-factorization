@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["gnfs"]
+exclude = ["gnfs", "rust-nfs"]
 members = [
     "factoring-core",
     "classical-nfs",
