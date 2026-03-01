@@ -39,8 +39,20 @@ impl ScalingConfig {
             10_000
         } else if bits <= 128 {
             5_000
+        } else if bits <= 160 {
+            1_000
         } else {
-            2_000
+            500
+        }
+    }
+
+    fn semiprimes_for_bits(&self, bits: u32) -> usize {
+        if bits <= 128 {
+            self.semiprimes_per_size
+        } else if bits <= 160 {
+            5
+        } else {
+            3
         }
     }
 }
@@ -48,7 +60,7 @@ impl ScalingConfig {
 impl Default for ScalingConfig {
     fn default() -> Self {
         Self {
-            bit_sizes: vec![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 200, 256],
+            bit_sizes: vec![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 200],
             semiprimes_per_size: 10,
             mcmc_chains: 10,
             mcmc_t_start: 10.0,
@@ -202,12 +214,17 @@ fn main() {
 
     let mut all_results: Vec<ScalingComparison> = Vec::new();
     let mut per_bit_summaries: Vec<ScalingBitSummary> = Vec::new();
-    let total_semiprimes: usize = config.bit_sizes.len() * config.semiprimes_per_size;
+    let total_semiprimes: usize = config
+        .bit_sizes
+        .iter()
+        .map(|&b| config.semiprimes_for_bits(b))
+        .sum();
     let mut global_index = 0usize;
     let global_start = Instant::now();
 
     for &bits in &config.bit_sizes {
-        eprintln!("--- {} bits ---", bits);
+        let sp_count = config.semiprimes_for_bits(bits);
+        eprintln!("--- {} bits ({} semiprimes) ---", bits, sp_count);
         let sieve_params = SieveParams::for_bits(bits);
         let candidates = config.candidates_for_bits(bits);
         let degree = sieve_params.degree;
@@ -216,7 +233,7 @@ fn main() {
         let mut bit_results: Vec<ScalingComparison> = Vec::new();
         let run_lattice = bits <= config.lattice_sieve_max_bits;
 
-        for i in 0..config.semiprimes_per_size {
+        for i in 0..sp_count {
             // Generate semiprime using factoring-core (BigUint)
             let target = generate_rsa_target(bits, &mut rng_gen);
             let n_big = &target.n;
