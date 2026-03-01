@@ -74,16 +74,16 @@ impl GnfsParams {
         Self {
             name: "c30".into(),
             degree: 3,
-            lim0: 10_000,
-            lim1: 10_000,
-            lpb0: 18,
-            lpb1: 18,
-            mfb0: 36,
-            mfb1: 36,
-            sieve_a: 100_000,
-            max_b: 20_000,
-            rels_wanted: 20_000,
-            qmin: 2_000,
+            lim0: 30_000,
+            lim1: 30_000,
+            lpb0: 19,
+            lpb1: 19,
+            mfb0: 38,
+            mfb1: 38,
+            sieve_a: 200_000,
+            max_b: 50_000,
+            rels_wanted: 50_000,
+            qmin: 5_000,
         }
     }
 

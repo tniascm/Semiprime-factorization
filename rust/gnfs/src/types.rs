@@ -88,6 +88,7 @@ impl FactorBase {
     pub fn pair_offset(&self, prime_idx: usize) -> usize {
         self.algebraic_roots[..prime_idx].iter().map(|r| r.len()).sum()
     }
+
 }
 
 /// Sparse GF(2) matrix row, stored as a bitset.

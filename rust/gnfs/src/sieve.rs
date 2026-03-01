@@ -55,12 +55,13 @@ pub fn line_sieve(
 ) -> Vec<SieveHit> {
     let m = poly.m();
     let f_coeffs = poly.f_coeffs();
-    let _f_i64 = match poly_coeffs_to_i64(&f_coeffs) {
-        Some(v) => v,
-        None => return vec![],
-    };
+    if f_coeffs.iter().any(|c| c.to_i64().is_none()) {
+        return vec![]; // Coefficients too large for i64 sieve arithmetic
+    }
     let sieve_a_i64 = sieve_a as i64;
     let sieve_len = (2 * sieve_a + 1) as usize;
+    let d = f_coeffs.len() - 1;
+    let f_max_coeff = f_coeffs.iter().map(|c| c.to_f64().abs()).fold(0.0f64, f64::max);
 
     let mut hits = Vec::new();
 
@@ -94,7 +95,22 @@ pub fn line_sieve(
             }
         }
 
-        // Identify survivors
+        // Compute position-independent norm estimates for thresholds.
+        // Rational: |a - b*m| ≤ sieve_a + b*m. Use max norm for threshold.
+        // Algebraic: |F(a,b)| ≤ (d+1) * ||f||_∞ * max(sieve_a, b)^d.
+        // These are upper bounds — actual smooth relations have norms MUCH smaller
+        // than these bounds, so using 50% of the bound bits as threshold is conservative.
+        let m_abs = m.to_f64().abs();
+        let rat_norm_est = sieve_a as f64 + b as f64 * m_abs;
+        let rat_log_est = rat_norm_est.log2();
+        let rat_threshold = (rat_log_est * 20.0 * 0.45) as u16;
+
+        let max_ab = (sieve_a as f64).max(b as f64);
+        let alg_norm_est = (f_max_coeff as f64) * (d as f64 + 1.0) * max_ab.powi(d as i32);
+        let alg_log_est = alg_norm_est.log2();
+        let alg_threshold = (alg_log_est * 20.0 * 0.45) as u16;
+
+        // Identify survivors: only evaluate exact norms for positions passing threshold
         for idx in 0..sieve_len {
             let a = idx as i64 - sieve_a_i64;
             if a == 0 {
@@ -104,6 +120,11 @@ pub fn line_sieve(
             let rat_acc = rat_sieve[idx];
             let alg_acc = alg_sieve[idx];
 
+            if rat_acc < rat_threshold || alg_acc < alg_threshold {
+                continue;
+            }
+
+            // Only compute exact norms for sieve survivors
             let rational_norm = poly.eval_g(a, b);
             let algebraic_norm = poly.eval_f_homogeneous(a, b);
 
@@ -111,21 +132,12 @@ pub fn line_sieve(
                 continue;
             }
 
-            let rat_bits = rational_norm.significant_bits() as u16;
-            let alg_bits = algebraic_norm.significant_bits() as u16;
-
-            // Threshold: accumulated log should be at least ~50% of norm bits
-            let rat_threshold = (rat_bits as f64 * 20.0 * 0.5) as u16;
-            let alg_threshold = (alg_bits as f64 * 20.0 * 0.5) as u16;
-
-            if rat_acc >= rat_threshold && alg_acc >= alg_threshold {
-                hits.push(SieveHit {
-                    a,
-                    b,
-                    rational_norm,
-                    algebraic_norm,
-                });
-            }
+            hits.push(SieveHit {
+                a,
+                b,
+                rational_norm,
+                algebraic_norm,
+            });
         }
     }
 
