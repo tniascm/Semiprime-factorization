@@ -701,16 +701,13 @@ fn sieve_one_specialq(
         total_sieve_ns += sieve_start.elapsed().as_nanos() as u64;
 
         // === SCAN PHASE: optimized per-cell threshold ===
-        // Key opts: precompute j-constants, exploit rational norm linearity,
-        // adaptive per-row algebraic pre-filter, f64 pre-filter before Horner.
         let scan_start = Instant::now();
 
         let j_f64 = j as f64;
-        let d = shared.scan_degree; // declared degree for approximate threshold
+        let d = shared.scan_degree;
         let lpb_f32 = shared.lpb_f32;
         let q_f64 = q as f64;
 
-        // Precompute j-dependent constants (avoid repeated muls in i-loop)
         let j_a1 = j_f64 * (lattice.a1 as f64);
         let j_b1 = j_f64 * (lattice.b1 as f64);
         let j_a1_int = j * lattice.a1;
@@ -718,16 +715,49 @@ fn sieve_one_specialq(
         let a0_f = lattice.a0 as f64;
         let b0_f = lattice.b0 as f64;
 
-        // Rational norm is LINEAR in i: rat_norm = |i*rat_slope + rat_intercept|
-        // where rat_slope = a0 - m*b0, rat_intercept = j*(a1 - m*b1)
         let rat_slope = a0_f - shared.m_f64 * b0_f;
         let rat_intercept = j_a1 - shared.m_f64 * j_b1;
 
         const MIN_SCORE: f32 = 4.0;
 
+        // Row-level algebraic pre-filter: sample norm at evenly-spaced points
+        // to derive a conservative secondary threshold. Avoids expensive Horner
+        // eval for most cells. The margin accounts for norm variation between
+        // samples, especially near polynomial roots where norm drops sharply.
+        let alg_prefilter = {
+            const N_SAMPLES: usize = 16;
+            const MARGIN: f32 = 30.0;
+            let spacing = width / N_SAMPLES;
+            let mut min_thresh = f32::MAX;
+            for s in 0..N_SAMPLES {
+                let si = s * spacing + spacing / 2;
+                let i_f = si as f64 - half_i as f64;
+                let b_f = i_f * b0_f + j_b1;
+                if b_f < 0.5 {
+                    continue;
+                }
+                let a_f = i_f * a0_f + j_a1;
+                let x = a_f / b_f;
+                let mut val = shared.coeffs_f64[d];
+                for k in (0..d).rev() {
+                    val = val * x + shared.coeffs_f64[k];
+                }
+                let norm = val.abs() * b_f.powi(d as i32) / q_f64;
+                let alg_log = fast_log2(norm);
+                let thresh = (alg_log - lpb_f32).max(0.0);
+                if thresh < min_thresh {
+                    min_thresh = thresh;
+                }
+            }
+            if min_thresh > MARGIN + MIN_SCORE {
+                min_thresh - MARGIN
+            } else {
+                MIN_SCORE
+            }
+        };
+
         for idx in 0..width {
-            // Cheap pre-filter: skip cells with negligible sieve scores
-            if rat_scores[idx] < MIN_SCORE || alg_scores[idx] < MIN_SCORE {
+            if rat_scores[idx] < MIN_SCORE || alg_scores[idx] < alg_prefilter {
                 continue;
             }
 
