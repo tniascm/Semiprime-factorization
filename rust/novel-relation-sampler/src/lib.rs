@@ -6,6 +6,7 @@
 
 pub mod logger;
 pub mod sampler;
+pub mod sieve_mcmc;
 pub mod smoothness;
 
 /// Experiment configuration.
