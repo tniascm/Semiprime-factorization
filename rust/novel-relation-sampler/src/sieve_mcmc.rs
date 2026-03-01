@@ -92,11 +92,52 @@ struct FastRoot {
     roots: Vec<u64>,
 }
 
+/// Algebraic roots for a single prime, computed with pre-reduced u64 arithmetic.
+pub(crate) struct FastRootPub {
+    pub prime: u64,
+    pub log_p: f32,
+    pub roots: Vec<u64>,
+}
+
 /// Compute polynomial roots mod each prime using pre-reduced u64 coefficients.
 ///
 /// This replaces the catastrophically slow `compute_polynomial_roots` from classical-nfs
 /// which creates BigUint::from(p) per evaluation. Here we pre-reduce all coefficients
 /// to u64 ONCE per prime, then use pure u128 Horner evaluation in the inner loop.
+pub(crate) fn compute_roots_fast_pub(coeffs: &[BigUint], primes: &[u64]) -> Vec<FastRootPub> {
+    primes
+        .iter()
+        .filter(|&&p| p > 1)
+        .map(|&p| {
+            let p_big = BigUint::from(p);
+            let reduced: Vec<u64> = coeffs
+                .iter()
+                .map(|c| (c % &p_big).to_u64().unwrap_or(0))
+                .collect();
+            let d = reduced.len() - 1;
+            let log_p = (p as f32).log2();
+            let p128 = p as u128;
+            let mut roots = Vec::new();
+            for x in 0..p {
+                let x128 = x as u128;
+                let mut val = reduced[d] as u128;
+                for i in (0..d).rev() {
+                    val = (val * x128 + reduced[i] as u128) % p128;
+                }
+                if val == 0 {
+                    roots.push(x);
+                }
+            }
+            FastRootPub {
+                prime: p,
+                log_p,
+                roots,
+            }
+        })
+        .collect()
+}
+
+/// Compute polynomial roots mod each prime using pre-reduced u64 coefficients (private version).
 fn compute_roots_fast(coeffs: &[BigUint], primes: &[u64]) -> Vec<FastRoot> {
     primes
         .iter()
@@ -137,7 +178,7 @@ fn compute_roots_fast(coeffs: &[BigUint], primes: &[u64]) -> Vec<FastRoot> {
 /// Accuracy: ±0.09 (sufficient for sieve threshold comparisons).
 /// ~3 cycles vs ~30 for f64::log2().
 #[inline(always)]
-fn fast_log2(x: f64) -> f32 {
+pub(crate) fn fast_log2(x: f64) -> f32 {
     if x <= 0.0 {
         return -1000.0;
     }
@@ -151,7 +192,7 @@ fn fast_log2(x: f64) -> f32 {
 }
 
 /// Trial divide a u128 value by primes in the factor base.
-fn trial_divide_u128(mut val: u128, primes: &[u64]) -> (Vec<u32>, u128) {
+pub(crate) fn trial_divide_u128(mut val: u128, primes: &[u64]) -> (Vec<u32>, u128) {
     let mut exponents = vec![0u32; primes.len()];
     for (i, &p) in primes.iter().enumerate() {
         if p == 0 {

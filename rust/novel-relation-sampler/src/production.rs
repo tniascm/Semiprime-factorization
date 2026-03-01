@@ -1,7 +1,7 @@
-//! E29 Production: Sieve-scored MCMC benchmark.
+//! E29 Production: Flat sieve vs Special-q lattice sieve benchmark.
 //!
-//! Runs the production sieve-MCMC pipeline on semiprimes at various bit sizes
-//! and outputs timing/relation statistics for head-to-head comparison with CADO-NFS.
+//! Runs both pipelines on semiprimes at various bit sizes and outputs
+//! timing/relation statistics for head-to-head comparison.
 
 use std::fs;
 use std::path::Path;
@@ -15,22 +15,21 @@ use rand::SeedableRng;
 use serde::Serialize;
 
 use novel_relation_sampler::sieve_mcmc::{collect_relations, SieveMcmcConfig};
+use novel_relation_sampler::specialq::{collect_relations_specialq, SpecialQConfig};
 
 #[derive(Debug, Serialize)]
 struct ProductionResult {
+    method: String,
     n_hex: String,
-    n_decimal: String,
     bits: u32,
     poly_degree: usize,
-    m_bits: u64,
     total_relations: usize,
     full_relations: usize,
     partial_relations: usize,
     candidates_found: usize,
-    rows_processed: usize,
     setup_ms: f64,
     sieve_ms: f64,
-    mcmc_ms: f64,
+    scan_ms: f64,
     cofactor_ms: f64,
     total_ms: f64,
     rels_per_sec: f64,
@@ -39,53 +38,55 @@ struct ProductionResult {
 #[derive(Debug, Serialize)]
 struct BitSummary {
     bits: u32,
+    method: String,
     semiprimes_tested: usize,
     mean_relations: f64,
     mean_full: f64,
     mean_partial: f64,
-    mean_candidates: f64,
     mean_total_ms: f64,
     mean_rels_per_sec: f64,
-    mean_sieve_ms: f64,
-    mean_mcmc_ms: f64,
-    mean_cofactor_ms: f64,
 }
 
 #[derive(Debug, Serialize)]
 struct ProductionOutput {
     experiment: String,
     threads: usize,
-    per_bit_size: Vec<BitSummary>,
+    summaries: Vec<BitSummary>,
     per_semiprime: Vec<ProductionResult>,
 }
 
 fn main() {
     let bit_sizes: Vec<u32> = vec![32, 48, 64, 80, 96, 112, 128];
-    let semiprimes_per_size = 5;
+    let semiprimes_per_size = 3;
     let seed_base = 42u64;
     let threads = rayon::current_num_threads();
 
-    eprintln!("=== E29 Production Sieve-MCMC Benchmark ===");
+    eprintln!("=== E29 Flat vs Special-Q Lattice Sieve Benchmark ===");
     eprintln!("Threads: {}", threads);
     eprintln!("Bit sizes: {:?}", bit_sizes);
     eprintln!("Semiprimes per size: {}", semiprimes_per_size);
     eprintln!();
 
     let mut all_results: Vec<ProductionResult> = Vec::new();
-    let mut per_bit_summaries: Vec<BitSummary> = Vec::new();
+    let mut summaries: Vec<BitSummary> = Vec::new();
     let global_start = Instant::now();
 
     for &bits in &bit_sizes {
-        eprintln!("--- {} bits ---", bits);
-        let config = SieveMcmcConfig::for_bits(bits);
         let degree = match bits {
             0..=96 => 3,
             97..=128 => 4,
             _ => 5,
         };
 
+        let flat_config = SieveMcmcConfig::for_bits(bits);
+        let sq_config = SpecialQConfig::for_bits(bits);
+
+        eprintln!("=== {} bits (degree {}) ===", bits, degree);
+
         let mut rng_gen = StdRng::seed_from_u64(seed_base + bits as u64);
-        let mut bit_results: Vec<ProductionResult> = Vec::new();
+
+        let mut flat_results: Vec<ProductionResult> = Vec::new();
+        let mut sq_results: Vec<ProductionResult> = Vec::new();
 
         for i in 0..semiprimes_per_size {
             let target = generate_rsa_target(bits, &mut rng_gen);
@@ -94,82 +95,130 @@ fn main() {
 
             let poly = select_polynomial(n_big, degree);
             let m_u64 = poly.m.to_u64().expect("m must fit in u64");
-            let m_bits = poly.m.bits();
 
-            eprintln!("  [{}/{}] N={} (m={} bits, degree={})",
-                      i + 1, semiprimes_per_size, &n_hex[..n_hex.len().min(16)], m_bits, degree);
+            eprintln!(
+                "  [{}/{}] N={}...",
+                i + 1,
+                semiprimes_per_size,
+                &n_hex[..n_hex.len().min(16)]
+            );
 
-            let (relations, timings) = collect_relations(&poly, m_u64, &config);
-
-            let rels_per_sec = if timings.total_ms > 0.0 {
-                relations.len() as f64 / (timings.total_ms / 1000.0)
+            // --- Flat sieve ---
+            let (flat_rels, flat_t) = collect_relations(&poly, m_u64, &flat_config);
+            let flat_rps = if flat_t.total_ms > 0.0 {
+                flat_rels.len() as f64 / (flat_t.total_ms / 1000.0)
             } else {
                 0.0
             };
+            eprintln!(
+                "    Flat:  {} rels ({} full) in {:.0}ms = {:.0} rels/sec",
+                flat_rels.len(),
+                flat_t.full_relations,
+                flat_t.total_ms,
+                flat_rps
+            );
 
-            eprintln!("    {} relations ({} full, {} partial) in {:.0}ms = {:.0} rels/sec",
-                      relations.len(), timings.full_relations, timings.partial_relations,
-                      timings.total_ms, rels_per_sec);
-            eprintln!("    breakdown: sieve {:.0}ms, mcmc {:.0}ms, cofactor {:.0}ms, setup {:.0}ms",
-                      timings.sieve_ms, timings.mcmc_ms, timings.cofactor_ms, timings.setup_ms);
-
-            let result = ProductionResult {
+            flat_results.push(ProductionResult {
+                method: "flat".into(),
                 n_hex: n_hex.clone(),
-                n_decimal: target.n.to_string(),
                 bits,
                 poly_degree: degree,
-                m_bits,
-                total_relations: relations.len(),
-                full_relations: timings.full_relations,
-                partial_relations: timings.partial_relations,
-                candidates_found: timings.candidates_found,
-                rows_processed: timings.rows_processed,
-                setup_ms: timings.setup_ms,
-                sieve_ms: timings.sieve_ms,
-                mcmc_ms: timings.mcmc_ms,
-                cofactor_ms: timings.cofactor_ms,
-                total_ms: timings.total_ms,
-                rels_per_sec,
+                total_relations: flat_rels.len(),
+                full_relations: flat_t.full_relations,
+                partial_relations: flat_t.partial_relations,
+                candidates_found: flat_t.candidates_found,
+                setup_ms: flat_t.setup_ms,
+                sieve_ms: flat_t.sieve_ms,
+                scan_ms: flat_t.mcmc_ms,
+                cofactor_ms: flat_t.cofactor_ms,
+                total_ms: flat_t.total_ms,
+                rels_per_sec: flat_rps,
+            });
+
+            // --- Special-q lattice sieve ---
+            let (sq_rels, sq_t) = collect_relations_specialq(&poly, m_u64, &sq_config);
+            let sq_rps = if sq_t.total_ms > 0.0 {
+                sq_rels.len() as f64 / (sq_t.total_ms / 1000.0)
+            } else {
+                0.0
             };
-            bit_results.push(result);
+            eprintln!(
+                "    SQ:    {} rels ({} full) in {:.0}ms = {:.0} rels/sec",
+                sq_rels.len(),
+                sq_t.full_relations,
+                sq_t.total_ms,
+                sq_rps
+            );
+
+            sq_results.push(ProductionResult {
+                method: "specialq".into(),
+                n_hex: n_hex.clone(),
+                bits,
+                poly_degree: degree,
+                total_relations: sq_rels.len(),
+                full_relations: sq_t.full_relations,
+                partial_relations: sq_t.partial_relations,
+                candidates_found: sq_t.candidates_found,
+                setup_ms: sq_t.setup_ms,
+                sieve_ms: sq_t.sieve_ms,
+                scan_ms: sq_t.mcmc_ms,
+                cofactor_ms: sq_t.cofactor_ms,
+                total_ms: sq_t.total_ms,
+                rels_per_sec: sq_rps,
+            });
         }
 
-        // Aggregate
-        let n = bit_results.len() as f64;
-        let summary = BitSummary {
-            bits,
-            semiprimes_tested: bit_results.len(),
-            mean_relations: bit_results.iter().map(|r| r.total_relations as f64).sum::<f64>() / n,
-            mean_full: bit_results.iter().map(|r| r.full_relations as f64).sum::<f64>() / n,
-            mean_partial: bit_results.iter().map(|r| r.partial_relations as f64).sum::<f64>() / n,
-            mean_candidates: bit_results.iter().map(|r| r.candidates_found as f64).sum::<f64>() / n,
-            mean_total_ms: bit_results.iter().map(|r| r.total_ms).sum::<f64>() / n,
-            mean_rels_per_sec: bit_results.iter().map(|r| r.rels_per_sec).sum::<f64>() / n,
-            mean_sieve_ms: bit_results.iter().map(|r| r.sieve_ms).sum::<f64>() / n,
-            mean_mcmc_ms: bit_results.iter().map(|r| r.mcmc_ms).sum::<f64>() / n,
-            mean_cofactor_ms: bit_results.iter().map(|r| r.cofactor_ms).sum::<f64>() / n,
-        };
+        // Aggregate summaries
+        for (method, results) in [("flat", &flat_results), ("specialq", &sq_results)] {
+            let n = results.len() as f64;
+            summaries.push(BitSummary {
+                bits,
+                method: method.into(),
+                semiprimes_tested: results.len(),
+                mean_relations: results.iter().map(|r| r.total_relations as f64).sum::<f64>() / n,
+                mean_full: results.iter().map(|r| r.full_relations as f64).sum::<f64>() / n,
+                mean_partial: results.iter().map(|r| r.partial_relations as f64).sum::<f64>() / n,
+                mean_total_ms: results.iter().map(|r| r.total_ms).sum::<f64>() / n,
+                mean_rels_per_sec: results.iter().map(|r| r.rels_per_sec).sum::<f64>() / n,
+            });
+        }
 
-        eprintln!("  Summary: {:.0} rels, {:.0} rels/sec, {:.0}ms total",
-                  summary.mean_relations, summary.mean_rels_per_sec, summary.mean_total_ms);
-        per_bit_summaries.push(summary);
-        all_results.extend(bit_results);
+        // Print comparison
+        let flat_mean_rps: f64 =
+            flat_results.iter().map(|r| r.rels_per_sec).sum::<f64>() / flat_results.len() as f64;
+        let sq_mean_rps: f64 =
+            sq_results.iter().map(|r| r.rels_per_sec).sum::<f64>() / sq_results.len() as f64;
+        let speedup = if flat_mean_rps > 0.0 {
+            sq_mean_rps / flat_mean_rps
+        } else if sq_mean_rps > 0.0 {
+            f64::INFINITY
+        } else {
+            0.0
+        };
+        eprintln!(
+            "  >> {}-bit: flat={:.0} rels/sec, SQ={:.0} rels/sec, speedup={:.1}x",
+            bits, flat_mean_rps, sq_mean_rps, speedup
+        );
+        eprintln!();
+
+        all_results.extend(flat_results);
+        all_results.extend(sq_results);
     }
 
     let global_elapsed = global_start.elapsed().as_secs_f64();
-    eprintln!("\nTotal elapsed: {:.1}s", global_elapsed);
+    eprintln!("Total elapsed: {:.1}s", global_elapsed);
 
     // Write output
     let output = ProductionOutput {
-        experiment: "E29 Production Sieve-MCMC".to_string(),
+        experiment: "E29 Flat vs Special-Q Lattice Sieve".to_string(),
         threads,
-        per_bit_size: per_bit_summaries,
+        summaries,
         per_semiprime: all_results,
     };
 
     let output_dir = Path::new("data/e29_scaling");
     fs::create_dir_all(output_dir).ok();
-    let output_path = output_dir.join("production_results.json");
+    let output_path = output_dir.join("specialq_results.json");
     let json = serde_json::to_string_pretty(&output).expect("serialize");
     fs::write(&output_path, &json).expect("write output");
     eprintln!("Results written to {}", output_path.display());
