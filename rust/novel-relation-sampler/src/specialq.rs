@@ -440,7 +440,7 @@ struct SQSharedData {
     m: u64,
     m_f64: f64,
     coeffs_f64: Vec<f64>,
-    degree: usize,
+    coeffs_u64: Vec<u64>,
     lpb_bound: u64,
     lpb_bound_sq: u128,
     lpb_f32: f32,
@@ -494,6 +494,12 @@ pub fn collect_relations_specialq(
         .map(|c| c.to_f64().unwrap_or(0.0))
         .collect();
 
+    let coeffs_u64: Vec<u64> = poly
+        .coefficients
+        .iter()
+        .map(|c| c.to_u64().unwrap_or(0))
+        .collect();
+
     let lpb_bound = 1u64 << config.lpb;
     let shared = SQSharedData {
         primes,
@@ -502,7 +508,7 @@ pub fn collect_relations_specialq(
         m,
         m_f64: m as f64,
         coeffs_f64,
-        degree: poly.degree,
+        coeffs_u64,
         lpb_bound,
         lpb_bound_sq: (lpb_bound as u128) * (lpb_bound as u128),
         lpb_f32: config.lpb as f32,
@@ -621,13 +627,17 @@ fn sieve_one_specialq(
         })
         .collect();
 
+    // Pre-allocate sieve arrays (reuse across rows to avoid 16MB alloc per row)
+    let mut rat_scores = vec![0.0f32; width];
+    let mut alg_scores = vec![0.0f32; width];
+
     for j in 1..=max_j {
         let j_u64 = j as u64;
 
         // === SIEVE PHASE ===
         let sieve_start = Instant::now();
-        let mut rat_scores = vec![rat_everywhere; width];
-        let mut alg_scores = vec![alg_everywhere; width];
+        rat_scores.fill(rat_everywhere);
+        alg_scores.fill(alg_everywhere);
 
         // Rational sieve
         for (idx, entry) in rat_entries.iter().enumerate() {
@@ -688,63 +698,74 @@ fn sieve_one_specialq(
 
         total_sieve_ns += sieve_start.elapsed().as_nanos() as u64;
 
-        // === SCAN PHASE: per-cell threshold with lattice-transformed norms ===
+        // === SCAN PHASE: optimized per-cell threshold ===
+        // Key opts: precompute j-constants, exploit rational norm linearity,
+        // use f64 rational pre-filter before expensive algebraic Horner eval.
         let scan_start = Instant::now();
 
         let j_f64 = j as f64;
+        let d = shared.coeffs_f64.len() - 1; // actual degree from coefficients
+        let lpb_f32 = shared.lpb_f32;
+        let q_f64 = q as f64;
+
+        // Precompute j-dependent constants (avoid repeated muls in i-loop)
+        let j_a1 = j_f64 * (lattice.a1 as f64);
+        let j_b1 = j_f64 * (lattice.b1 as f64);
+        let j_a1_int = j * lattice.a1;
+        let j_b1_int = j * lattice.b1;
         let a0_f = lattice.a0 as f64;
         let b0_f = lattice.b0 as f64;
-        let a1_f = lattice.a1 as f64;
-        let b1_f = lattice.b1 as f64;
-        let d = shared.degree;
-        let lpb_f32 = shared.lpb_f32;
-        let _log_q = (q as f32).log2();
+
+        // Rational norm is LINEAR in i: rat_norm = |i*rat_slope + rat_intercept|
+        // where rat_slope = a0 - m*b0, rat_intercept = j*(a1 - m*b1)
+        let rat_slope = a0_f - shared.m_f64 * b0_f;
+        let rat_intercept = j_a1 - shared.m_f64 * j_b1;
+
+        // Precompute b^d for algebraic norm (b depends on i, but b_f^d
+        // is computed only for survivors of rational check)
 
         const MIN_SCORE: f32 = 4.0;
 
         for idx in 0..width {
+            // Cheap pre-filter: skip cells with negligible sieve scores
             if rat_scores[idx] < MIN_SCORE || alg_scores[idx] < MIN_SCORE {
                 continue;
             }
 
-            let i = idx as f64 - half_i as f64;
+            let i_f = idx as f64 - half_i as f64;
 
-            // (a, b) = i*(a0, b0) + j*(a1, b1)
-            let a_f = i * a0_f + j_f64 * a1_f;
-            let b_f = i * b0_f + j_f64 * b1_f;
-
-            if b_f.abs() < 0.5 {
-                continue; // b must be positive
-            }
-
-            // Rational norm: |a - m*b|
-            let rat_norm_f64 = (a_f - b_f * shared.m_f64).abs();
+            // Rational norm (linear): |i * rat_slope + rat_intercept|
+            let rat_norm_f64 = (i_f * rat_slope + rat_intercept).abs();
             let rat_log = fast_log2(rat_norm_f64);
             let rat_thresh = (rat_log - lpb_f32).max(0.0);
             if rat_scores[idx] < rat_thresh {
                 continue;
             }
 
-            // Algebraic norm: |F(a,b)| / q
-            // F(a,b) = b^d * f(a/b), then divide by q
-            if b_f.abs() < 1e-10 {
+            // b check (only for survivors of rational pre-filter)
+            let b_f = i_f * b0_f + j_b1;
+            if b_f < 0.5 {
                 continue;
             }
+
+            // Algebraic norm: |F(a,b)| / q via Horner
+            let a_f = i_f * a0_f + j_a1;
             let x = a_f / b_f;
             let mut val = shared.coeffs_f64[d];
             for k in (0..d).rev() {
                 val = val * x + shared.coeffs_f64[k];
             }
-            let alg_norm_f64 = (val.abs() * b_f.abs().powi(d as i32)) / q as f64;
+            let alg_norm_f64 = val.abs() * b_f.powi(d as i32) / q_f64;
             let alg_log = fast_log2(alg_norm_f64);
             let alg_thresh = (alg_log - lpb_f32).max(0.0);
             if alg_scores[idx] < alg_thresh {
                 continue;
             }
 
-            // Convert to integer (a, b)
-            let a_int = (i as i64) * lattice.a0 + j * lattice.a1;
-            let b_int = (i as i64) * lattice.b0 + j * lattice.b1;
+            // Convert to integer (a, b) using precomputed j-terms
+            let i_int = idx as i64 - half_i;
+            let a_int = i_int * lattice.a0 + j_a1_int;
+            let b_int = i_int * lattice.b0 + j_b1_int;
 
             if b_int <= 0 || a_int == 0 {
                 continue;
@@ -779,8 +800,49 @@ fn sieve_one_specialq(
     }
 }
 
+/// Evaluate |F(a,b)| in u128, returning None on overflow.
+/// Degree is inferred from coeffs length (matching eval_homogeneous_abs).
+fn eval_homogeneous_u128(coeffs_u64: &[u64], a: i64, b: i64) -> Option<u128> {
+    if coeffs_u64.is_empty() {
+        return Some(0);
+    }
+    let d = coeffs_u64.len() - 1;
+    let mut positive_sum: u128 = 0;
+    let mut negative_sum: u128 = 0;
+
+    let a_abs = a.unsigned_abs() as u128;
+    let b_abs = b.unsigned_abs() as u128;
+    let a_neg = a < 0;
+
+    let mut a_pow: u128 = 1;
+    for k in 0..=d {
+        let b_pow_exp = d - k;
+        let mut b_pow: u128 = 1;
+        for _ in 0..b_pow_exp {
+            b_pow = b_pow.checked_mul(b_abs)?;
+        }
+
+        let coeff = coeffs_u64[k] as u128;
+        let term = coeff.checked_mul(a_pow)?.checked_mul(b_pow)?;
+
+        let term_neg = a_neg && (k % 2 == 1);
+        if term_neg {
+            negative_sum = negative_sum.checked_add(term)?;
+        } else {
+            positive_sum = positive_sum.checked_add(term)?;
+        }
+
+        if k < d {
+            a_pow = a_pow.checked_mul(a_abs)?;
+        }
+    }
+
+    Some(positive_sum.abs_diff(negative_sum))
+}
+
 /// Cofactorize a candidate (a, b) from a special-q lattice.
 /// The algebraic norm is guaranteed divisible by q. Supports 2LP.
+/// Uses u128 fast path for algebraic norms, falling back to BigUint.
 fn try_cofactorize_sq(
     a: i64,
     b: i64,
@@ -795,7 +857,7 @@ fn try_cofactorize_sq(
         return None;
     }
 
-    // Trial divide rational side
+    // Trial divide rational side FIRST (cheap, rejects ~80% of candidates)
     let (rat_exps, rat_cofactor) = if rat_norm <= u64::MAX as u128 {
         let (e, c) = trial_divide(rat_norm as u64, &shared.primes);
         (e, c as u128)
@@ -803,56 +865,75 @@ fn try_cofactorize_sq(
         trial_divide_u128(rat_norm, &shared.primes)
     };
 
-    // Check rational cofactor
+    // Quick reject rational cofactor
     let rat_cofactor_u64 = rat_cofactor as u64;
     if rat_cofactor > 1 {
-        if shared.allow_2lp {
-            if rat_cofactor > shared.lpb_bound_sq {
-                return None;
-            }
-        } else if rat_cofactor > shared.lpb_bound as u128 {
+        let bound = if shared.allow_2lp {
+            shared.lpb_bound_sq
+        } else {
+            shared.lpb_bound as u128
+        };
+        if rat_cofactor > bound {
             return None;
         }
     }
 
-    // Verify rational 2LP
+    // Verify rational 2LP if needed
     if rat_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
         if !can_split_2lp(rat_cofactor_u64, shared.lpb_bound) {
             return None;
         }
     }
 
-    // Algebraic norm: |F(a,b)| — guaranteed divisible by q
-    let alg_norm_big = eval_homogeneous_abs(&poly.coefficients, a, b);
-
-    // Divide by q
-    let q_big = BigUint::from(q);
-    if &alg_norm_big % &q_big != BigUint::from(0u32) {
-        return None; // Shouldn't happen for valid lattice points
-    }
-    let alg_norm_div_q = &alg_norm_big / &q_big;
-
-    let alg_norm: u128 = match alg_norm_div_q.to_u128() {
-        Some(v) if v > 0 => v,
-        _ => return None,
+    // Algebraic norm: try u128 fast path first, then BigUint fallback.
+    let alg_norm: u128 = if let Some(norm) = eval_homogeneous_u128(
+        &shared.coeffs_u64,
+        a,
+        b,
+    ) {
+        if norm % (q as u128) != 0 {
+            return None;
+        }
+        let div = norm / (q as u128);
+        if div == 0 {
+            return None;
+        }
+        div
+    } else {
+        let alg_norm_big = eval_homogeneous_abs(&poly.coefficients, a, b);
+        let q_big = BigUint::from(q);
+        if &alg_norm_big % &q_big != BigUint::from(0u32) {
+            return None;
+        }
+        let div = &alg_norm_big / &q_big;
+        match div.to_u128() {
+            Some(v) if v > 0 => v,
+            _ => return None,
+        }
     };
 
-    // Trial divide algebraic side
-    let (alg_exps, alg_cofactor) = trial_divide_u128(alg_norm, &shared.primes);
+    // Trial divide algebraic side (use u64 fast path when possible)
+    let (alg_exps, alg_cofactor) = if alg_norm <= u64::MAX as u128 {
+        let (e, c) = trial_divide(alg_norm as u64, &shared.primes);
+        (e, c as u128)
+    } else {
+        trial_divide_u128(alg_norm, &shared.primes)
+    };
 
-    // Check algebraic cofactor
+    // Quick reject algebraic cofactor
     let alg_cofactor_u64 = alg_cofactor as u64;
     if alg_cofactor > 1 {
-        if shared.allow_2lp {
-            if alg_cofactor > shared.lpb_bound_sq {
-                return None;
-            }
-        } else if alg_cofactor > shared.lpb_bound as u128 {
+        let bound = if shared.allow_2lp {
+            shared.lpb_bound_sq
+        } else {
+            shared.lpb_bound as u128
+        };
+        if alg_cofactor > bound {
             return None;
         }
     }
 
-    // Verify algebraic 2LP
+    // Verify algebraic 2LP if needed
     if alg_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
         if !can_split_2lp(alg_cofactor_u64, shared.lpb_bound) {
             return None;
@@ -875,7 +956,6 @@ fn try_cofactorize_sq(
         .filter(|(_, &e)| e > 0)
         .map(|(&p, &e)| (p, e))
         .collect();
-    // Add the special-q prime as a known algebraic factor
     alg_factors.push((q, 1));
 
     Some(Relation {

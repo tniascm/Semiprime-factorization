@@ -198,6 +198,23 @@ pub(crate) fn trial_divide_u128(mut val: u128, primes: &[u64]) -> (Vec<u32>, u12
         if p == 0 {
             continue;
         }
+        // Switch to u64 division once val fits (4x faster)
+        if val <= u64::MAX as u128 {
+            let mut v64 = val as u64;
+            for (j, &q) in primes[i..].iter().enumerate() {
+                if q == 0 {
+                    continue;
+                }
+                while v64 % q == 0 {
+                    v64 /= q;
+                    exponents[i + j] += 1;
+                }
+                if v64 == 1 {
+                    return (exponents, 1);
+                }
+            }
+            return (exponents, v64 as u128);
+        }
         let p128 = p as u128;
         while val % p128 == 0 {
             val /= p128;
