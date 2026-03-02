@@ -1,4 +1,5 @@
 pub mod arith;
+pub mod factorbase;
 pub mod params;
 pub mod relation;
 
