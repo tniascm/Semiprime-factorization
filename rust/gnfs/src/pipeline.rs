@@ -190,8 +190,8 @@ fn factor_gnfs_inner(
     // but bounded memory. With ncols+excess relations, null space has 'excess' dimensions.
     let max_relations = ncols_est.saturating_mul(5).max(ncols_est + 2000);
     if all_hits.len() > max_relations {
-        // Keep relations with smallest |a| (these tend to produce smaller algebraic products,
-        // making Hensel lifting faster and more numerically stable).
+        // Keep relations with smallest |a| — these produce smaller algebraic
+        // products, making Hensel lifting faster and more stable.
         all_hits.sort_by_key(|r| r.a.unsigned_abs());
         all_hits.truncate(max_relations);
     }
@@ -308,9 +308,9 @@ fn factor_gnfs_inner(
         }
 
         // Early bail-out: if we've tried many deps with ALL giving trivial gcd
-        // (no algebraic sqrt failures), the polynomial is likely degenerate.
-        // Use a generous threshold to avoid false positives.
-        let early_bail_threshold = 1000;
+        // (no algebraic sqrt failures), the polynomial/relation-set is likely
+        // degenerate. Move to the next polynomial variant quickly.
+        let early_bail_threshold = 200;
         if i + 1 == early_bail_threshold
             && fail_gcd == early_bail_threshold
             && fail_rat == 0
@@ -369,10 +369,11 @@ mod tests_5b {
     
     #[test]
     fn test_pipeline_5b() {
-        let n = Integer::from(5000150003u64);
+        // 70001 * 71429 — balanced 33-bit semiprime
+        let n = Integer::from(5000101429u64);
         let params = GnfsParams::c20();
         let result = factor_gnfs(&n, &params, None);
-        eprintln!("Pipeline 5000150003: factor={:?}, rels={}, deps={}, tried={}",
+        eprintln!("Pipeline 5000101429: factor={:?}, rels={}, deps={}, tried={}",
             result.factor, result.relations_found, result.dependencies_found, result.dependencies_tried);
         if let Some(ref f) = result.factor {
             let fint: Integer = f.parse().unwrap();

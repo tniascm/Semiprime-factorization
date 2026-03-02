@@ -774,7 +774,10 @@ fn extract_factor_inner(
     }
 
     // Step 3: Compute algebraic square root(s)
-    // Try Newton method first (irreducible-prime, CADO-NFS style), fall back to Couveignes
+    // Newton (irreducible-prime) gives γ unique up to sign in Z[α]/(f).
+    // Since f is irreducible over Q, the ring Z[α]/(f) is an integral domain,
+    // so γ and -γ are the only square roots. Both Newton and Couveignes
+    // will find the same element.
     let mut y_values = algebraic_sqrt_newton(&alg_product, f_coeffs, m, n);
 
     if y_values.is_empty() {
@@ -788,33 +791,9 @@ fn extract_factor_inner(
 
     if y_values.is_empty() {
         if verbose {
-            eprintln!("[diag] No algebraic square roots found (neither Newton nor Couveignes)");
+            eprintln!("[diag] No algebraic square roots found");
         }
         return (None, Some(FactorFailure::AlgebraicNotSquare));
-    }
-
-    if verbose {
-        eprintln!("[diag] Found {} distinct algebraic square root(s)", y_values.len());
-        for (i, (y, gamma)) in y_values.iter().enumerate() {
-            eprintln!("[diag]   y[{}] = {}", i, y);
-            eprintln!("[diag]   gamma[{}] = {:?}", i, gamma.iter().map(|c| c.to_string()).collect::<Vec<_>>());
-            let x_eq_y = &x == y;
-            let x_eq_neg_y = Integer::from(&x + y) % n == Integer::from(0);
-            eprintln!("[diag]   x == y? {}  x == -y (mod N)? {}", x_eq_y, x_eq_neg_y);
-            let diff = Integer::from(Integer::from(&x - y) + n) % n;
-            let sum = Integer::from(&x + y) % n;
-            let g1 = n.clone().gcd(&diff);
-            let g2 = n.clone().gcd(&sum);
-            eprintln!("[diag]   gcd(x-y, N) = {}  gcd(x+y, N) = {}", g1, g2);
-        }
-        // Check x^2 == y^2 mod N
-        for (i, (y, _)) in y_values.iter().enumerate() {
-            let x2 = Integer::from(&x * &x) % n;
-            let y2 = Integer::from(y * y) % n;
-            eprintln!("[diag]   x² mod N = {}", &x2);
-            eprintln!("[diag]   y[{}]² mod N = {}", i, &y2);
-            eprintln!("[diag]   x² == y²? {}", x2 == y2);
-        }
     }
 
     // Step 4: Try gcd(x ± y, N) for each algebraic square root
