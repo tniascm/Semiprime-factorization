@@ -92,6 +92,26 @@ impl MontgomeryParams {
         self.mul(ar, ar)
     }
 
+    /// Compute `ar^e mod n` where `ar` is already in Montgomery form.
+    ///
+    /// Returns the result in Montgomery form. This avoids repeated
+    /// `to_mont`/`from_mont` conversions when chaining exponentiations
+    /// (e.g. in the P-1 factoring stage-1 loop).
+    pub fn powmod_mont(&self, ar: u64, e: u64) -> u64 {
+        if e == 0 {
+            return self.r_mod_n; // 1 in Montgomery form
+        }
+        let top = 63 - e.leading_zeros() as u32;
+        let mut result = self.r_mod_n; // 1 in Montgomery form
+        for i in (0..=top).rev() {
+            result = self.sqr(result);
+            if (e >> i) & 1 == 1 {
+                result = self.mul(result, ar);
+            }
+        }
+        result
+    }
+
     /// Compute `a^e mod n` using binary exponentiation with Montgomery form.
     pub fn powmod(&self, a: u64, e: u64) -> u64 {
         if e == 0 {
