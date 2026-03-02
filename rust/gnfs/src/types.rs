@@ -66,6 +66,9 @@ pub struct Relation {
     pub algebraic_factors: Vec<(u32, u8)>,
     pub rational_sign_negative: bool,
     pub algebraic_sign_negative: bool,
+    /// Special-q prime and root (q, r) if this relation came from a lattice sieve.
+    /// None for line-sieve relations.
+    pub special_q: Option<(u64, u64)>,
 }
 
 /// Factor base: sorted list of primes with precomputed roots.

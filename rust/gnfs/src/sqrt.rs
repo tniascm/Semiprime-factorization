@@ -826,6 +826,7 @@ mod tests {
             algebraic_factors: vec![],
             rational_sign_negative: false,
             algebraic_sign_negative: false,
+            special_q: None,
         }
     }
 

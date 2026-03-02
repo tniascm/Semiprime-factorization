@@ -1,5 +1,6 @@
 use crate::arith::{find_polynomial_roots_mod_p, sieve_primes};
 use crate::types::{FactorBase, PolynomialPair};
+use rayon::prelude::*;
 use rug::Integer;
 
 /// Build the factor base: primes up to bound with roots of f(x) mod p.
@@ -39,12 +40,15 @@ pub struct SieveHit {
     pub b: u64,
     pub rational_norm: Integer,
     pub algebraic_norm: Integer,
+    /// Special-q prime and root (q, r) if from lattice sieve. None for line sieve.
+    pub special_q: Option<(u64, u64)>,
 }
 
 /// Line sieve: for each b in [1, max_b], sweep a over [-sieve_a, sieve_a].
 ///
 /// Accumulates log(p) for factor base primes dividing the rational and algebraic norms.
 /// Candidates where the accumulated log is close to log(norm) are potential smooth relations.
+/// Uses rayon to parallelize across b values for multi-core speedup.
 ///
 /// Returns candidate (a, b) pairs with their norms for trial division.
 pub fn line_sieve(
@@ -53,83 +57,114 @@ pub fn line_sieve(
     sieve_a: u64,
     max_b: u64,
 ) -> Vec<SieveHit> {
-    let m = poly.m();
     let f_coeffs = poly.f_coeffs();
-    let _f_i64 = match poly_coeffs_to_i64(&f_coeffs) {
-        Some(v) => v,
-        None => return vec![],
-    };
+    if poly_coeffs_to_i64(&f_coeffs).is_none() {
+        return vec![];
+    }
+
+    let m_i128 = poly.m().to_i128().unwrap_or(0);
     let sieve_a_i64 = sieve_a as i64;
     let sieve_len = (2 * sieve_a + 1) as usize;
 
-    let mut hits = Vec::new();
+    // Precompute f64 coefficients for fast approximate norm evaluation
+    let f_f64: Vec<f64> = f_coeffs.iter().map(|c| c.to_f64()).collect();
+    let degree = f_coeffs.len() - 1;
 
-    for b in 1..=max_b {
-        let mut rat_sieve = vec![0u16; sieve_len];
-        let mut alg_sieve = vec![0u16; sieve_len];
+    // Parallel sieve: each b value is independent
+    let hits: Vec<Vec<SieveHit>> = (1..=max_b)
+        .into_par_iter()
+        .map(|b| {
+            let mut rat_sieve = vec![0u16; sieve_len];
+            let mut alg_sieve = vec![0u16; sieve_len];
 
-        for (i, &p) in fb.primes.iter().enumerate() {
-            let log_val = fb.log_p[i] as u16;
-            let p_i64 = p as i64;
+            for (i, &p) in fb.primes.iter().enumerate() {
+                let log_val = fb.log_p[i] as u16;
+                let p_i64 = p as i64;
 
-            // Rational: a ≡ b*m (mod p), since rational norm = a - b*m
-            let bm_mod_p = ((b as i128 * m.to_i128().unwrap_or(0)) % p as i128).unsigned_abs() as u64;
-            let rat_start = bm_mod_p % p;
-            let offset = ((rat_start as i64 + sieve_a_i64) % p_i64 + p_i64) % p_i64;
-            let mut idx = offset as usize;
-            while idx < sieve_len {
-                rat_sieve[idx] += log_val;
-                idx += p as usize;
-            }
-
-            // Algebraic side: for each root r of f mod p, a ≡ b*r (mod p)
-            for &r in &fb.algebraic_roots[i] {
-                let br_mod_p = ((b as u128 * r as u128) % p as u128) as u64;
-                let alg_offset = ((br_mod_p as i64 + sieve_a_i64) % p_i64 + p_i64) % p_i64;
-                let mut idx = alg_offset as usize;
+                // Rational: a ≡ b*m (mod p)
+                let bm_mod_p = ((b as i128 * m_i128) % p as i128).unsigned_abs() as u64;
+                let rat_start = bm_mod_p % p;
+                let offset = ((rat_start as i64 + sieve_a_i64) % p_i64 + p_i64) % p_i64;
+                let mut idx = offset as usize;
                 while idx < sieve_len {
-                    alg_sieve[idx] += log_val;
+                    rat_sieve[idx] = rat_sieve[idx].saturating_add(log_val);
                     idx += p as usize;
                 }
-            }
-        }
 
-        // Identify survivors
-        for idx in 0..sieve_len {
-            let a = idx as i64 - sieve_a_i64;
-            if a == 0 {
-                continue;
-            }
-
-            let rat_acc = rat_sieve[idx];
-            let alg_acc = alg_sieve[idx];
-
-            let rational_norm = poly.eval_g(a, b);
-            let algebraic_norm = poly.eval_f_homogeneous(a, b);
-
-            if rational_norm == 0 || algebraic_norm == 0 {
-                continue;
+                // Algebraic: for each root r, a ≡ b*r (mod p)
+                for &r in &fb.algebraic_roots[i] {
+                    let br_mod_p = ((b as u128 * r as u128) % p as u128) as u64;
+                    let alg_offset = ((br_mod_p as i64 + sieve_a_i64) % p_i64 + p_i64) % p_i64;
+                    let mut idx = alg_offset as usize;
+                    while idx < sieve_len {
+                        alg_sieve[idx] = alg_sieve[idx].saturating_add(log_val);
+                        idx += p as usize;
+                    }
+                }
             }
 
-            let rat_bits = rational_norm.significant_bits() as u16;
-            let alg_bits = algebraic_norm.significant_bits() as u16;
+            // Fast approximate threshold using f64 norms.
+            // Only compute expensive rug::Integer norms for survivors.
+            let b_f64 = b as f64;
+            let m_f64 = m_i128 as f64;
+            let mut local_hits = Vec::new();
 
-            // Threshold: accumulated log should be at least ~50% of norm bits
-            let rat_threshold = (rat_bits as f64 * 20.0 * 0.5) as u16;
-            let alg_threshold = (alg_bits as f64 * 20.0 * 0.5) as u16;
+            for idx in 0..sieve_len {
+                let a = idx as i64 - sieve_a_i64;
+                if a == 0 {
+                    continue;
+                }
+                let rat_acc = rat_sieve[idx];
+                let alg_acc = alg_sieve[idx];
 
-            if rat_acc >= rat_threshold && alg_acc >= alg_threshold {
-                hits.push(SieveHit {
+                // Quick reject: minimum sieve score threshold
+                if rat_acc < 20 || alg_acc < 20 {
+                    continue;
+                }
+
+                // f64 approximate norms for threshold check
+                let a_f64 = a as f64;
+                let rat_norm_f64 = (a_f64 - b_f64 * m_f64).abs();
+                let rat_bits_approx = rat_norm_f64.log2();
+                let rat_threshold = ((rat_bits_approx * 20.0 * 0.5) as u16).saturating_sub(20);
+                if rat_acc < rat_threshold {
+                    continue;
+                }
+
+                // Algebraic norm via Horner in f64
+                let x = a_f64 / b_f64;
+                let mut alg_val = f_f64[degree];
+                for k in (0..degree).rev() {
+                    alg_val = alg_val * x + f_f64[k];
+                }
+                let alg_norm_f64 = alg_val.abs() * b_f64.powi(degree as i32);
+                let alg_bits_approx = alg_norm_f64.log2();
+                let alg_threshold = ((alg_bits_approx * 20.0 * 0.5) as u16).saturating_sub(20);
+                if alg_acc < alg_threshold {
+                    continue;
+                }
+
+                // Survivor: compute exact norms
+                let rational_norm = poly.eval_g(a, b);
+                let algebraic_norm = poly.eval_f_homogeneous(a, b);
+                if rational_norm == 0 || algebraic_norm == 0 {
+                    continue;
+                }
+
+                local_hits.push(SieveHit {
                     a,
                     b,
                     rational_norm,
                     algebraic_norm,
+                    special_q: None,
                 });
             }
-        }
-    }
 
-    hits
+            local_hits
+        })
+        .collect();
+
+    hits.into_iter().flatten().collect()
 }
 
 #[cfg(test)]

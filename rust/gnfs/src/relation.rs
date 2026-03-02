@@ -58,9 +58,17 @@ pub fn collect_smooth_relations(
         let (rat_factors, rat_remainder) = trial_divide(rat_abs, &fb.primes);
 
         let alg_sign_neg = hit.algebraic_norm < 0;
-        let alg_abs = hit.algebraic_norm.clone().abs().to_u64().unwrap_or(u64::MAX);
+        let mut alg_abs = hit.algebraic_norm.clone().abs().to_u64().unwrap_or(u64::MAX);
         if alg_abs == u64::MAX || alg_abs == 0 {
             continue;
+        }
+        // For lattice sieve hits, divide algebraic norm by the special-q prime.
+        // The lattice guarantees q | algebraic_norm for every hit.
+        if let Some((q, _r)) = hit.special_q {
+            if alg_abs % q != 0 {
+                continue; // sanity check: q should divide the algebraic norm
+            }
+            alg_abs /= q;
         }
         let (alg_prime_factors, alg_remainder) = trial_divide(alg_abs, &fb.primes);
 
@@ -128,6 +136,7 @@ pub fn collect_smooth_relations(
             algebraic_factors: alg_pair_factors,
             rational_sign_negative: rat_sign_neg,
             algebraic_sign_negative: alg_sign_neg,
+            special_q: hit.special_q,
         });
     }
 

@@ -3,6 +3,7 @@ pub mod types;
 pub mod params;
 pub mod log;
 pub mod polyselect;
+pub mod lattice;
 pub mod sieve;
 pub mod relation;
 pub mod linalg;

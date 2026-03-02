@@ -59,6 +59,33 @@ pub fn mod_inverse(a: u64, m: u64) -> Option<u64> {
     }
 }
 
+/// Native u64 modular inverse using extended Euclidean algorithm.
+/// Returns x such that a*x ≡ 1 (mod m), or None if gcd(a,m) != 1.
+/// Uses i128 arithmetic to avoid overflow for large inputs.
+/// Preferred over `mod_inverse` in hot loops (avoids rug::Integer allocation).
+pub fn mod_inverse_u64(a: u64, m: u64) -> Option<u64> {
+    if m <= 1 {
+        return None;
+    }
+    let (mut old_r, mut r) = (a as i128, m as i128);
+    let (mut old_s, mut s) = (1i128, 0i128);
+
+    while r != 0 {
+        let q = old_r / r;
+        let temp_r = r;
+        r = old_r - q * r;
+        old_r = temp_r;
+        let temp_s = s;
+        s = old_s - q * s;
+        old_s = temp_s;
+    }
+
+    if old_r != 1 {
+        return None;
+    }
+    Some(old_s.rem_euclid(m as i128) as u64)
+}
+
 /// Tonelli-Shanks: find r such that r^2 ≡ n (mod p). Returns None if n is not a QR mod p.
 pub fn tonelli_shanks(n: u64, p: u64) -> Option<u64> {
     if p == 2 {
@@ -439,6 +466,25 @@ mod tests {
         assert_eq!(mod_inverse(3, 10), Some(7));
         assert_eq!(mod_inverse(2, 10), None);
         assert_eq!(mod_inverse(3, 7), Some(5));
+    }
+
+    #[test]
+    fn test_mod_inverse_u64() {
+        assert_eq!(mod_inverse_u64(3, 10), Some(7));
+        assert_eq!(mod_inverse_u64(2, 10), None);
+        assert_eq!(mod_inverse_u64(3, 7), Some(5));
+        // Verify consistency with rug-based version
+        for m in [7u64, 13, 97, 1009, 65537] {
+            for a in 1..m.min(50) {
+                assert_eq!(
+                    mod_inverse_u64(a, m),
+                    mod_inverse(a, m),
+                    "mismatch for a={}, m={}",
+                    a,
+                    m
+                );
+            }
+        }
     }
 
     #[test]
