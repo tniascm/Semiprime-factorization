@@ -1,3 +1,4 @@
+pub mod arith;
 pub mod params;
 pub mod relation;
 
