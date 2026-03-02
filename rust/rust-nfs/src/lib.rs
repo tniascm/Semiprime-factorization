@@ -1,6 +1,7 @@
 pub mod arith;
 pub mod cofactor;
 pub mod factorbase;
+pub mod filter;
 pub mod params;
 pub mod relation;
 pub mod sieve;
