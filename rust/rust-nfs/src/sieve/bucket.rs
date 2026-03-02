@@ -146,6 +146,11 @@ impl BucketArray {
         }
     }
 
+    /// Number of buckets in this array.
+    pub fn n_buckets(&self) -> usize {
+        self.n_buckets
+    }
+
     /// Total number of updates across all buckets.
     pub fn total_updates(&self) -> usize {
         self.write_pos
