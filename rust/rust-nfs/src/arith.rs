@@ -41,7 +41,10 @@ impl MontgomeryParams {
     /// # Panics
     /// Panics if `n` is even or less than 2.
     pub fn new(n: u64) -> Self {
-        assert!(n >= 2 && n & 1 == 1, "MontgomeryParams: n must be odd and >= 2");
+        assert!(
+            n >= 2 && n & 1 == 1,
+            "MontgomeryParams: n must be odd and >= 2"
+        );
 
         // Compute n^{-1} mod 2^{64} via Newton's method.
         // Start with x = n (since n*n ≡ n^2 mod 2^k and for any odd n,
@@ -65,7 +68,12 @@ impl MontgomeryParams {
         // R^2 mod n = (2^{64} mod n)^2 mod n
         let r2_mod_n = ((r_mod_n as u128 * r_mod_n as u128) % n as u128) as u64;
 
-        MontgomeryParams { n, n_inv, r_mod_n, r2_mod_n }
+        MontgomeryParams {
+            n,
+            n_inv,
+            r_mod_n,
+            r2_mod_n,
+        }
     }
 
     /// Convert `a` (in [0, n)) to Montgomery form: a * R mod n.
@@ -182,7 +190,12 @@ impl TrialDivisor {
         let p_inv = x;
         let p_lim = u64::MAX / p;
 
-        TrialDivisor { p, p_inv, p_lim, log_p }
+        TrialDivisor {
+            p,
+            p_inv,
+            p_lim,
+            log_p,
+        }
     }
 
     /// Returns `true` if `p | n`.
@@ -391,10 +404,7 @@ mod tests {
 
     #[test]
     fn test_sieve_primes() {
-        assert_eq!(
-            sieve_primes(30),
-            vec![2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
-        );
+        assert_eq!(sieve_primes(30), vec![2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
     }
 
     #[test]

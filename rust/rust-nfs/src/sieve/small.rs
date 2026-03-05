@@ -60,8 +60,8 @@ pub fn precompute_small_sieve_rat(
         let p_i128 = p as i128;
 
         // Compute (a0 - m*b0) mod p
-        let denom = ((qlat.a0 as i128 - (m as i128) * (qlat.b0 as i128)) % p_i128 + p_i128)
-            % p_i128;
+        let denom =
+            ((qlat.a0 as i128 - (m as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
 
         if denom == 0 {
             // Projective root: skip this prime for the line sieve.
@@ -75,8 +75,8 @@ pub fn precompute_small_sieve_rat(
         };
 
         // Compute -(a1 - m*b1) mod p
-        let numer = ((-(qlat.a1 as i128 - (m as i128) * (qlat.b1 as i128))) % p_i128 + p_i128)
-            % p_i128;
+        let numer =
+            ((-(qlat.a1 as i128 - (m as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
 
         let root_i = ((numer as u128 * inv as u128) % p as u128) as u64;
 
@@ -119,8 +119,8 @@ pub fn precompute_small_sieve_alg(
         let p_i128 = p as i128;
 
         for &r in &roots[idx] {
-            let denom = ((qlat.a0 as i128 - (r as i128) * (qlat.b0 as i128)) % p_i128 + p_i128)
-                % p_i128;
+            let denom =
+                ((qlat.a0 as i128 - (r as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
 
             if denom == 0 {
                 continue;
@@ -131,9 +131,8 @@ pub fn precompute_small_sieve_alg(
                 None => continue,
             };
 
-            let numer = ((-(qlat.a1 as i128 - (r as i128) * (qlat.b1 as i128))) % p_i128
-                + p_i128)
-                % p_i128;
+            let numer =
+                ((-(qlat.a1 as i128 - (r as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
 
             let root_i = ((numer as u128 * inv as u128) % p as u128) as u64;
 
@@ -163,9 +162,10 @@ pub fn small_sieve_region(
     j: i32,
     region_start: usize,
     region_len: usize,
-    _sieve_width: usize,
+    sieve_width: usize,
 ) {
     let region_end = region_start + region_len;
+    let half_i = sieve_width / 2;
 
     for entry in entries {
         let p = entry.p as usize;
@@ -177,8 +177,10 @@ pub fn small_sieve_region(
         // Compute first hit position in the full sieve row.
         // j can be negative; we need (root_i * j) mod p with proper unsigned handling.
         let j_mod_p = ((j as i64).rem_euclid(p as i64)) as u64;
-        let start_in_row =
-            ((entry.root_i as u128 * j_mod_p as u128) % entry.p as u128) as usize;
+        // Congruences are in i-coordinates (i in [-I, I)); map to row index
+        // k=i+I by adding half_i before reducing modulo p.
+        let start_in_row = ((half_i as u128 + (entry.root_i as u128 * j_mod_p as u128))
+            % entry.p as u128) as usize;
 
         // Find the first hit at or after region_start.
         let first_hit = if start_in_row >= region_start {
@@ -305,7 +307,7 @@ mod tests {
         // In region [10, 20): hits at 10 (local 0) and 15 (local 5)
         assert_eq!(sieve[0], 90); // global pos 10
         assert_eq!(sieve[5], 90); // global pos 15
-        // Others unchanged
+                                  // Others unchanged
         assert_eq!(sieve[1], 100);
         assert_eq!(sieve[3], 100);
     }
@@ -320,11 +322,10 @@ mod tests {
         }];
         let mut sieve = vec![50u8; 10];
         small_sieve_region(&mut sieve, &entries, 3, 0, 10, 10);
-        // For j=3: start = (0 * 3) % 3 = 0, hits at 0, 3, 6, 9
-        assert_eq!(sieve[0], 0); // 50 - 200 saturates to 0
-        assert_eq!(sieve[3], 0);
-        assert_eq!(sieve[6], 0);
-        assert_eq!(sieve[9], 0);
+        // half_i = 5, so start = (5 + 0*3) % 3 = 2, hits at 2, 5, 8
+        assert_eq!(sieve[2], 0); // 50 - 200 saturates to 0
+        assert_eq!(sieve[5], 0);
+        assert_eq!(sieve[8], 0);
         assert_eq!(sieve[1], 50); // untouched
     }
 
@@ -370,11 +371,11 @@ mod tests {
         let mut sieve = vec![100u8; 21];
         small_sieve_region(&mut sieve, &entries, -2, 0, 21, 21);
         // j = -2: j_mod_p = (-2).rem_euclid(7) = 5
-        // start = (3 * 5) % 7 = 15 % 7 = 1
-        // Hits at 1, 8, 15
-        assert_eq!(sieve[1], 90);
-        assert_eq!(sieve[8], 90);
-        assert_eq!(sieve[15], 90);
+        // half_i = 10, start = (10 + 3 * 5) % 7 = 4
+        // Hits at 4, 11, 18
+        assert_eq!(sieve[4], 90);
+        assert_eq!(sieve[11], 90);
+        assert_eq!(sieve[18], 90);
         assert_eq!(sieve[0], 100);
     }
 

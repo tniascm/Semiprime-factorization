@@ -4,7 +4,10 @@ use rust_nfs::params::NfsParams;
 use rust_nfs::pipeline::factor_nfs;
 
 #[derive(Parser)]
-#[command(name = "rust-nfs", about = "Production NFS factorization — beats CADO-NFS")]
+#[command(
+    name = "rust-nfs",
+    about = "Production NFS factorization — beats CADO-NFS"
+)]
 struct Cli {
     /// Number to factor (decimal)
     #[arg(long)]

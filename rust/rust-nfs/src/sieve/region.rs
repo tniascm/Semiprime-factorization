@@ -74,7 +74,7 @@ pub fn pos_to_ij(
     bucket_idx: usize,
     pos: u16,
     sieve_width: usize, // = 2*I
-    half_i: i64,         // = I
+    half_i: i64,        // = I
 ) -> (i64, u64) {
     let global_pos = bucket_idx * BUCKET_REGION + pos as usize;
     let j = (global_pos / sieve_width) as u64;

@@ -313,7 +313,7 @@ fn scalar_mul(p: Point, k: u64, curve: &CurveParams, mp: &MontgomeryParams) -> P
     }
 
     // Montgomery ladder.
-    let mut r0 = p;          // R0 = P
+    let mut r0 = p; // R0 = P
     let mut r1 = xdbl(p, curve, mp); // R1 = [2]P
 
     let bits = 64 - k.leading_zeros();
@@ -342,8 +342,8 @@ fn scalar_mul(p: Point, k: u64, curve: &CurveParams, mp: &MontgomeryParams) -> P
 fn xdbl(p: Point, curve: &CurveParams, mp: &MontgomeryParams) -> Point {
     let sum = addmod_mont(p.x, p.z, mp.n);
     let diff = submod_mont(p.x, p.z, mp.n);
-    let u = mp.sqr(sum);   // (X + Z)^2
-    let v = mp.sqr(diff);  // (X - Z)^2
+    let u = mp.sqr(sum); // (X + Z)^2
+    let v = mp.sqr(diff); // (X - Z)^2
     let d = submod_mont(u, v, mp.n); // u - v
     let x2 = mp.mul(u, v);
     let t = mp.mul(curve.a24, d);
@@ -363,14 +363,8 @@ fn xdbl(p: Point, curve: &CurveParams, mp: &MontgomeryParams) -> Point {
 /// All arithmetic in Montgomery form.
 #[inline]
 fn xadd(p1: Point, p2: Point, p0: Point, mp: &MontgomeryParams) -> Point {
-    let u1 = mp.mul(
-        submod_mont(p1.x, p1.z, mp.n),
-        addmod_mont(p2.x, p2.z, mp.n),
-    );
-    let u2 = mp.mul(
-        addmod_mont(p1.x, p1.z, mp.n),
-        submod_mont(p2.x, p2.z, mp.n),
-    );
+    let u1 = mp.mul(submod_mont(p1.x, p1.z, mp.n), addmod_mont(p2.x, p2.z, mp.n));
+    let u2 = mp.mul(addmod_mont(p1.x, p1.z, mp.n), submod_mont(p2.x, p2.z, mp.n));
     let sum = addmod_mont(u1, u2, mp.n);
     let diff = submod_mont(u1, u2, mp.n);
     let x3 = mp.mul(p0.z, mp.sqr(sum));
@@ -472,9 +466,7 @@ mod tests {
         // Verify that doubling doesn't panic and produces valid output.
         let n = 1009u64 * 1013; // 1022117
         let mp = MontgomeryParams::new(n);
-        let curve = CurveParams {
-            a24: mp.to_mont(3),
-        };
+        let curve = CurveParams { a24: mp.to_mont(3) };
         let p = Point {
             x: mp.to_mont(7),
             z: mp.to_mont(1),
@@ -498,7 +490,10 @@ mod tests {
                 break;
             }
         }
-        assert!(found, "ECM should find a factor of 1009*1013 with some sigma");
+        assert!(
+            found,
+            "ECM should find a factor of 1009*1013 with some sigma"
+        );
     }
 
     #[test]

@@ -48,8 +48,8 @@ impl NfsParams {
             mfb0: 20,
             mfb1: 20,
             log_i: 9,
-            qmin: 55_000,
-            qrange: 1_500,
+            qmin: 25_000,
+            qrange: 5_000,
             rels_wanted: 35_000,
         }
     }
@@ -66,8 +66,8 @@ impl NfsParams {
             mfb0: 22,
             mfb1: 22,
             log_i: 9,
-            qmin: 55_000,
-            qrange: 1_500,
+            qmin: 35_000,
+            qrange: 5_000,
             rels_wanted: 40_000,
         }
     }
@@ -85,8 +85,8 @@ impl NfsParams {
             mfb1: 26,
             log_i: 10,
             qmin: 58_000,
-            qrange: 2_000,
-            rels_wanted: 50_000,
+            qrange: 1_500,
+            rels_wanted: 45_000,
         }
     }
 

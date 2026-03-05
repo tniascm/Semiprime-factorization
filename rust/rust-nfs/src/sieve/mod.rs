@@ -15,8 +15,10 @@ pub mod small;
 use crate::arith::sieve_primes;
 use crate::cofactor::{self, CofactResult};
 use crate::factorbase::{self, FactorBase};
+use crate::lp_key::LpKey;
 use crate::params::NfsParams;
 use crate::relation::Relation;
+use rayon::prelude::*;
 
 use self::bucket::{BucketArray, BucketUpdate, BUCKET_REGION, LOG_BUCKET_REGION};
 use self::lattice::{reduce_plattice, reduce_qlattice, QLattice};
@@ -32,6 +34,8 @@ pub struct SieveResult {
     pub special_qs_processed: usize,
     pub survivors_found: usize,
     pub total_ms: f64,
+    pub bucket_setup_ms: f64,
+    pub region_scan_ms: f64,
     pub sieve_ms: f64,
     pub cofactor_ms: f64,
 }
@@ -54,18 +58,13 @@ pub fn sieve_specialq(
 
     let half_i = params.sieve_half_width() as i64;
     let sieve_width = (2 * half_i) as usize;
-    let max_j = (params.sieve_half_width() / 2).max(1) as usize;
+    // Match GNFS/CADO-style region shape with J = I.
+    let max_j = params.sieve_half_width().max(1) as usize;
     let total_sieve_area = sieve_width * max_j;
     let n_buckets = (total_sieve_area + BUCKET_REGION - 1) / BUCKET_REGION;
 
     // Bucket threshold: primes below this use small sieve, above use bucket sieve
     let bucket_thresh = (half_i as u64).max(64);
-
-    // Generate special-q primes
-    let sq_primes: Vec<u64> = sieve_primes(params.qmin + params.qrange)
-        .into_iter()
-        .filter(|&p| p >= params.qmin)
-        .collect();
 
     let scale = rat_fb.scale;
 
@@ -73,309 +72,416 @@ pub fn sieve_specialq(
     let g0 = -(m as f64);
     let g1 = 1.0f64;
 
+    // Precompute FB partitions once; q-dependent exclusion is handled in-loop.
+    let small_rat_primes_all: Vec<u64> = rat_fb
+        .primes
+        .iter()
+        .copied()
+        .filter(|&p| p < bucket_thresh)
+        .collect();
+    let small_rat_logp_all: Vec<u8> = rat_fb
+        .primes
+        .iter()
+        .enumerate()
+        .filter(|(_, &p)| p < bucket_thresh)
+        .map(|(idx, _)| rat_fb.log_p[idx])
+        .collect();
+    let small_alg_primes_all: Vec<u64> = alg_fb
+        .primes
+        .iter()
+        .copied()
+        .filter(|&p| p < bucket_thresh)
+        .collect();
+    let small_alg_roots_all: Vec<Vec<u64>> = alg_fb
+        .primes
+        .iter()
+        .enumerate()
+        .filter(|(_, &p)| p < bucket_thresh)
+        .map(|(idx, _)| alg_fb.roots[idx].clone())
+        .collect();
+    let small_alg_logp_all: Vec<u8> = alg_fb
+        .primes
+        .iter()
+        .enumerate()
+        .filter(|(_, &p)| p < bucket_thresh)
+        .map(|(idx, _)| alg_fb.log_p[idx])
+        .collect();
+    let rat_large_indices: Vec<usize> = rat_fb
+        .primes
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &p)| if p >= bucket_thresh { Some(idx) } else { None })
+        .collect();
+    let alg_large_indices: Vec<usize> = alg_fb
+        .primes
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &p)| if p >= bucket_thresh { Some(idx) } else { None })
+        .collect();
+    let rat_roots_by_index: Vec<u64> = rat_fb.primes.iter().map(|&p| m % p).collect();
+
     let mut all_relations = Vec::new();
     let mut total_survivors = 0usize;
-    let mut total_sieve_ns = 0u64;
+    let mut total_bucket_setup_ns = 0u64;
+    let mut total_region_scan_ns = 0u64;
     let mut total_cofact_ns = 0u64;
     let mut sq_count = 0usize;
+    let norm_block = std::env::var("RUST_NFS_NORM_BLOCK")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(1usize);
 
-    for &q in &sq_primes {
-        // Find roots of f(x) mod q
-        let q_roots = factorbase::find_roots_mod_p(f_coeffs, q);
-        if q_roots.is_empty() {
-            sq_count += 1;
-            continue;
+    // Process special-q windows in CADO style: keep advancing q until
+    // enough relations are collected. Optional cap is kept only for experiments.
+    let max_q_windows = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0);
+    let mut window = 0usize;
+    loop {
+        if let Some(cap) = max_q_windows {
+            if window >= cap {
+                break;
+            }
         }
+        let q_start = params.qmin + (window as u64) * params.qrange;
+        let q_end = q_start + params.qrange;
+        let sq_primes: Vec<u64> = sieve_primes(q_end)
+            .into_iter()
+            .filter(|&p| p >= q_start)
+            .collect();
 
-        for &r in &q_roots {
-            let sieve_start = std::time::Instant::now();
+        for &q in &sq_primes {
+            // Find roots of f(x) mod q
+            let q_roots = factorbase::find_roots_mod_p(f_coeffs, q);
+            if q_roots.is_empty() {
+                sq_count += 1;
+                continue;
+            }
 
-            // 1. Reduce q-lattice
-            let skewness = 1.0;
-            let qlat = reduce_qlattice(q, r, skewness);
+            for &r in &q_roots {
+                let sieve_start = std::time::Instant::now();
 
-            // 2. Precompute small sieve entries (primes below bucket_thresh)
-            let small_rat_primes: Vec<u64> = rat_fb
-                .primes
-                .iter()
-                .copied()
-                .filter(|&p| p < bucket_thresh && p != q)
-                .collect();
-            let small_rat_logp: Vec<u8> = rat_fb
-                .primes
-                .iter()
-                .enumerate()
-                .filter(|(_, &p)| p < bucket_thresh && p != q)
-                .map(|(idx, _)| rat_fb.log_p[idx])
-                .collect();
-            let small_rat =
-                precompute_small_sieve_rat(&small_rat_primes, &small_rat_logp, m, &qlat);
+                // 1. Reduce q-lattice
+                let skewness = 1.0;
+                let qlat = reduce_qlattice(q, r, skewness);
 
-            let small_alg_primes: Vec<u64> = alg_fb
-                .primes
-                .iter()
-                .copied()
-                .filter(|&p| p < bucket_thresh && p != q)
-                .collect();
-            let small_alg_roots: Vec<Vec<u64>> = alg_fb
-                .primes
-                .iter()
-                .enumerate()
-                .filter(|(_, &p)| p < bucket_thresh && p != q)
-                .map(|(idx, _)| alg_fb.roots[idx].clone())
-                .collect();
-            let small_alg_logp: Vec<u8> = alg_fb
-                .primes
-                .iter()
-                .enumerate()
-                .filter(|(_, &p)| p < bucket_thresh && p != q)
-                .map(|(idx, _)| alg_fb.log_p[idx])
-                .collect();
-            let small_alg = precompute_small_sieve_alg(
-                &small_alg_primes,
-                &small_alg_roots,
-                &small_alg_logp,
-                &qlat,
-            );
+                // 2. Precompute small sieve entries (primes below bucket_thresh)
+                let small_rat = if q < bucket_thresh {
+                    let mut small_rat_primes = Vec::with_capacity(small_rat_primes_all.len());
+                    let mut small_rat_logp = Vec::with_capacity(small_rat_logp_all.len());
+                    for (idx, &p) in small_rat_primes_all.iter().enumerate() {
+                        if p != q {
+                            small_rat_primes.push(p);
+                            small_rat_logp.push(small_rat_logp_all[idx]);
+                        }
+                    }
+                    precompute_small_sieve_rat(&small_rat_primes, &small_rat_logp, m, &qlat)
+                } else {
+                    precompute_small_sieve_rat(&small_rat_primes_all, &small_rat_logp_all, m, &qlat)
+                };
 
-            // 3. Scatter bucket updates for large primes
-            // Estimate updates per bucket: BUCKET_REGION * sum(1/p) for large primes.
-            // Mertens' theorem gives sum(1/p, p<=x) ~ ln(ln(x)), so for the range
-            // [bucket_thresh, lim] the sum is modest. Use a generous upper bound.
-            let est_updates = estimate_updates_per_bucket(
-                &rat_fb.primes,
-                &alg_fb.primes,
-                &alg_fb.roots,
-                bucket_thresh,
-                q,
-            );
-            let updates_per_bucket = (est_updates * 2).max(1024); // 2x safety margin
-            let mut rat_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
-            let mut alg_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
+                let small_alg = if q < bucket_thresh {
+                    let mut small_alg_primes = Vec::with_capacity(small_alg_primes_all.len());
+                    let mut small_alg_roots = Vec::with_capacity(small_alg_roots_all.len());
+                    let mut small_alg_logp = Vec::with_capacity(small_alg_logp_all.len());
+                    for (idx, &p) in small_alg_primes_all.iter().enumerate() {
+                        if p != q {
+                            small_alg_primes.push(p);
+                            small_alg_roots.push(small_alg_roots_all[idx].clone());
+                            small_alg_logp.push(small_alg_logp_all[idx]);
+                        }
+                    }
+                    precompute_small_sieve_alg(
+                        &small_alg_primes,
+                        &small_alg_roots,
+                        &small_alg_logp,
+                        &qlat,
+                    )
+                } else {
+                    precompute_small_sieve_alg(
+                        &small_alg_primes_all,
+                        &small_alg_roots_all,
+                        &small_alg_logp_all,
+                        &qlat,
+                    )
+                };
 
-            // Algebraic large FB primes
-            for (fb_idx, &p) in alg_fb.primes.iter().enumerate() {
-                if p < bucket_thresh || p == q {
-                    continue;
+                // 3. Scatter bucket updates for large primes
+                // Estimate updates per bucket: BUCKET_REGION * sum(1/p) for large primes.
+                // Mertens' theorem gives sum(1/p, p<=x) ~ ln(ln(x)), so for the range
+                // [bucket_thresh, lim] the sum is modest. Use a generous upper bound.
+                let est_updates = estimate_updates_per_bucket(
+                    &rat_fb.primes,
+                    &alg_fb.primes,
+                    &alg_fb.roots,
+                    bucket_thresh,
+                    q,
+                );
+                let updates_per_bucket = (est_updates * 2).max(1024); // 2x safety margin
+                let mut rat_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
+                let mut alg_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
+
+                // Algebraic large FB primes
+                for &fb_idx in &alg_large_indices {
+                    let p = alg_fb.primes[fb_idx];
+                    if p == q {
+                        continue;
+                    }
+                    for &root in &alg_fb.roots[fb_idx] {
+                        scatter_bucket_updates_for_prime(
+                            p,
+                            root,
+                            alg_fb.log_p[fb_idx],
+                            &qlat,
+                            params.log_i,
+                            &mut alg_buckets,
+                            sieve_width,
+                            max_j,
+                            half_i,
+                        );
+                    }
                 }
-                for &root in &alg_fb.roots[fb_idx] {
+
+                // Rational large FB primes (rational root is m mod p)
+                for &fb_idx in &rat_large_indices {
+                    let p = rat_fb.primes[fb_idx];
+                    if p == q {
+                        continue;
+                    }
                     scatter_bucket_updates_for_prime(
                         p,
-                        root,
-                        alg_fb.log_p[fb_idx],
+                        rat_roots_by_index[fb_idx],
+                        rat_fb.log_p[fb_idx],
                         &qlat,
                         params.log_i,
-                        &mut alg_buckets,
+                        &mut rat_buckets,
                         sieve_width,
                         max_j,
                         half_i,
                     );
                 }
-            }
 
-            // Rational large FB primes (rational root is m mod p)
-            for (fb_idx, &p) in rat_fb.primes.iter().enumerate() {
-                if p < bucket_thresh || p == q {
-                    continue;
-                }
-                let rat_root = m % p;
-                scatter_bucket_updates_for_prime(
-                    p,
-                    rat_root,
-                    rat_fb.log_p[fb_idx],
-                    &qlat,
-                    params.log_i,
-                    &mut rat_buckets,
-                    sieve_width,
-                    max_j,
-                    half_i,
-                );
-            }
+                let bucket_setup_elapsed = sieve_start.elapsed().as_nanos() as u64;
+                total_bucket_setup_ns += bucket_setup_elapsed;
 
-            let sieve_elapsed = sieve_start.elapsed().as_nanos() as u64;
-            total_sieve_ns += sieve_elapsed;
-
-            // 4. Process each bucket region
-            let cofact_start = std::time::Instant::now();
-            let mut survivors_this_sq: Vec<(i64, u64)> = Vec::new();
-
-            for bucket_idx in 0..n_buckets {
-                let region_start = bucket_idx * BUCKET_REGION;
-                let region_end = (region_start + BUCKET_REGION).min(total_sieve_area);
-                let region_len = region_end - region_start;
-                if region_len == 0 {
-                    continue;
-                }
-
-                // Init norm arrays row by row within this bucket region
-                let mut rat_sieve = vec![0u8; region_len];
-                let mut alg_sieve = vec![0u8; region_len];
-
-                // Determine the range of j-rows this bucket region covers
-                let first_j = region_start / sieve_width;
-                let last_j = (region_end.saturating_sub(1)) / sieve_width;
-
-                for j_row in first_j..=last_j {
-                    let row_start_global = j_row * sieve_width;
-                    let row_end_global = row_start_global + sieve_width;
-
-                    // Overlap of this row with this bucket region
-                    let overlap_start = row_start_global.max(region_start);
-                    let overlap_end = row_end_global.min(region_end);
-                    if overlap_start >= overlap_end {
-                        continue;
-                    }
-
-                    let local_start = overlap_start - region_start;
-                    let local_end = overlap_end - region_start;
-                    let overlap_len = local_end - local_start;
-
-                    // The i-offset within the row where this sub-region starts
-                    let i_offset_in_row = overlap_start - row_start_global;
-
-                    // Init rational norms for this row-slice
-                    // init_norm_rat expects a slice covering [k_start..k_end] where i = k - half_i
-                    // We need to init just the sub-range [i_offset_in_row..i_offset_in_row+overlap_len]
-                    // Since init_norm_rat writes the entire slice treating index k as i = k - half_i,
-                    // we need a temporary full-row buffer and copy the relevant part, OR we can
-                    // compute directly.
-
-                    // Direct computation for rational norms
-                    let slope_rat = g1 * (qlat.a0 as f64) + g0 * (qlat.b0 as f64);
-                    let intercept_rat =
-                        (g1 * (qlat.a1 as f64) + g0 * (qlat.b1 as f64)) * (j_row as f64);
-
-                    for k in 0..overlap_len {
-                        let i_in_row = (i_offset_in_row + k) as i32 - half_i as i32;
-                        let f_val = slope_rat * (i_in_row as f64) + intercept_rat;
-                        let abs_f = f_val.abs();
-                        rat_sieve[local_start + k] = if abs_f >= 1.0 {
-                            (abs_f.log2() * scale).min(255.0).max(0.0) as u8
-                        } else {
-                            0
-                        };
-                    }
-
-                    // Direct computation for algebraic norms
-                    let a0f = qlat.a0 as f64;
-                    let b0f = qlat.b0 as f64;
-                    let a1f = qlat.a1 as f64;
-                    let b1f = qlat.b1 as f64;
-                    let j_f = j_row as f64;
-                    let d = f_coeffs.len().saturating_sub(1);
-
-                    for k in 0..overlap_len {
-                        let i_in_row = (i_offset_in_row + k) as i32 - half_i as i32;
-                        let i_f = i_in_row as f64;
-                        let a = a0f * i_f + a1f * j_f;
-                        let b = b0f * i_f + b1f * j_f;
-
-                        let abs_f = eval_homogeneous_norm_f64(f_coeffs, a, b, d);
-                        alg_sieve[local_start + k] = if abs_f >= 1.0 {
-                            (abs_f.log2() * scale).min(255.0).max(0.0) as u8
-                        } else {
-                            0
-                        };
-                    }
-
-                    // Apply small sieve for this row-slice
-                    let region_offset = i_offset_in_row;
-                    small_sieve_region(
-                        &mut rat_sieve[local_start..local_end],
-                        &small_rat,
-                        j_row as i32,
-                        region_offset,
-                        overlap_len,
-                        sieve_width,
-                    );
-                    small_sieve_region(
-                        &mut alg_sieve[local_start..local_end],
-                        &small_alg,
-                        j_row as i32,
-                        region_offset,
-                        overlap_len,
-                        sieve_width,
-                    );
-                }
-
-                // Apply bucket updates from large primes
-                let rat_updates = rat_buckets.updates_for_bucket(bucket_idx);
-                let alg_updates = alg_buckets.updates_for_bucket(bucket_idx);
-                apply_bucket_updates(&mut rat_sieve, rat_updates);
-                apply_bucket_updates(&mut alg_sieve, alg_updates);
-
-                // Scan for survivors
+                // 4. Process each bucket region
+                let region_start = std::time::Instant::now();
                 let rat_bound = ((params.mfb0 as f64) * scale).min(255.0) as u8;
                 let alg_bound = ((params.mfb1 as f64) * scale).min(255.0) as u8;
+                let d = f_coeffs.len().saturating_sub(1);
 
-                let survivor_positions =
-                    scan_survivors(&rat_sieve, &alg_sieve, rat_bound, alg_bound);
+                // Parallelize independent bucket-region survivor discovery.
+                // Deterministic ordering is preserved by collecting by bucket_idx order.
+                let bucket_survivors: Vec<Vec<(i64, u64)>> = (0..n_buckets)
+                    .into_par_iter()
+                    .map(|bucket_idx| {
+                        let region_start = bucket_idx * BUCKET_REGION;
+                        let region_end = (region_start + BUCKET_REGION).min(total_sieve_area);
+                        let region_len = region_end - region_start;
+                        if region_len == 0 {
+                            return Vec::new();
+                        }
 
-                for &pos in &survivor_positions {
-                    let (i, j) = pos_to_ij(bucket_idx, pos, sieve_width, half_i);
-                    if j == 0 {
+                        let mut rat_sieve = vec![0u8; region_len];
+                        let mut alg_sieve = vec![0u8; region_len];
+
+                        let first_j = region_start / sieve_width;
+                        let last_j = (region_end.saturating_sub(1)) / sieve_width;
+
+                        for j_row in first_j..=last_j {
+                            let row_start_global = j_row * sieve_width;
+                            let row_end_global = row_start_global + sieve_width;
+
+                            let overlap_start = row_start_global.max(region_start);
+                            let overlap_end = row_end_global.min(region_end);
+                            if overlap_start >= overlap_end {
+                                continue;
+                            }
+
+                            let local_start = overlap_start - region_start;
+                            let local_end = overlap_end - region_start;
+                            let overlap_len = local_end - local_start;
+                            let i_offset_in_row = overlap_start - row_start_global;
+
+                            let slope_rat = g1 * (qlat.a0 as f64) + g0 * (qlat.b0 as f64);
+                            let intercept_rat =
+                                (g1 * (qlat.a1 as f64) + g0 * (qlat.b1 as f64)) * (j_row as f64);
+
+                            if norm_block == 1 {
+                                for k in 0..overlap_len {
+                                    let i_in_row = (i_offset_in_row + k) as i32 - half_i as i32;
+                                    let f_val = slope_rat * (i_in_row as f64) + intercept_rat;
+                                    rat_sieve[local_start + k] = log_norm_to_u8(f_val.abs(), scale);
+                                }
+                            } else {
+                                for block_start in (0..overlap_len).step_by(norm_block) {
+                                    let block_len = (overlap_len - block_start).min(norm_block);
+                                    let k_mid = block_start + (block_len / 2);
+                                    let i_in_row =
+                                        (i_offset_in_row + k_mid) as i32 - half_i as i32;
+                                    let f_val = slope_rat * (i_in_row as f64) + intercept_rat;
+                                    let v = log_norm_to_u8(f_val.abs(), scale);
+                                    rat_sieve[local_start + block_start
+                                        ..local_start + block_start + block_len]
+                                        .fill(v);
+                                }
+                            }
+
+                            let a0f = qlat.a0 as f64;
+                            let b0f = qlat.b0 as f64;
+                            let a1f = qlat.a1 as f64;
+                            let b1f = qlat.b1 as f64;
+                            let j_f = j_row as f64;
+
+                            if norm_block == 1 {
+                                for k in 0..overlap_len {
+                                    let i_in_row = (i_offset_in_row + k) as i32 - half_i as i32;
+                                    let i_f = i_in_row as f64;
+                                    let a = a0f * i_f + a1f * j_f;
+                                    let b = b0f * i_f + b1f * j_f;
+                                    let abs_f = eval_homogeneous_norm_f64(f_coeffs, a, b, d);
+                                    alg_sieve[local_start + k] = log_norm_to_u8(abs_f, scale);
+                                }
+                            } else {
+                                for block_start in (0..overlap_len).step_by(norm_block) {
+                                    let block_len = (overlap_len - block_start).min(norm_block);
+                                    let k_mid = block_start + (block_len / 2);
+                                    let i_in_row =
+                                        (i_offset_in_row + k_mid) as i32 - half_i as i32;
+                                    let i_f = i_in_row as f64;
+                                    let a = a0f * i_f + a1f * j_f;
+                                    let b = b0f * i_f + b1f * j_f;
+                                    let abs_f = eval_homogeneous_norm_f64(f_coeffs, a, b, d);
+                                    let v = log_norm_to_u8(abs_f, scale);
+                                    alg_sieve[local_start + block_start
+                                        ..local_start + block_start + block_len]
+                                        .fill(v);
+                                }
+                            }
+
+                            let region_offset = i_offset_in_row;
+                            small_sieve_region(
+                                &mut rat_sieve[local_start..local_end],
+                                &small_rat,
+                                j_row as i32,
+                                region_offset,
+                                overlap_len,
+                                sieve_width,
+                            );
+                            small_sieve_region(
+                                &mut alg_sieve[local_start..local_end],
+                                &small_alg,
+                                j_row as i32,
+                                region_offset,
+                                overlap_len,
+                                sieve_width,
+                            );
+                        }
+
+                        let rat_updates = rat_buckets.updates_for_bucket(bucket_idx);
+                        let alg_updates = alg_buckets.updates_for_bucket(bucket_idx);
+                        apply_bucket_updates(&mut rat_sieve, rat_updates);
+                        apply_bucket_updates(&mut alg_sieve, alg_updates);
+
+                        let survivor_positions =
+                            scan_survivors(&rat_sieve, &alg_sieve, rat_bound, alg_bound);
+
+                        let mut local_survivors = Vec::with_capacity(survivor_positions.len());
+                        for &pos in &survivor_positions {
+                            let (i, j) = pos_to_ij(bucket_idx, pos, sieve_width, half_i);
+                            if j == 0 {
+                                continue;
+                            }
+
+                            let a = qlat.a0 as i128 * i as i128 + qlat.a1 as i128 * j as i128;
+                            let b = qlat.b0 as i128 * i as i128 + qlat.b1 as i128 * j as i128;
+
+                            if b <= 0 || a == 0 {
+                                continue;
+                            }
+                            if a.unsigned_abs() > i64::MAX as u128 || b > u64::MAX as i128 {
+                                continue;
+                            }
+
+                            local_survivors.push((a as i64, b as u64));
+                        }
+                        local_survivors
+                    })
+                    .collect();
+
+                let survivors_this_sq: Vec<(i64, u64)> =
+                    bucket_survivors.into_iter().flatten().collect();
+                total_region_scan_ns += region_start.elapsed().as_nanos() as u64;
+
+                total_survivors += survivors_this_sq.len();
+
+                // 5. Cofactorize survivors
+                let cofact_start = std::time::Instant::now();
+                for (a, b) in survivors_this_sq {
+                    let rat_norm = compute_rat_norm(a, b, m);
+                    let Some(alg_norm) = compute_alg_norm(a, b, f_coeffs) else {
+                        continue;
+                    };
+
+                    if rat_norm == 0 || alg_norm == 0 {
                         continue;
                     }
 
-                    // Convert (i,j) back to (a,b) via q-lattice
-                    let a = qlat.a0 as i128 * i as i128 + qlat.a1 as i128 * j as i128;
-                    let b = qlat.b0 as i128 * i as i128 + qlat.b1 as i128 * j as i128;
-
-                    if b <= 0 {
-                        continue;
+                    // The special-q prime q divides every algebraic norm in this
+                    // lattice by construction (a ≡ r*b mod q). Follow GNFS
+                    // relation semantics: divide out exactly one q and store the
+                    // corresponding ideal in relation.special_q.
+                    let mut alg_norm_reduced = alg_norm;
+                    let q128 = q as u128;
+                    if alg_norm_reduced % q128 != 0 {
+                        continue; // false survivor
                     }
-                    if a == 0 {
-                        continue;
-                    }
+                    alg_norm_reduced /= q128;
 
-                    if a.unsigned_abs() > i64::MAX as u128 || b > u64::MAX as i128 {
-                        continue;
-                    }
+                    let rat_result = cofactor::cofactorize(
+                        rat_norm,
+                        &rat_fb.trial_divisors,
+                        params.lpb0,
+                        params.mfb0,
+                        params.lim0,
+                    );
 
-                    survivors_this_sq.push((a as i64, b as u64));
+                    // Cofactorize the reduced algebraic norm (q already removed).
+                    let alg_norm_to_factor = if alg_norm_reduced == 0 {
+                        1 // norm was exactly q^e
+                    } else {
+                        alg_norm_reduced
+                    };
+                    let alg_result = cofactor::cofactorize_u128(
+                        alg_norm_to_factor,
+                        &alg_fb.trial_divisors,
+                        params.lpb1,
+                        params.mfb1,
+                        params.lim1,
+                    );
+
+                    if let Some(rel) = build_relation(a, b, Some((q, r)), rat_result, alg_result) {
+                        all_relations.push(rel);
+                    }
                 }
+
+                total_cofact_ns += cofact_start.elapsed().as_nanos() as u64;
             }
 
-            total_survivors += survivors_this_sq.len();
+            sq_count += 1;
 
-            // 5. Cofactorize survivors
-            for (a, b) in survivors_this_sq {
-                let rat_norm = compute_rat_norm(a, b, m);
-                let alg_norm = compute_alg_norm(a, b, f_coeffs);
-
-                if rat_norm == 0 || alg_norm == 0 {
-                    continue;
-                }
-
-                let rat_result = cofactor::cofactorize(
-                    rat_norm,
-                    &rat_fb.trial_divisors,
-                    params.lpb0,
-                    params.mfb0,
-                    params.lim0,
-                );
-                let alg_result = cofactor::cofactorize(
-                    alg_norm,
-                    &alg_fb.trial_divisors,
-                    params.lpb1,
-                    params.mfb1,
-                    params.lim1,
-                );
-
-                if let Some(rel) = build_relation(a, b, rat_result, alg_result) {
-                    all_relations.push(rel);
-                }
+            // Check if we have enough relations
+            if all_relations.len() as u64 >= params.rels_wanted {
+                break;
             }
-
-            total_cofact_ns += cofact_start.elapsed().as_nanos() as u64;
         }
 
-        sq_count += 1;
-
-        // Check if we have enough relations
         if all_relations.len() as u64 >= params.rels_wanted {
             break;
         }
+        window = window.saturating_add(1);
     }
 
     let total_elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
@@ -385,7 +491,9 @@ pub fn sieve_specialq(
         special_qs_processed: sq_count,
         survivors_found: total_survivors,
         total_ms: total_elapsed,
-        sieve_ms: total_sieve_ns as f64 / 1_000_000.0,
+        bucket_setup_ms: total_bucket_setup_ns as f64 / 1_000_000.0,
+        region_scan_ms: total_region_scan_ns as f64 / 1_000_000.0,
+        sieve_ms: (total_bucket_setup_ns + total_region_scan_ns) as f64 / 1_000_000.0,
         cofactor_ms: total_cofact_ns as f64 / 1_000_000.0,
     }
 }
@@ -437,7 +545,7 @@ fn scatter_bucket_updates_for_prime(
     buckets: &mut BucketArray,
     sieve_width: usize,
     max_j: usize,
-    _half_i: i64,
+    half_i: i64,
 ) {
     let pl = reduce_plattice(p, root, qlat, log_i);
     if !pl.hits {
@@ -456,8 +564,7 @@ fn scatter_bucket_updates_for_prime(
     let p_i128 = p as i128;
 
     // Recompute the transformed root R' = (root*b1 - a1) * (a0 - root*b0)^{-1} mod p
-    let denom =
-        ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
+    let denom = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
     if denom == 0 {
         return;
     }
@@ -465,16 +572,17 @@ fn scatter_bucket_updates_for_prime(
         Some(v) => v,
         None => return,
     };
-    let numer = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128)
-        % p_i128;
+    let numer = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
     let r_prime = ((numer as u128 * inv as u128) % p as u128) as u64;
 
     let p_usize = p as usize;
+    let mut start_mod_p = (half_i as u64) % p;
+    let step = r_prime % p;
 
     for j in 0..max_j {
-        // First hit in row j: i_pos = (r_prime * j) mod p
-        let j_mod_p = (j as u64) % p;
-        let start_in_row = ((r_prime as u128 * j_mod_p as u128) % p as u128) as usize;
+        // Congruences are in centered i-coordinates; convert to row index
+        // k=i+I by adding half_i before reducing modulo p.
+        let start_in_row = start_mod_p as usize;
 
         // Walk through row at stride p, computing global 1D positions
         let row_base = j * sieve_width;
@@ -486,10 +594,21 @@ fn scatter_bucket_updates_for_prime(
             let bucket_pos = (global_pos & (BUCKET_REGION - 1)) as u16;
 
             if bucket_idx < buckets.n_buckets() {
-                buckets.push(bucket_idx, BucketUpdate { pos: bucket_pos, logp });
+                buckets.push(
+                    bucket_idx,
+                    BucketUpdate {
+                        pos: bucket_pos,
+                        logp,
+                    },
+                );
             }
 
             i_pos += p_usize;
+        }
+
+        start_mod_p = start_mod_p.wrapping_add(step);
+        if start_mod_p >= p {
+            start_mod_p -= p;
         }
     }
 }
@@ -521,6 +640,15 @@ fn eval_homogeneous_norm_f64(f_coeffs: &[i64], a: f64, b: f64, d: usize) -> f64 
     }
 }
 
+#[inline]
+fn log_norm_to_u8(abs_f: f64, scale: f64) -> u8 {
+    if abs_f < 1.0 {
+        0
+    } else {
+        (abs_f.log2() * scale).clamp(0.0, 255.0) as u8
+    }
+}
+
 /// Compute |a - b*m| (rational norm).
 fn compute_rat_norm(a: i64, b: u64, m: u64) -> u64 {
     let val = a as i128 - (b as i128) * (m as i128);
@@ -532,9 +660,9 @@ fn compute_rat_norm(a: i64, b: u64, m: u64) -> u64 {
 /// F(a, b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
 ///
 /// Uses i128 arithmetic for exact computation.
-fn compute_alg_norm(a: i64, b: u64, f_coeffs: &[i64]) -> u64 {
+fn compute_alg_norm(a: i64, b: u64, f_coeffs: &[i64]) -> Option<u128> {
     if f_coeffs.is_empty() {
-        return 0;
+        return Some(0);
     }
     let d = f_coeffs.len() - 1;
 
@@ -543,9 +671,10 @@ fn compute_alg_norm(a: i64, b: u64, f_coeffs: &[i64]) -> u64 {
         let a128 = a as i128;
         let mut a_pow: i128 = 1;
         for _ in 0..d {
-            a_pow *= a128;
+            a_pow = a_pow.checked_mul(a128)?;
         }
-        return ((f_coeffs[d] as i128) * a_pow).unsigned_abs() as u64;
+        let v = (f_coeffs[d] as i128).checked_mul(a_pow)?;
+        return Some(v.unsigned_abs());
     }
 
     // General case: use Horner evaluation
@@ -559,42 +688,92 @@ fn compute_alg_norm(a: i64, b: u64, f_coeffs: &[i64]) -> u64 {
     let mut b_pow: i128 = {
         let mut bp: i128 = 1;
         for _ in 0..d {
-            bp *= b128;
+            bp = bp.checked_mul(b128)?;
         }
         bp
     };
 
     for k in 0..=d {
-        result += (f_coeffs[k] as i128) * a_pow * b_pow;
-        a_pow *= a128;
+        let term = (f_coeffs[k] as i128)
+            .checked_mul(a_pow)?
+            .checked_mul(b_pow)?;
+        result = result.checked_add(term)?;
+        a_pow = a_pow.checked_mul(a128)?;
         if k < d {
             // b_pow goes from b^d down to b^0
             b_pow /= b128;
         }
     }
 
-    result.unsigned_abs() as u64
+    Some(result.unsigned_abs())
 }
 
 /// Build a Relation from cofactorization results, or None if not smooth enough.
 fn build_relation(
     a: i64,
     b: u64,
+    special_q: Option<(u64, u64)>,
     rat_result: CofactResult,
     alg_result: CofactResult,
 ) -> Option<Relation> {
-    let (rat_factors, rat_cofactor) = match rat_result {
-        CofactResult::Smooth(f) => (f, 0),
-        CofactResult::OneLargePrime(f, lp) => (f, lp),
-        CofactResult::TwoLargePrimes(f, lp1, _lp2) => (f, lp1),
+    let max_lp_keys = std::env::var("RUST_NFS_MAX_LP_KEYS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(2usize);
+
+    let (rat_factors, rat_lps): (Vec<(u32, u8)>, Vec<u64>) = match rat_result {
+        CofactResult::Smooth(f) => (f, Vec::new()),
+        CofactResult::OneLargePrime(f, lp) => (f, vec![lp]),
+        CofactResult::TwoLargePrimes(f, lp1, lp2) => (f, vec![lp1, lp2]),
         CofactResult::NotSmooth => return None,
     };
-    let (alg_factors, alg_cofactor) = match alg_result {
-        CofactResult::Smooth(f) => (f, 0),
-        CofactResult::OneLargePrime(f, lp) => (f, lp),
-        CofactResult::TwoLargePrimes(f, lp1, _lp2) => (f, lp1),
+    let (alg_factors, alg_lps): (Vec<(u32, u8)>, Vec<u64>) = match alg_result {
+        CofactResult::Smooth(f) => (f, Vec::new()),
+        CofactResult::OneLargePrime(f, lp) => (f, vec![lp]),
+        CofactResult::TwoLargePrimes(f, lp1, lp2) => (f, vec![lp1, lp2]),
         CofactResult::NotSmooth => return None,
     };
+
+    // Keep LP keys with odd multiplicity only (GF(2) parity).
+    let mut lp_set = std::collections::HashSet::<LpKey>::new();
+    for p in rat_lps {
+        let key = LpKey::Rational(p);
+        if !lp_set.remove(&key) {
+            lp_set.insert(key);
+        }
+    }
+    for p in alg_lps {
+        let Some(key) = compute_alg_lp_key(a, b, p) else {
+            return None;
+        };
+        if !lp_set.remove(&key) {
+            lp_set.insert(key);
+        }
+    }
+    let mut lp_keys: Vec<LpKey> = lp_set.into_iter().collect();
+    lp_keys.sort_unstable();
+    if lp_keys.len() > max_lp_keys {
+        return None;
+    }
+
+    // Legacy compatibility fields: only set when there is exactly one key per side.
+    let rat_only: Vec<u64> = lp_keys
+        .iter()
+        .filter_map(|k| match k {
+            LpKey::Rational(p) => Some(*p),
+            _ => None,
+        })
+        .collect();
+    let alg_only: Vec<u64> = lp_keys
+        .iter()
+        .filter_map(|k| match k {
+            LpKey::Algebraic(p, _) => Some(*p),
+            _ => None,
+        })
+        .collect();
+    let rat_cofactor = if rat_only.len() == 1 { rat_only[0] } else { 0 };
+    let alg_cofactor = if alg_only.len() == 1 { alg_only[0] } else { 0 };
 
     Some(Relation {
         a,
@@ -603,9 +782,28 @@ fn build_relation(
         algebraic_factors: alg_factors,
         rational_sign_negative: a < 0,
         algebraic_sign_negative: false,
+        special_q,
         rat_cofactor,
         alg_cofactor,
+        lp_keys,
     })
+}
+
+fn compute_alg_lp_key(a: i64, b: u64, p: u64) -> Option<LpKey> {
+    if p < 2 {
+        return None;
+    }
+    let b_mod_p = b % p;
+    if b_mod_p == 0 {
+        return Some(LpKey::Algebraic(p, p));
+    }
+    let b_inv = match gnfs::arith::mod_inverse_u64(b_mod_p, p) {
+        Some(v) => v,
+        None => return Some(LpKey::Algebraic(p, p)),
+    };
+    let a_mod_p = (a as i128).rem_euclid(p as i128) as u64;
+    let r = ((a_mod_p as u128 * b_inv as u128) % p as u128) as u64;
+    Some(LpKey::Algebraic(p, r))
 }
 
 // ===========================================================================
@@ -629,16 +827,16 @@ mod tests {
         // f(x) = x^2 + 1 -> coeffs = [1, 0, 1]
         // F(a, b) = c_0 * b^2 + c_1 * a * b + c_2 * a^2 = b^2 + a^2
         // F(3, 1) = 1 + 9 = 10
-        assert_eq!(compute_alg_norm(3, 1, &[1, 0, 1]), 10);
+        assert_eq!(compute_alg_norm(3, 1, &[1, 0, 1]), Some(10));
         // F(2, 3) = 9 + 0 + 4 = 13
-        assert_eq!(compute_alg_norm(2, 3, &[1, 0, 1]), 13);
+        assert_eq!(compute_alg_norm(2, 3, &[1, 0, 1]), Some(13));
     }
 
     #[test]
     fn test_compute_alg_norm_b_zero() {
         // f(x) = x^2 + 1, coeffs = [1, 0, 1]
         // F(5, 0) = c_2 * 5^2 = 25
-        assert_eq!(compute_alg_norm(5, 0, &[1, 0, 1]), 25);
+        assert_eq!(compute_alg_norm(5, 0, &[1, 0, 1]), Some(25));
     }
 
     #[test]
@@ -646,9 +844,9 @@ mod tests {
         // f(x) = x^3 + 2x + 1, coeffs = [1, 2, 0, 1]
         // F(a, b) = b^3 + 2*a*b^2 + 0*a^2*b + a^3
         // F(1, 1) = 1 + 2 + 0 + 1 = 4
-        assert_eq!(compute_alg_norm(1, 1, &[1, 2, 0, 1]), 4);
+        assert_eq!(compute_alg_norm(1, 1, &[1, 2, 0, 1]), Some(4));
         // F(2, 1) = 1 + 4 + 0 + 8 = 13
-        assert_eq!(compute_alg_norm(2, 1, &[1, 2, 0, 1]), 13);
+        assert_eq!(compute_alg_norm(2, 1, &[1, 2, 0, 1]), Some(13));
     }
 
     #[test]
@@ -695,11 +893,12 @@ mod tests {
     fn test_build_relation_smooth() {
         let rat = CofactResult::Smooth(vec![(0, 1), (1, 2)]);
         let alg = CofactResult::Smooth(vec![(2, 3)]);
-        let rel = build_relation(5, 3, rat, alg).unwrap();
+        let rel = build_relation(5, 3, None, rat, alg).unwrap();
         assert_eq!(rel.a, 5);
         assert_eq!(rel.b, 3);
         assert_eq!(rel.rat_cofactor, 0);
         assert_eq!(rel.alg_cofactor, 0);
+        assert!(rel.lp_keys.is_empty());
         assert!(!rel.rational_sign_negative);
     }
 
@@ -707,14 +906,14 @@ mod tests {
     fn test_build_relation_not_smooth() {
         let rat = CofactResult::NotSmooth;
         let alg = CofactResult::Smooth(vec![]);
-        assert!(build_relation(1, 1, rat, alg).is_none());
+        assert!(build_relation(1, 1, None, rat, alg).is_none());
     }
 
     #[test]
     fn test_build_relation_negative_a() {
         let rat = CofactResult::Smooth(vec![]);
         let alg = CofactResult::Smooth(vec![]);
-        let rel = build_relation(-7, 2, rat, alg).unwrap();
+        let rel = build_relation(-7, 2, None, rat, alg).unwrap();
         assert!(rel.rational_sign_negative);
     }
 
@@ -722,8 +921,20 @@ mod tests {
     fn test_build_relation_one_large_prime() {
         let rat = CofactResult::OneLargePrime(vec![(0, 1)], 12347);
         let alg = CofactResult::Smooth(vec![(1, 1)]);
-        let rel = build_relation(10, 3, rat, alg).unwrap();
+        let rel = build_relation(10, 3, None, rat, alg).unwrap();
         assert_eq!(rel.rat_cofactor, 12347);
         assert_eq!(rel.alg_cofactor, 0);
+        assert_eq!(rel.lp_keys, vec![LpKey::Rational(12347)]);
+    }
+
+    #[test]
+    fn test_build_relation_two_large_primes_kept() {
+        let rat = CofactResult::TwoLargePrimes(vec![(0, 1)], 1009, 1013);
+        let alg = CofactResult::Smooth(vec![(1, 1)]);
+        let rel = build_relation(10, 3, None, rat, alg).unwrap();
+        assert_eq!(
+            rel.lp_keys,
+            vec![LpKey::Rational(1009), LpKey::Rational(1013)]
+        );
     }
 }

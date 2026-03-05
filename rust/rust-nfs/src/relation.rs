@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::lp_key::LpKey;
+
 /// A sieve relation: (a, b) pair with factorizations on both sides.
 ///
 /// This extends `gnfs::types::Relation` with cofactor fields for
@@ -14,16 +16,20 @@ pub struct Relation {
     pub algebraic_factors: Vec<(u32, u8)>,
     pub rational_sign_negative: bool,
     pub algebraic_sign_negative: bool,
+    /// Special-q ideal identifier (q, root) for lattice-sieved relations.
+    pub special_q: Option<(u64, u64)>,
     /// Rational cofactor: 0 or 1 if fully smooth, otherwise a large prime.
     pub rat_cofactor: u64,
     /// Algebraic cofactor: 0 or 1 if fully smooth, otherwise a large prime.
     pub alg_cofactor: u64,
+    /// LP ideal keys with odd multiplicity (GF(2) parity).
+    pub lp_keys: Vec<LpKey>,
 }
 
 impl Relation {
-    /// A full relation has both cofactors <= 1 (fully factored).
+    /// A full relation has no outstanding LP ideal keys.
     pub fn is_full(&self) -> bool {
-        self.rat_cofactor <= 1 && self.alg_cofactor <= 1
+        self.lp_keys.is_empty()
     }
 
     /// A partial relation has at least one large-prime cofactor.
@@ -41,6 +47,9 @@ impl Relation {
             algebraic_factors: self.algebraic_factors.clone(),
             rational_sign_negative: self.rational_sign_negative,
             algebraic_sign_negative: self.algebraic_sign_negative,
+            special_q: self.special_q,
+            rat_lp: None,
+            alg_lp: None,
         }
     }
 }
@@ -57,8 +66,10 @@ mod tests {
             algebraic_factors: vec![(1, 1)],
             rational_sign_negative: false,
             algebraic_sign_negative: true,
+            special_q: None,
             rat_cofactor: 1,
             alg_cofactor: 1,
+            lp_keys: vec![],
         }
     }
 
@@ -70,8 +81,10 @@ mod tests {
             algebraic_factors: vec![(0, 2)],
             rational_sign_negative: true,
             algebraic_sign_negative: false,
+            special_q: None,
             rat_cofactor: 65537,
             alg_cofactor: 1,
+            lp_keys: vec![LpKey::Rational(65537)],
         }
     }
 

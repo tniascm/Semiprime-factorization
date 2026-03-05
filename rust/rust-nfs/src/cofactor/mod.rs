@@ -100,13 +100,67 @@ pub fn cofactorize(
     CofactResult::NotSmooth
 }
 
-/// Verify that a factor split yields a valid one- or two-large-prime relation.
-fn check_split(
-    factors: Vec<(u32, u8)>,
-    f1: u64,
-    f2: u64,
-    lp_bound: u64,
+/// u128 variant of cofactorization.
+///
+/// We trial-divide in u128 space, then fall back to the u64 pipeline once the
+/// remaining cofactor fits in u64.
+pub fn cofactorize_u128(
+    norm: u128,
+    divisors: &[TrialDivisor],
+    lpb: u32,
+    mfb: u32,
+    _lim: u64,
 ) -> CofactResult {
+    let (factors, cofactor) = trialdiv::trial_divide_u128(norm, divisors);
+
+    if cofactor <= 1 {
+        return CofactResult::Smooth(factors);
+    }
+
+    let lp_bound = 1u128 << lpb;
+
+    if cofactor <= lp_bound {
+        return CofactResult::OneLargePrime(factors, cofactor as u64);
+    }
+
+    let cofactor_bits = 128 - cofactor.leading_zeros();
+    if cofactor_bits > mfb {
+        return CofactResult::NotSmooth;
+    }
+
+    // Remaining pipeline uses u64 arithmetic.
+    if cofactor > u64::MAX as u128 {
+        return CofactResult::NotSmooth;
+    }
+    let c = cofactor as u64;
+
+    if is_probable_prime(c) {
+        return CofactResult::NotSmooth;
+    }
+
+    if let Some(f) = pm1::pm1(c, 315, 2205) {
+        let other = c / f;
+        return check_split(factors, f, other, lp_bound as u64);
+    }
+
+    if let Some(f) = pp1::pp1(c, 525, 3255) {
+        let other = c / f;
+        return check_split(factors, f, other, lp_bound as u64);
+    }
+
+    for (i, (b1, b2)) in ecm::ecm_bounds(lpb).into_iter().enumerate() {
+        let sigma = b1.wrapping_add(i as u64).max(6);
+        if let Some(f) = ecm::ecm_one_curve(c, b1, b2, sigma) {
+            let other = c / f;
+            return check_split(factors, f, other, lp_bound as u64);
+        }
+    }
+
+    CofactResult::NotSmooth
+}
+
+/// Verify that a factor split yields a valid one- or two-large-prime relation.
+fn check_split(factors: Vec<(u32, u8)>, f1: u64, f2: u64, lp_bound: u64) -> CofactResult {
     // Both factors must be within the large-prime bound.
     if f1 <= lp_bound && f2 <= lp_bound {
         if f1 <= 1 {

@@ -35,6 +35,31 @@ pub fn trial_divide(mut n: u64, divisors: &[TrialDivisor]) -> (Vec<(u32, u8)>, u
     (factors, n)
 }
 
+/// Trial divide a u128 value by u64 factor-base divisors.
+///
+/// This is used for larger algebraic norms (e.g. c45) where exact norms can
+/// exceed u64, but cofactors after trial division are still typically small.
+pub fn trial_divide_u128(mut n: u128, divisors: &[TrialDivisor]) -> (Vec<(u32, u8)>, u128) {
+    let mut factors = Vec::new();
+
+    for (i, td) in divisors.iter().enumerate() {
+        if n <= 1 {
+            break;
+        }
+        let p = td.p as u128;
+        if n % p == 0 {
+            let mut exp = 0u8;
+            while n % p == 0 {
+                n /= p;
+                exp += 1;
+            }
+            factors.push((i as u32, exp));
+        }
+    }
+
+    (factors, n)
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -63,9 +88,9 @@ mod tests {
     fn test_trial_divide_with_cofactor() {
         let divisors = make_divisors(&[2, 3, 5]);
         let (factors, cofactor) = trial_divide(210, &divisors); // 2*3*5*7
-        // 7 is larger than 5 and 5^2=25 > 7, so loop exits before checking 7.
-        // Actually 5^2=25 > 7 isn't reached because 7 is not in divisors.
-        // After removing 2,3,5 we get cofactor=7.
+                                                                // 7 is larger than 5 and 5^2=25 > 7, so loop exits before checking 7.
+                                                                // Actually 5^2=25 > 7 isn't reached because 7 is not in divisors.
+                                                                // After removing 2,3,5 we get cofactor=7.
         assert_eq!(cofactor, 7);
         assert_eq!(factors.len(), 3);
     }

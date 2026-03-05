@@ -254,7 +254,13 @@ mod tests {
         }
         let updates = ba.updates_for_bucket(0);
         for (i, &p) in positions.iter().enumerate() {
-            assert_eq!(updates[i].position(), p, "update {} should have pos {}", i, p);
+            assert_eq!(
+                updates[i].position(),
+                p,
+                "update {} should have pos {}",
+                i,
+                p
+            );
         }
     }
 

@@ -4,7 +4,6 @@
 /// The factor base stores, for each prime p up to a bound, the roots of the
 /// NFS polynomial mod p together with Montgomery-form trial divisors and
 /// quantised log values for the line sieve.
-
 use crate::arith::{sieve_primes, MontgomeryParams, TrialDivisor};
 
 // ---------------------------------------------------------------------------
@@ -72,7 +71,10 @@ pub fn find_roots_mod_p(f_coeffs: &[i64], p: u64) -> Vec<u64> {
 /// # Panics
 /// Panics if `p < 3` or `p` is even.
 pub fn tonelli_shanks(n: u64, p: u64) -> Option<u64> {
-    assert!(p >= 3 && p & 1 == 1, "tonelli_shanks: p must be an odd prime >= 3");
+    assert!(
+        p >= 3 && p & 1 == 1,
+        "tonelli_shanks: p must be an odd prime >= 3"
+    );
 
     let n = n % p;
     if n == 0 {
@@ -109,8 +111,8 @@ pub fn tonelli_shanks(n: u64, p: u64) -> Option<u64> {
 
     // Initialise.
     let mut m = s;
-    let mut c = mont.powmod(z, q);       // z^q mod p
-    let mut t = mont.powmod(n, q);       // n^q mod p
+    let mut c = mont.powmod(z, q); // z^q mod p
+    let mut t = mont.powmod(n, q); // n^q mod p
     let mut r = mont.powmod(n, (q + 1) / 2); // n^{(q+1)/2} mod p
 
     loop {
@@ -199,6 +201,36 @@ impl FactorBase {
         }
     }
 
+    /// Build a factor base containing ONLY primes where `f` has at least one root mod p.
+    ///
+    /// Primes without roots (inert or partially-split with no degree-1 ideals)
+    /// are excluded. This matches the gnfs matrix's algebraic column layout,
+    /// which only tracks degree-1 prime ideals.
+    pub fn new_roots_only(f_coeffs: &[i64], bound: u64, scale: f64) -> Self {
+        let full = Self::new(f_coeffs, bound, scale);
+        let mut primes = Vec::new();
+        let mut roots = Vec::new();
+        let mut trial_divisors = Vec::new();
+        let mut log_p = Vec::new();
+
+        for i in 0..full.primes.len() {
+            if !full.roots[i].is_empty() {
+                primes.push(full.primes[i]);
+                roots.push(full.roots[i].clone());
+                trial_divisors.push(full.trial_divisors[i].clone());
+                log_p.push(full.log_p[i]);
+            }
+        }
+
+        FactorBase {
+            primes,
+            roots,
+            trial_divisors,
+            log_p,
+            scale: full.scale,
+        }
+    }
+
     /// Total number of (prime, root) pairs in the factor base.
     pub fn pair_count(&self) -> usize {
         self.roots.iter().map(|r| r.len()).sum()
@@ -251,12 +283,7 @@ mod tests {
         let roots = find_roots_mod_p(&f, 5);
         // Verify each root
         for &r in &roots {
-            assert_eq!(
-                eval_poly_mod(&f, r, 5),
-                0,
-                "f({}) mod 5 should be 0",
-                r
-            );
+            assert_eq!(eval_poly_mod(&f, r, 5), 0, "f({}) mod 5 should be 0", r);
         }
         // Manually verify: f(0)=1, f(1)=4, f(2)=13%5=3, f(3)=34%5=4, f(4)=73%5=3
         // No roots mod 5
@@ -269,12 +296,7 @@ mod tests {
         let f = [1i64, 2, 0, 1];
         let roots = find_roots_mod_p(&f, 7);
         for &r in &roots {
-            assert_eq!(
-                eval_poly_mod(&f, r, 7),
-                0,
-                "f({}) mod 7 should be 0",
-                r
-            );
+            assert_eq!(eval_poly_mod(&f, r, 7), 0, "f({}) mod 7 should be 0", r);
         }
         // f(0)=1, f(1)=4, f(2)=13%7=6, f(3)=34%7=6, f(4)=73%7=3, f(5)=136%7=3, f(6)=229%7=5
         // No roots mod 7 either. Try mod 3:
