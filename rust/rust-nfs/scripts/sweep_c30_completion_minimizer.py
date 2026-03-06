@@ -24,6 +24,13 @@ C30 = "684217602914977371691118975023"
 
 PROFILE_ENVS: dict[str, dict[str, str]] = {
     "baseline": {},
+    "matrix_1p20_basis256": {
+        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.20",
+        "RUST_NFS_DEP_BASIS_LIMIT": "256",
+        "RUST_NFS_DEP_RANDOM_COUNT": "96",
+        "RUST_NFS_MAX_DEPS_TRY": "48",
+    },
     "matrix_1p35_basis512": {
         "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
         "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.35",
@@ -38,12 +45,33 @@ PROFILE_ENVS: dict[str, dict[str, str]] = {
         "RUST_NFS_DEP_RANDOM_COUNT": "96",
         "RUST_NFS_MAX_DEPS_TRY": "48",
     },
+    "matrix_1p25_basis192": {
+        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
+        "RUST_NFS_DEP_BASIS_LIMIT": "192",
+        "RUST_NFS_DEP_RANDOM_COUNT": "64",
+        "RUST_NFS_MAX_DEPS_TRY": "32",
+    },
+    "matrix_1p25_basis320": {
+        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
+        "RUST_NFS_DEP_BASIS_LIMIT": "320",
+        "RUST_NFS_DEP_RANDOM_COUNT": "128",
+        "RUST_NFS_MAX_DEPS_TRY": "64",
+    },
     "matrix_1p15_basis128": {
         "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
         "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.15",
         "RUST_NFS_DEP_BASIS_LIMIT": "128",
         "RUST_NFS_DEP_RANDOM_COUNT": "64",
         "RUST_NFS_MAX_DEPS_TRY": "32",
+    },
+    "matrix_1p30_basis256": {
+        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.30",
+        "RUST_NFS_DEP_BASIS_LIMIT": "256",
+        "RUST_NFS_DEP_RANDOM_COUNT": "96",
+        "RUST_NFS_MAX_DEPS_TRY": "48",
     },
 }
 
@@ -145,9 +173,11 @@ def score(run: dict[str, Any]) -> tuple[float, ...]:
     result = run["result"]
     viability = run["viability"]
     success = is_valid_factor(int(C30), result.get("factor"))
+    factor_attempt = int(result.get("sqrt_factor_attempt", 10**9) or 10**9)
     return (
         1.0 if success else 0.0,
         -float(result.get("total_ms", 1e18) or 1e18),
+        -float(factor_attempt),
         -float(int(viability.get("rows_minus_cols", -10**9) or -10**9)),
         -float(int(viability.get("remap_valid_relations", 0) or 0)),
         -float(int(result.get("dependencies_found", 0) or 0)),
@@ -162,6 +192,8 @@ def format_row(run: dict[str, Any]) -> str:
         f"{run['profile']:<22} "
         f"success={'yes' if success else 'no ':<3} "
         f"total_ms={float(result.get('total_ms', 0.0) or 0.0):>8.1f} "
+        f"factor_try={str(result.get('sqrt_factor_attempt', 'none')):>4} "
+        f"sqrt_tried={int(result.get('sqrt_attempts_tried', 0) or 0):>4} "
         f"remap={int(viability.get('remap_valid_relations', 0) or 0):>6} "
         f"final={int(result.get('matrix_rows', 0) or 0):>5}x{int(result.get('matrix_cols', 0) or 0):<5} "
         f"rows-cols={int(viability.get('rows_minus_cols', 0) or 0):>6} "
@@ -173,7 +205,7 @@ def format_row(run: dict[str, Any]) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default="/Users/andriipotapov/Semiprime")
-    ap.add_argument("--profiles", default="baseline,matrix_1p35_basis512,matrix_1p25_basis256")
+    ap.add_argument("--profiles", default="baseline,matrix_1p20_basis256,matrix_1p25_basis256,matrix_1p30_basis256")
     ap.add_argument("--output", default="")
     ap.add_argument("--timeout", type=int, default=240)
     ap.add_argument("--skip-build", action="store_true")
@@ -223,6 +255,7 @@ def main() -> None:
         "ranking_keys": [
             "factor_found",
             "-total_ms",
+            "-sqrt_factor_attempt",
             "-rows_minus_cols",
             "-remap_valid_relations",
             "-dependencies_found",
@@ -234,6 +267,7 @@ def main() -> None:
                 "timed_out": run["timed_out"],
                 "wall_s": run["wall_s"],
                 "factor_found": is_valid_factor(int(C30), run["result"].get("factor")),
+                "sqrt_factor_attempt": run["result"].get("sqrt_factor_attempt"),
                 "result": run["result"],
                 "viability": run["viability"],
             }
