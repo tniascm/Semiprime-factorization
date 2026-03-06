@@ -21,6 +21,8 @@ pub struct NfsResult {
     pub matrix_rows: usize,
     pub matrix_cols: usize,
     pub dependencies_found: usize,
+    pub sqrt_attempts_tried: usize,
+    pub sqrt_factor_attempt: Option<usize>,
     pub sieve_ms: f64,
     pub filter_ms: f64,
     pub la_ms: f64,
@@ -415,6 +417,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         matrix_rows: 0,
         matrix_cols: 0,
         dependencies_found: 0,
+        sqrt_attempts_tried: 0,
+        sqrt_factor_attempt: None,
         sieve_ms: 0.0,
         filter_ms: 0.0,
         la_ms: 0.0,
@@ -1857,6 +1861,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                         eprintln!("    -> result: FactorFound");
                     }
                     result.factor = Some(factor.to_string());
+                    result.sqrt_attempts_tried = deps_tried;
+                    result.sqrt_factor_attempt = Some(deps_tried);
                     result.sqrt_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
                     eprintln!(
                         "  sqrt: factor found after {} deps in {:.0}ms (max_sim={:.3}): {}",
@@ -1942,6 +1948,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
 
     if result.factor.is_none() {
         result.sqrt_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
+        result.sqrt_attempts_tried = deps_tried;
         result.sqrt_fail_rat_not_square = fail_rat_not_square;
         result.sqrt_fail_alg_not_square = fail_alg_not_square;
         result.sqrt_fail_trivial_gcd = fail_trivial_gcd;
@@ -1954,6 +1961,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         result.sqrt_fail_alg_not_square = fail_alg_not_square;
         result.sqrt_fail_trivial_gcd = fail_trivial_gcd;
     }
+
+    result.sqrt_attempts_tried = deps_tried;
 
     result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
     result
@@ -1983,6 +1992,8 @@ fn fallback_result(n: &Integer, factor: Integer, total_ms: f64) -> NfsResult {
         matrix_rows: 0,
         matrix_cols: 0,
         dependencies_found: 0,
+        sqrt_attempts_tried: 0,
+        sqrt_factor_attempt: None,
         sieve_ms: 0.0,
         filter_ms: 0.0,
         la_ms: 0.0,
