@@ -59,8 +59,8 @@ pub fn cofactorize(
 
     let lp_bound = 1u64 << lpb;
 
-    // Single large prime?
-    if cofactor <= lp_bound {
+    // Single large prime only if the remaining cofactor is actually prime.
+    if cofactor <= lp_bound && is_probable_prime(cofactor) {
         return CofactResult::OneLargePrime(factors, cofactor);
     }
 
@@ -119,7 +119,7 @@ pub fn cofactorize_u128(
 
     let lp_bound = 1u128 << lpb;
 
-    if cofactor <= lp_bound {
+    if cofactor <= lp_bound && is_probable_prime(cofactor as u64) {
         return CofactResult::OneLargePrime(factors, cofactor as u64);
     }
 
@@ -161,18 +161,28 @@ pub fn cofactorize_u128(
 
 /// Verify that a factor split yields a valid one- or two-large-prime relation.
 fn check_split(factors: Vec<(u32, u8)>, f1: u64, f2: u64, lp_bound: u64) -> CofactResult {
-    // Both factors must be within the large-prime bound.
-    if f1 <= lp_bound && f2 <= lp_bound {
-        if f1 <= 1 {
-            // f1 is trivial — cofactor was actually a single large prime.
-            return CofactResult::OneLargePrime(factors, f2);
-        }
-        if f2 <= 1 {
-            return CofactResult::OneLargePrime(factors, f1);
-        }
+    if f1 <= 1 {
+        return accept_large_prime_candidate(factors, f2, lp_bound);
+    }
+    if f2 <= 1 {
+        return accept_large_prime_candidate(factors, f1, lp_bound);
+    }
+    if f1 <= lp_bound && f2 <= lp_bound && is_probable_prime(f1) && is_probable_prime(f2) {
         return CofactResult::TwoLargePrimes(factors, f1, f2);
     }
     CofactResult::NotSmooth
+}
+
+fn accept_large_prime_candidate(
+    factors: Vec<(u32, u8)>,
+    candidate: u64,
+    lp_bound: u64,
+) -> CofactResult {
+    if candidate > 1 && candidate <= lp_bound && is_probable_prime(candidate) {
+        CofactResult::OneLargePrime(factors, candidate)
+    } else {
+        CofactResult::NotSmooth
+    }
 }
 
 // ===========================================================================
@@ -265,6 +275,24 @@ mod tests {
         match cofactorize(1_000_000_007, &divisors, 17, 18, 30000) {
             CofactResult::NotSmooth => {}
             other => panic!("expected NotSmooth, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_check_split_rejects_composite_large_prime_candidate() {
+        match check_split(vec![], 49, 1, 1 << 17) {
+            CofactResult::NotSmooth => {}
+            other => panic!("expected NotSmooth, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_check_split_accepts_repeated_prime_square() {
+        match check_split(vec![], 7, 7, 1 << 17) {
+            CofactResult::TwoLargePrimes(_, lp1, lp2) => {
+                assert_eq!((lp1, lp2), (7, 7));
+            }
+            other => panic!("expected TwoLargePrimes, got {:?}", other),
         }
     }
 }

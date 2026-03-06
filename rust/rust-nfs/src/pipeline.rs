@@ -128,6 +128,18 @@ fn log_viability_summary(stats: &ViabilityStats) {
     );
 }
 
+fn effective_max_raw_rels(
+    configured_cap: Option<usize>,
+    target_raw_rels: usize,
+    raw_target_step: usize,
+) -> usize {
+    configured_cap.unwrap_or_else(|| {
+        target_raw_rels
+            .saturating_mul(2)
+            .saturating_add(raw_target_step)
+    })
+}
+
 /// Factor N using the full NFS pipeline.
 ///
 /// Tries multiple polynomial variants (different m values) to avoid the
@@ -632,20 +644,17 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or_else(|| (target_raw_rels / 4).max(1_000));
-    let max_raw_rels = std::env::var("RUST_NFS_MAX_RAW_RELS")
+    let configured_max_raw_rels = std::env::var("RUST_NFS_MAX_RAW_RELS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or_else(|| {
-            target_raw_rels
-                .saturating_mul(2)
-                .saturating_add(raw_target_step)
-        });
+        .filter(|&v| v > 0);
 
     loop {
         let total_rels = all_sieve_relations.len();
         let at_q_window_cap = max_q_windows.map_or(false, |cap| window >= cap);
         let near_q_window_cap = max_q_windows.map_or(false, |cap| window + 1 >= cap);
+        let max_raw_rels =
+            effective_max_raw_rels(configured_max_raw_rels, target_raw_rels, raw_target_step);
         let force_stop = (!partial_merge_2lp && total_rels >= params.rels_wanted as usize)
             || total_rels >= max_raw_rels;
         let should_check = total_rels >= adaptive_check_min_raw
@@ -703,9 +712,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     break;
                 }
 
-                let next_target = target_raw_rels
-                    .saturating_add(raw_target_step)
-                    .min(max_raw_rels);
+                let next_target = if let Some(cap) = configured_max_raw_rels {
+                    target_raw_rels.saturating_add(raw_target_step).min(cap)
+                } else {
+                    target_raw_rels.saturating_add(raw_target_step)
+                };
                 if next_target > target_raw_rels {
                     eprintln!(
                         "  adaptive: increasing raw target {} -> {}",
@@ -2944,5 +2955,17 @@ mod tests {
             "Pipeline result for N={}: rels={}, factor={:?}",
             n, result.relations_found, result.factor
         );
+    }
+
+    #[test]
+    fn test_effective_max_raw_rels_tracks_target_when_uncapped() {
+        assert_eq!(effective_max_raw_rels(None, 2_000, 1_000), 5_000);
+        assert_eq!(effective_max_raw_rels(None, 3_000, 1_000), 7_000);
+    }
+
+    #[test]
+    fn test_effective_max_raw_rels_respects_explicit_cap() {
+        assert_eq!(effective_max_raw_rels(Some(9_000), 2_000, 1_000), 9_000);
+        assert_eq!(effective_max_raw_rels(Some(9_000), 5_000, 1_000), 9_000);
     }
 }

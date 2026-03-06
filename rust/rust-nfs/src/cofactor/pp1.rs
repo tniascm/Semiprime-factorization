@@ -60,6 +60,7 @@ fn pp1_one_start(n: u64, b1: u64, b2: u64, p_val: u64) -> Option<u64> {
     }
 
     // Stage 2: check each prime q in (B1, B2].
+    let stage1_v = v;
     for &q in &primes {
         if q <= b1 {
             continue;
@@ -67,8 +68,10 @@ fn pp1_one_start(n: u64, b1: u64, b2: u64, p_val: u64) -> Option<u64> {
         if q > b2 {
             break;
         }
-        v = lucas_chain(v, q, n);
-        let diff = submod(v, 2, n);
+        // Stage 2 tests V_{M*q} for each q independently. Reusing the
+        // previous q-update compounds exponents and changes the algorithm.
+        let vq = lucas_chain(stage1_v, q, n);
+        let diff = submod(vq, 2, n);
         let g = gcd(diff, n);
         if g > 1 && g < n {
             return Some(g);
@@ -214,5 +217,25 @@ mod tests {
             assert!(n % f == 0);
             assert!(f > 1 && f < n);
         }
+    }
+
+    #[test]
+    fn test_stage2_values_must_be_independent() {
+        let stage1_v = 14u64;
+        let n = 101u64;
+        let qs = [7u64, 11, 13];
+
+        let independent: Vec<u64> = qs.iter().map(|&q| lucas_chain(stage1_v, q, n)).collect();
+        let mut v = stage1_v;
+        let compounded: Vec<u64> = qs
+            .iter()
+            .map(|&q| {
+                v = lucas_chain(v, q, n);
+                v
+            })
+            .collect();
+
+        assert_eq!(independent[0], compounded[0]);
+        assert_ne!(independent, compounded);
     }
 }
