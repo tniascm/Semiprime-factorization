@@ -205,8 +205,11 @@ pub fn small_sieve_region(
         let j_mod_p = ((j as i64).rem_euclid(p as i64)) as u64;
         // Congruences are in i-coordinates (i in [-I, I)); map to row index
         // k=i+I by adding half_i before reducing modulo p.
-        let start_in_row = ((half_i as u128 + (entry.root_i as u128 * j_mod_p as u128))
-            % entry.p as u128) as usize;
+        // All values fit in u64: p < bucket_thresh, root_i < p, j_mod_p < p,
+        // half_i <= sieve_width/2, so root_i * j_mod_p < p^2 which is well
+        // within u64 range for any realistic sieve parameters.
+        let start_in_row = ((half_i as u64 + entry.root_i * j_mod_p)
+            % entry.p) as usize;
 
         // Find the first hit at or after region_start.
         let first_hit = if start_in_row >= region_start {
