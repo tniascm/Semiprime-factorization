@@ -322,6 +322,8 @@ impl RunLogger {
             "RUST_NFS_ADAPTIVE_CHECK_EVERY": std::env::var("RUST_NFS_ADAPTIVE_CHECK_EVERY").ok(),
             "RUST_NFS_ADAPTIVE_CHECK_MIN_RAW": std::env::var("RUST_NFS_ADAPTIVE_CHECK_MIN_RAW").ok(),
             "RUST_NFS_ADAPTIVE_RAW_STEP": std::env::var("RUST_NFS_ADAPTIVE_RAW_STEP").ok(),
+            "RUST_NFS_ADAPTIVE_USE_MATRIX": std::env::var("RUST_NFS_ADAPTIVE_USE_MATRIX").ok(),
+            "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": std::env::var("RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO").ok(),
             "RUST_NFS_MAX_RAW_RELS": std::env::var("RUST_NFS_MAX_RAW_RELS").ok(),
             "RUST_NFS_SQ_BATCH_SIZE": std::env::var("RUST_NFS_SQ_BATCH_SIZE").ok(),
             "RUST_NFS_NORM_BLOCK": std::env::var("RUST_NFS_NORM_BLOCK").ok(),
@@ -342,6 +344,7 @@ impl RunLogger {
             "RUST_NFS_FALLBACK_MAX_BITS": std::env::var("RUST_NFS_FALLBACK_MAX_BITS").ok(),
             "RUST_NFS_FALLBACK_RHO_ROUNDS": std::env::var("RUST_NFS_FALLBACK_RHO_ROUNDS").ok(),
             "RUST_NFS_FALLBACK_RHO_ITERS": std::env::var("RUST_NFS_FALLBACK_RHO_ITERS").ok(),
+            "RUST_NFS_DEP_BASIS_LIMIT": std::env::var("RUST_NFS_DEP_BASIS_LIMIT").ok(),
             "GNFS_TRY_COUVEIGNES_ON_TRIVIAL": std::env::var("GNFS_TRY_COUVEIGNES_ON_TRIVIAL").ok(),
             "GNFS_TRY_NEG_M": std::env::var("GNFS_TRY_NEG_M").ok(),
             "GNFS_NF_ELEMENT_MODE": std::env::var("GNFS_NF_ELEMENT_MODE").ok(),
@@ -619,11 +622,31 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let mut final_partial_sets = None;
     let mut filter_time_ms = 0.0;
 
+    let qc_count = std::env::var("RUST_NFS_QC_COUNT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(30usize);
+    let quad_chars = gnfs::arith::select_quad_char_primes(&f_coeffs_i64, &gnfs_fb.primes, qc_count);
+    let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let singleton_prune = std::env::var("RUST_NFS_SINGLETON_PRUNE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let singleton_min_weight = std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v >= 2)
+        .unwrap_or(2usize);
+    let adaptive_use_matrix = std::env::var("RUST_NFS_ADAPTIVE_USE_MATRIX")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let adaptive_matrix_rows_ratio = std::env::var("RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+        .unwrap_or(1.25);
     let est_dense_cols = if partial_merge_2lp {
-        let qc_count = std::env::var("RUST_NFS_QC_COUNT")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(30usize);
         rat_fb.primes.len()
             + gnfs_fb.algebraic_pair_count()
             + gnfs_fb.higher_degree_ideal_count(degree)
@@ -740,6 +763,101 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     adaptive_check_min_raw,
                     est_dense_cols
                 );
+
+                if adaptive_use_matrix && active_rows >= est_dense_cols {
+                    let (probe_rels, probe_source_indices, probe_stats) = remap_hybrid(
+                        &filtered,
+                        &rat_fb,
+                        &alg_fb,
+                        &gnfs_fb,
+                        &f_coeffs_big,
+                        m,
+                        degree,
+                        &bad_root_offsets,
+                    );
+                    let (probe_sets_remapped, probe_sets_dropped, probe_sets_recomputed) =
+                        remap_partial_sets_from_sources(
+                            &filtered,
+                            current_sets.as_deref(),
+                            &probe_source_indices,
+                            partial_merge_max_sets,
+                        );
+                    let probe_set_count = if probe_sets_recomputed > 0 {
+                        probe_sets_recomputed
+                    } else {
+                        probe_sets_remapped.len()
+                    };
+                    let probe_partial_merge_active =
+                        partial_merge_2lp && !probe_sets_remapped.is_empty();
+                    let probe_summary = if probe_partial_merge_active {
+                        let (probe_matrix, probe_cols, probe_sources) =
+                            build_matrix_from_sets_lp_resolved(
+                                &probe_rels,
+                                &probe_sets_remapped,
+                                rat_fb.primes.len(),
+                                gnfs_fb.algebraic_pair_count(),
+                                gnfs_fb.higher_degree_ideal_count(degree) + alg_bad,
+                                &quad_chars,
+                            );
+                        summarize_matrix_shape(
+                            probe_matrix,
+                            probe_cols,
+                            probe_sources,
+                            compact_zero_cols,
+                            singleton_prune,
+                            singleton_min_weight,
+                        )
+                    } else {
+                        let (probe_matrix, probe_cols) = gnfs::linalg::build_matrix(
+                            &probe_rels,
+                            rat_fb.primes.len(),
+                            gnfs_fb.algebraic_pair_count(),
+                            gnfs_fb.higher_degree_ideal_count(degree) + alg_bad,
+                            &quad_chars,
+                        );
+                        let probe_sources = (0..probe_matrix.len()).map(|i| vec![i]).collect();
+                        summarize_matrix_shape(
+                            probe_matrix,
+                            probe_cols,
+                            probe_sources,
+                            compact_zero_cols,
+                            singleton_prune,
+                            singleton_min_weight,
+                        )
+                    };
+                    eprintln!(
+                        "  adaptive-matrix: window {} remap_valid {} keep={:.3} set_rows {} dropped={} final={}x{} rows_minus_cols={} target_ratio={:.2}",
+                        window,
+                        probe_rels.len(),
+                        if filtered.is_empty() {
+                            0.0
+                        } else {
+                            probe_rels.len() as f64 / filtered.len() as f64
+                        },
+                        probe_set_count,
+                        probe_sets_dropped,
+                        probe_summary.final_rows,
+                        probe_summary.final_cols,
+                        probe_summary.rows_minus_cols,
+                        adaptive_matrix_rows_ratio
+                    );
+                    if probe_summary.final_cols > 0
+                        && (probe_summary.final_rows as f64)
+                            >= (probe_summary.final_cols as f64) * adaptive_matrix_rows_ratio
+                    {
+                        eprintln!(
+                            "  adaptive-matrix: stopping at window {} (final_rows/final_cols={:.3})",
+                            window,
+                            probe_summary.final_rows as f64 / probe_summary.final_cols as f64
+                        );
+                        final_filtered = filtered;
+                        final_partial_sets = current_sets;
+                        break;
+                    }
+                    // Keep the warning path visible; this probe is only for stopping,
+                    // not for mutating the final result structure.
+                    let _ = probe_stats;
+                }
 
                 if active_rows >= needed_rows || force_stop || at_q_window_cap {
                     final_filtered = filtered;
@@ -907,63 +1025,25 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             (gnfs_rels.len() as f64) * 100.0 / (filtered.len() as f64)
         );
     }
-    let source_to_remap: HashMap<usize, usize> = remap_source_indices
-        .iter()
-        .enumerate()
-        .map(|(ri, &src)| (src, ri))
-        .collect();
-    let mut partial_sets_remapped: Vec<Vec<usize>> = Vec::new();
-    let mut partial_sets_dropped_remap = 0usize;
-    let mut partial_sets_recomputed = 0usize;
-    if let Some(sets) = partial_sets_filtered {
-        for set in sets {
-            let mut mapped = Vec::with_capacity(set.len());
-            let mut valid = true;
-            for src_idx in set {
-                if let Some(&ri) = source_to_remap.get(&src_idx) {
-                    mapped.push(ri);
-                } else {
-                    valid = false;
-                    break;
-                }
-            }
-            if !valid || mapped.is_empty() {
-                partial_sets_dropped_remap += 1;
-                continue;
-            }
-            mapped.sort_unstable();
-            mapped.dedup();
-            if !mapped.is_empty() {
-                partial_sets_remapped.push(mapped);
-            } else {
-                partial_sets_dropped_remap += 1;
-            }
-        }
-        eprintln!(
-            "  merge2lp: remapped set-rows {} (dropped_unmapped={})",
-            partial_sets_remapped.len(),
-            partial_sets_dropped_remap
+    let (partial_sets_remapped, partial_sets_dropped_remap, partial_sets_recomputed) =
+        remap_partial_sets_from_sources(
+            &filtered,
+            partial_sets_filtered.as_deref(),
+            &remap_source_indices,
+            partial_merge_max_sets,
         );
-        result.viability.set_rows_remapped = partial_sets_remapped.len();
-        result.viability.set_rows_dropped_remap = partial_sets_dropped_remap;
-        if partial_sets_dropped_remap > 0 && !remap_source_indices.is_empty() {
-            // Rebuild 2LP sets on the remap-valid subset directly so invalid
-            // relations do not poison whole set-rows during source-index remap.
-            let remap_valid_filtered: Vec<crate::relation::Relation> = remap_source_indices
-                .iter()
-                .filter_map(|&src_idx| filtered.get(src_idx).cloned())
-                .collect();
-            let (recomputed_sets, _stats) = crate::partial_merge::merge_relations_2lp(
-                &remap_valid_filtered,
-                partial_merge_max_sets,
-            );
-            eprintln!(
-                "  merge2lp: recomputed on remap-valid subset -> {} set-rows",
-                recomputed_sets.len()
-            );
-            partial_sets_recomputed = recomputed_sets.len();
-            partial_sets_remapped = recomputed_sets;
-        }
+    eprintln!(
+        "  merge2lp: remapped set-rows {} (dropped_unmapped={})",
+        partial_sets_remapped.len(),
+        partial_sets_dropped_remap
+    );
+    result.viability.set_rows_remapped = partial_sets_remapped.len();
+    result.viability.set_rows_dropped_remap = partial_sets_dropped_remap;
+    if partial_sets_dropped_remap > 0 {
+        eprintln!(
+            "  merge2lp: recomputed on remap-valid subset -> {} set-rows",
+            partial_sets_recomputed
+        );
     }
     result.viability.set_rows_recomputed = if partial_sets_recomputed > 0 {
         partial_sets_recomputed
@@ -991,12 +1071,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let alg_pairs = gnfs_fb.algebraic_pair_count();
     let alg_hd = gnfs_fb.higher_degree_ideal_count(degree);
     let alg_bad = bad_root_offsets.len();
-    let qc_count = std::env::var("RUST_NFS_QC_COUNT")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(30usize);
-    let quad_chars = gnfs::arith::select_quad_char_primes(&f_coeffs_i64, &gnfs_fb.primes, qc_count);
-
     // Use rat_fb.primes.len() as rational FB size (complete rational FB).
     let rat_fb_size = rat_fb.primes.len();
 
@@ -1030,17 +1104,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let compare_matrix_modes = std::env::var("RUST_NFS_COMPARE_MATRIX_MODES")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(true);
-    let singleton_prune = std::env::var("RUST_NFS_SINGLETON_PRUNE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(true);
-    let singleton_min_weight = std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v >= 2)
-        .unwrap_or(2usize);
 
     let partial_merge_active = partial_merge_2lp && !partial_sets_remapped.is_empty();
     if compare_matrix_modes && partial_merge_active {
@@ -1297,7 +1360,17 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     result.viability.final_cols = result.matrix_cols;
     result.viability.rows_minus_cols = result.matrix_rows as isize - result.matrix_cols as isize;
 
-    let ge_deps = gnfs::linalg::find_dependencies(&matrix, ncols);
+    let mut ge_deps = gnfs::linalg::find_dependencies(&matrix, ncols);
+    let ge_deps_total = ge_deps.len();
+    let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0);
+    if let Some(limit) = ge_dep_basis_limit {
+        if ge_deps.len() > limit {
+            ge_deps.truncate(limit);
+        }
+    }
     // GE basis vectors are short/correlated; generate randomized XOR
     // combinations to avoid systematic trivial-gcd failures in sqrt.
     // Keep k modest to avoid extremely long dependencies (expensive sqrt).
@@ -1338,9 +1411,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
 
     result.la_ms = la_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!(
-        "  LA: {} deps ({} GE + {} random, xor_k={}, seed={}) in {:.0}ms",
+        "  LA: {} deps ({} GE used / {} GE total + {} random, xor_k={}, seed={}) in {:.0}ms",
         deps.len(),
         ge_deps.len(),
+        ge_deps_total,
         deps.len() - ge_deps.len(),
         k,
         dep_seed,
@@ -2335,6 +2409,68 @@ fn expand_dependency_over_sets(dep: &[usize], set_rows: &[Vec<usize>]) -> Vec<us
         .collect();
     expanded.sort_unstable();
     expanded
+}
+
+fn remap_partial_sets_from_sources(
+    filtered: &[crate::relation::Relation],
+    partial_sets_filtered: Option<&[Vec<usize>]>,
+    remap_source_indices: &[usize],
+    partial_merge_max_sets: usize,
+) -> (Vec<Vec<usize>>, usize, usize) {
+    let source_to_remap: HashMap<usize, usize> = remap_source_indices
+        .iter()
+        .enumerate()
+        .map(|(ri, &src)| (src, ri))
+        .collect();
+    let mut partial_sets_remapped: Vec<Vec<usize>> = Vec::new();
+    let mut partial_sets_dropped_remap = 0usize;
+    let mut partial_sets_recomputed = 0usize;
+
+    if let Some(sets) = partial_sets_filtered {
+        for set in sets {
+            let mut mapped = Vec::with_capacity(set.len());
+            let mut valid = true;
+            for &src_idx in set {
+                if let Some(&ri) = source_to_remap.get(&src_idx) {
+                    mapped.push(ri);
+                } else {
+                    valid = false;
+                    break;
+                }
+            }
+            if !valid || mapped.is_empty() {
+                partial_sets_dropped_remap += 1;
+                continue;
+            }
+            mapped.sort_unstable();
+            mapped.dedup();
+            if !mapped.is_empty() {
+                partial_sets_remapped.push(mapped);
+            } else {
+                partial_sets_dropped_remap += 1;
+            }
+        }
+        if partial_sets_dropped_remap > 0 && !remap_source_indices.is_empty() {
+            // Rebuild 2LP sets on the remap-valid subset directly so invalid
+            // relations do not poison whole set-rows during source-index remap.
+            let remap_valid_filtered: Vec<crate::relation::Relation> = remap_source_indices
+                .iter()
+                .filter_map(|&src_idx| filtered.get(src_idx).cloned())
+                .collect();
+            let (recomputed_sets, _stats) = crate::partial_merge::merge_relations_2lp(
+                &remap_valid_filtered,
+                partial_merge_max_sets,
+            );
+            partial_sets_recomputed = recomputed_sets.len();
+            partial_sets_remapped = recomputed_sets;
+        }
+    }
+
+    (
+        partial_sets_remapped,
+        partial_sets_dropped_remap,
+        partial_sets_recomputed,
+    )
 }
 
 fn compact_zero_columns(
