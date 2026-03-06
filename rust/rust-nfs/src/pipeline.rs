@@ -2562,6 +2562,101 @@ fn p_valuation_a_minus_br(a: i64, b: u64, r: u64, p: u64) -> u8 {
     v
 }
 
+fn eval_univariate_bigint(coeffs: &[Integer], x: &Integer) -> Integer {
+    let mut acc = Integer::from(0);
+    for c in coeffs.iter().rev() {
+        acc *= x;
+        acc += c;
+    }
+    acc
+}
+
+fn eval_univariate_derivative_mod_p(coeffs: &[Integer], x: u64, p: u64) -> u64 {
+    if p < 2 {
+        return 0;
+    }
+    let p128 = p as u128;
+    let mut acc = 0u128;
+    let mut x_pow = 1u128;
+    for (i, c) in coeffs.iter().enumerate().skip(1) {
+        let coeff_mod = c.mod_u(p as u32) as u128;
+        acc = (acc + ((i as u128 * coeff_mod) % p128) * x_pow) % p128;
+        x_pow = (x_pow * x as u128) % p128;
+    }
+    acc as u64
+}
+
+fn hensel_lift_simple_root(
+    coeffs: &[Integer],
+    p: u64,
+    root_mod_p: u64,
+    lift_exp: u8,
+    cache: &mut HashMap<(u64, u64, u8), Integer>,
+) -> Option<Integer> {
+    if p < 2 || lift_exp == 0 {
+        return None;
+    }
+    if let Some(root) = cache.get(&(p, root_mod_p, lift_exp)) {
+        return Some(root.clone());
+    }
+
+    let deriv_mod_p = eval_univariate_derivative_mod_p(coeffs, root_mod_p, p);
+    let deriv_inv = gnfs::arith::mod_inverse_u64(deriv_mod_p, p)?;
+
+    let mut current_exp = 1u8;
+    let mut current_root = Integer::from(root_mod_p);
+    let mut modulus = Integer::from(p);
+    cache.insert((p, root_mod_p, current_exp), current_root.clone());
+
+    while current_exp < lift_exp {
+        let f_val = eval_univariate_bigint(coeffs, &current_root);
+        if f_val.clone() % &modulus != 0 {
+            return None;
+        }
+        let quotient = Integer::from(&f_val / &modulus);
+        let q_mod_p = quotient.mod_u(p as u32) as u64;
+        let correction = (p - ((q_mod_p as u128 * deriv_inv as u128) % p as u128) as u64) % p;
+        current_root += Integer::from(&modulus * correction);
+        modulus *= p;
+        current_exp += 1;
+        cache.insert((p, root_mod_p, current_exp), current_root.clone());
+    }
+
+    Some(current_root)
+}
+
+fn p_valuation_a_minus_br_hensel(
+    a: i64,
+    b: u64,
+    p: u64,
+    root_mod_p: u64,
+    max_exp: u8,
+    coeffs: &[Integer],
+    cache: &mut HashMap<(u64, u64, u8), Integer>,
+) -> Option<u8> {
+    if max_exp == 0 || p < 2 {
+        return Some(0);
+    }
+    let lifted_root = hensel_lift_simple_root(coeffs, p, root_mod_p, max_exp, cache)?;
+    let modulus = Integer::from(p).pow(max_exp as u32);
+    let mut delta = Integer::from(a) - Integer::from(b) * lifted_root;
+    delta %= &modulus;
+    if delta < 0 {
+        delta += &modulus;
+    }
+    if delta == 0 {
+        return Some(max_exp);
+    }
+
+    let p_int = Integer::from(p);
+    let mut e = 0u8;
+    while e < max_exp && delta.clone() % &p_int == 0 {
+        delta /= p;
+        e += 1;
+    }
+    Some(e)
+}
+
 /// Compute sign of the algebraic norm F(a,b).
 ///
 /// F(a,b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
@@ -2627,6 +2722,15 @@ fn remap_hybrid(
     let mut result = Vec::with_capacity(relations.len());
     let mut source_indices = Vec::with_capacity(relations.len());
     let mut stats = RemapHybridStats::default();
+    let mut root_multiplicity_cache = HashMap::<(u64, u64), u8>::new();
+    let mut hensel_lift_cache = HashMap::<(u64, u64, u8), Integer>::new();
+
+    for (prime_idx, &p) in gnfs_fb.primes.iter().enumerate() {
+        for &r in &gnfs_fb.algebraic_roots[prime_idx] {
+            root_multiplicity_cache
+                .insert((p, r), root_multiplicity_mod_p(f_coeffs_big, r, p) as u8);
+        }
+    }
 
     for (rel_idx, rel) in relations.iter().enumerate() {
         // Rational factors are already indexed by rat_fb and can be used as-is.
@@ -2662,7 +2766,24 @@ fn remap_hybrid(
             let mut root_exp_sum = 0u8;
             for (root_idx, &r) in roots.iter().enumerate() {
                 let val_i128 = rel.a as i128 - rel.b as i128 * r as i128;
-                let e = p_adic_val_i128(val_i128, prime);
+                let root_mult = root_multiplicity_cache
+                    .get(&(prime, r))
+                    .copied()
+                    .unwrap_or(1);
+                let e = if root_mult == 1 && rel.b % prime != 0 {
+                    p_valuation_a_minus_br_hensel(
+                        rel.a,
+                        rel.b,
+                        prime,
+                        r,
+                        total_exp,
+                        f_coeffs_big,
+                        &mut hensel_lift_cache,
+                    )
+                    .unwrap_or_else(|| p_adic_val_i128(val_i128, prime))
+                } else {
+                    p_adic_val_i128(val_i128, prime)
+                };
                 if e > 0 {
                     alg_pair_factors.push(((pair_base + root_idx) as u32, e));
                     root_exp_sum = root_exp_sum.saturating_add(e);
@@ -2680,7 +2801,12 @@ fn remap_hybrid(
                     if stats.hd_residual_samples.len() < hd_residual_sample_limit {
                         let root_multiplicities: Vec<u8> = roots
                             .iter()
-                            .map(|&r| root_multiplicity_mod_p(f_coeffs_big, r, prime) as u8)
+                            .map(|&r| {
+                                root_multiplicity_cache
+                                    .get(&(prime, r))
+                                    .copied()
+                                    .unwrap_or(1)
+                            })
                             .collect();
                         stats.hd_residual_samples.push(HdResidualSample {
                             a: rel.a,
@@ -2981,5 +3107,33 @@ mod tests {
     fn test_effective_max_raw_rels_respects_explicit_cap() {
         assert_eq!(effective_max_raw_rels(Some(9_000), 2_000, 1_000), 9_000);
         assert_eq!(effective_max_raw_rels(Some(9_000), 5_000, 1_000), 9_000);
+    }
+
+    #[test]
+    fn test_hensel_lift_recovers_simple_root_valuation_for_c30_prime5() {
+        let coeffs = vec![
+            Integer::from(5_142_430_355i64),
+            Integer::from(6_255_823_782i64),
+            Integer::from(0),
+            Integer::from(1),
+        ];
+        let mut cache = HashMap::new();
+        let e = p_valuation_a_minus_br_hensel(8420, 67, 5, 0, 2, &coeffs, &mut cache)
+            .expect("simple root should Hensel-lift");
+        assert_eq!(e, 2);
+    }
+
+    #[test]
+    fn test_hensel_lift_recovers_simple_root_valuation_for_c30_prime2() {
+        let coeffs = vec![
+            Integer::from(5_142_430_355i64),
+            Integer::from(6_255_823_782i64),
+            Integer::from(0),
+            Integer::from(1),
+        ];
+        let mut cache = HashMap::new();
+        let e = p_valuation_a_minus_br_hensel(12_603, 15_065, 2, 1, 4, &coeffs, &mut cache)
+            .expect("simple root should Hensel-lift");
+        assert_eq!(e, 4);
     }
 }
