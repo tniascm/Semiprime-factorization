@@ -532,6 +532,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     // Build gnfs-compatible algebraic FB metadata early for adaptive relation targets.
     let gnfs_fb = gnfs::sieve::build_factor_base(&f_coeffs_i64, params.lim0.max(params.lim1));
     let degree = params.degree as usize;
+    let bad_root_offsets = compute_bad_root_offsets(&gnfs_fb, &f_coeffs_big);
+    let alg_bad = bad_root_offsets.len();
 
     // Build factor bases for both sides.
     // Rational polynomial: g(x) = x - m, coefficients [-m, 1].
@@ -598,6 +600,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         rat_fb.primes.len()
             + gnfs_fb.algebraic_pair_count()
             + gnfs_fb.higher_degree_ideal_count(degree)
+            + alg_bad
             + 2
             + qc_count
     } else {
@@ -851,6 +854,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         &f_coeffs_big,
         m,
         degree,
+        &bad_root_offsets,
     );
     result.viability.remap_valid_relations = remap_stats.kept_relations;
     result.viability.remap_dropped_total = remap_stats.skipped_total();
@@ -959,6 +963,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
 
     let alg_pairs = gnfs_fb.algebraic_pair_count();
     let alg_hd = gnfs_fb.higher_degree_ideal_count(degree);
+    let alg_bad = bad_root_offsets.len();
     let qc_count = std::env::var("RUST_NFS_QC_COUNT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -984,7 +989,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         used_rat_cols.len(),
         rat_fb_size,
         used_alg_cols.len(),
-        alg_pairs + alg_hd
+        alg_pairs + alg_hd + alg_bad
     );
     result.viability.active_dense_rat_cols = used_rat_cols.len();
     result.viability.active_dense_alg_cols = used_alg_cols.len();
@@ -1025,7 +1030,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                 &partial_sets_remapped,
                 rat_fb_size,
                 alg_pairs,
-                alg_hd,
+                alg_hd + alg_bad,
                 &quad_chars,
             );
         let merged_summary = summarize_matrix_shape(
@@ -1037,8 +1042,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             singleton_min_weight,
         );
 
-        let (direct_matrix_cmp, direct_cols_cmp) =
-            gnfs::linalg::build_matrix(&gnfs_rels, rat_fb_size, alg_pairs, alg_hd, &quad_chars);
+        let (direct_matrix_cmp, direct_cols_cmp) = gnfs::linalg::build_matrix(
+            &gnfs_rels,
+            rat_fb_size,
+            alg_pairs,
+            alg_hd + alg_bad,
+            &quad_chars,
+        );
         let direct_sources_cmp = (0..direct_matrix_cmp.len()).map(|i| vec![i]).collect();
         let direct_summary = summarize_matrix_shape(
             direct_matrix_cmp,
@@ -1085,7 +1095,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             &partial_sets_remapped,
             rat_fb_size,
             alg_pairs,
-            alg_hd,
+            alg_hd + alg_bad,
             &quad_chars,
         );
         eprintln!(
@@ -1143,8 +1153,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             set_count,
         )
     } else {
-        let (m, nc) =
-            gnfs::linalg::build_matrix(&gnfs_rels, rat_fb_size, alg_pairs, alg_hd, &quad_chars);
+        let (m, nc) = gnfs::linalg::build_matrix(
+            &gnfs_rels,
+            rat_fb_size,
+            alg_pairs,
+            alg_hd + alg_bad,
+            &quad_chars,
+        );
         eprintln!(
             "  LA: {} x {} matrix (qc={})",
             m.len(),
@@ -2698,6 +2713,23 @@ fn eval_univariate_derivative_mod_p(coeffs: &[Integer], x: u64, p: u64) -> u64 {
     acc as u64
 }
 
+fn compute_bad_root_offsets(
+    gnfs_fb: &gnfs::types::FactorBase,
+    f_coeffs_big: &[Integer],
+) -> HashMap<(u64, u64), usize> {
+    let mut offsets = HashMap::new();
+    let mut next = 0usize;
+    for (prime_idx, &p) in gnfs_fb.primes.iter().enumerate() {
+        for &r in &gnfs_fb.algebraic_roots[prime_idx] {
+            if root_multiplicity_mod_p(f_coeffs_big, r, p) > 1 {
+                offsets.insert((p, r), next);
+                next += 1;
+            }
+        }
+    }
+    offsets
+}
+
 fn hensel_lift_simple_root(
     coeffs: &[Integer],
     p: u64,
@@ -2816,6 +2848,7 @@ fn remap_hybrid(
     f_coeffs_big: &[Integer],
     m: u64,
     degree: usize,
+    bad_root_offsets: &HashMap<(u64, u64), usize>,
 ) -> (Vec<gnfs::types::Relation>, Vec<usize>, RemapHybridStats) {
     let ignore_special_q = std::env::var("RUST_NFS_IGNORE_SPECIAL_Q_COLUMN")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -2906,6 +2939,26 @@ fn remap_hybrid(
                 let residual = total_exp - root_exp_sum;
                 let hd_degree = degree.saturating_sub(roots.len());
                 let residual_divisible = hd_degree > 0 && (residual as usize) % hd_degree == 0;
+                let repeated_roots: Vec<u64> = roots
+                    .iter()
+                    .copied()
+                    .filter(|&r| {
+                        root_multiplicity_cache
+                            .get(&(prime, r))
+                            .copied()
+                            .unwrap_or(1)
+                            > 1
+                    })
+                    .collect();
+                if repeated_roots.len() == 1 {
+                    if let Some(&bad_off) = bad_root_offsets.get(&(prime, repeated_roots[0])) {
+                        let bad_flat_idx = gnfs_fb.algebraic_pair_count()
+                            + gnfs_fb.higher_degree_ideal_count(degree)
+                            + bad_off;
+                        alg_pair_factors.push((bad_flat_idx as u32, residual));
+                        continue;
+                    }
+                }
                 if hd_degree == 0 || !residual_divisible {
                     // Genuine ideal-decomposition inconsistency: the cofactored
                     // v_p(F(a,b)) can't be split into first-degree + HD ideals.
@@ -3247,5 +3300,64 @@ mod tests {
         let e = p_valuation_a_minus_br_hensel(12_603, 15_065, 2, 1, 4, &coeffs, &mut cache)
             .expect("simple root should Hensel-lift");
         assert_eq!(e, 4);
+    }
+
+    #[test]
+    fn test_compute_bad_root_offsets_detects_c30_prime3_root1() {
+        let coeffs = vec![
+            Integer::from(5_142_430_355i64),
+            Integer::from(6_255_823_782i64),
+            Integer::from(0),
+            Integer::from(1),
+        ];
+        let fb = gnfs::sieve::build_factor_base(&[5_142_430_355, 6_255_823_782, 0, 1], 100);
+        let bad = compute_bad_root_offsets(&fb, &coeffs);
+        assert!(bad.contains_key(&(3, 1)));
+        assert_eq!(bad.len(), 1);
+    }
+
+    #[test]
+    fn test_remap_hybrid_routes_repeated_root_residual_to_bad_column() {
+        let coeffs_i64 = vec![5_142_430_355i64, 6_255_823_782i64, 0, 1];
+        let coeffs_big: Vec<Integer> = coeffs_i64.iter().copied().map(Integer::from).collect();
+        let gnfs_fb = gnfs::sieve::build_factor_base(&coeffs_i64, 100);
+        let alg_fb = crate::factorbase::FactorBase::new_roots_only(&coeffs_i64, 100, 1.442);
+        let rat_fb = crate::factorbase::FactorBase::new(&[-88, 1], 100, 1.442);
+        let alg_idx = alg_fb
+            .primes
+            .iter()
+            .position(|&p| p == 3)
+            .expect("prime 3 should be present") as u32;
+        let bad = compute_bad_root_offsets(&gnfs_fb, &coeffs_big);
+
+        let rel = crate::relation::Relation {
+            a: -73_258,
+            b: 11_453,
+            rational_factors: vec![],
+            algebraic_factors: vec![(alg_idx, 2)],
+            rational_sign_negative: true,
+            algebraic_sign_negative: false,
+            special_q: None,
+            rat_cofactor: 1,
+            alg_cofactor: 1,
+            lp_keys: vec![],
+        };
+
+        let (rels, _src, stats) =
+            remap_hybrid(&[rel], &rat_fb, &alg_fb, &gnfs_fb, &coeffs_big, 88, 3, &bad);
+        assert_eq!(stats.invalid_hd_residual, 0);
+        assert_eq!(rels.len(), 1);
+
+        let alg_pairs = gnfs_fb.algebraic_pair_count();
+        let alg_hd = gnfs_fb.higher_degree_ideal_count(3);
+        let gnfs_pi = gnfs_fb.primes.iter().position(|&p| p == 3).unwrap();
+        let factors = &rels[0].algebraic_factors;
+        assert_eq!(factors.len(), 2);
+        assert!(factors
+            .iter()
+            .any(|&(idx, exp)| idx as usize == gnfs_fb.pair_offset(gnfs_pi) && exp == 1));
+        assert!(factors
+            .iter()
+            .any(|&(idx, exp)| idx as usize >= alg_pairs + alg_hd && exp == 1));
     }
 }
