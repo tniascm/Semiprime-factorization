@@ -1611,25 +1611,44 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
 
     struct DepCandidate {
         dep_idx: usize,
-        expanded: Vec<usize>,
-        support: Vec<u32>, // sorted and deduplicated target for fast Jaccard
-        support_hash: u64, // for exact duplicate removal
+        expanded: Option<Vec<usize>>,   // lazily computed
+        support: Option<Vec<u32>>,      // lazily computed
+        support_hash: u64,              // 0 until expanded
+        raw_weight: usize,              // # set-row indices (cheap proxy for expanded len)
     }
 
-    let mut seen_expanded: HashMap<u64, Vec<usize>> = HashMap::new();
-    let mut duplicate_expanded = 0usize;
-    let mut useful_deps: Vec<DepCandidate> = Vec::new();
+    // Phase 1: create lightweight candidates sorted by raw weight (no expansion yet)
+    let mut useful_deps: Vec<DepCandidate> = deps
+        .iter()
+        .enumerate()
+        .filter(|(_, dep)| !dep.is_empty())
+        .map(|(dep_idx, dep)| DepCandidate {
+            dep_idx,
+            expanded: None,
+            support: None,
+            support_hash: 0,
+            raw_weight: dep.len(),
+        })
+        .collect();
 
-    for (dep_idx, dep) in deps.iter().enumerate() {
-        if dep.is_empty() {
-            continue;
+    useful_deps.sort_by(|a, b| {
+        a.raw_weight
+            .cmp(&b.raw_weight)
+            .then_with(|| a.dep_idx.cmp(&b.dep_idx))
+    });
+
+    let duplicate_expanded = 0usize; // dedup deferred to expansion time
+
+    // Lazy expansion helper: expands a dep and computes support/hash on demand
+    let expand_dep = |cand: &mut DepCandidate, dep_sets_ref: &[Vec<usize>], deps: &[Vec<usize>]| -> bool {
+        if cand.expanded.is_some() {
+            return true; // already expanded
         }
+        let dep = &deps[cand.dep_idx];
         let expanded = expand_dependency_over_sets(dep, dep_sets_ref);
         if expanded.is_empty() {
-            continue;
+            return false;
         }
-
-        // Canonical fingerprint: sorted, unique array of `u32` (saving memory vs usize)
         let mut support: Vec<u32> = expanded.iter().map(|&x| x as u32).collect();
         support.sort_unstable();
         support.dedup();
@@ -1638,34 +1657,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
         support.hash(&mut hasher);
-        let support_hash = hasher.finish();
+        cand.support_hash = hasher.finish();
+        cand.support = Some(support);
+        cand.expanded = Some(expanded);
+        true
+    };
 
-        let dup_bucket = seen_expanded.entry(support_hash).or_default();
-        if dup_bucket
-            .iter()
-            .any(|&existing_idx| useful_deps[existing_idx].support == support)
-        {
-            duplicate_expanded += 1;
-            continue;
-        }
-
-        let new_idx = useful_deps.len();
-        dup_bucket.push(new_idx);
-        useful_deps.push(DepCandidate {
-            dep_idx,
-            expanded,
-            support,
-            support_hash,
-        });
-    }
-
-    // Sort to prioritize shorter deps natively (so the scheduler's base bias is short)
-    useful_deps.sort_by(|a, b| {
-        a.expanded
-            .len()
-            .cmp(&b.expanded.len())
-            .then_with(|| a.dep_idx.cmp(&b.dep_idx))
-    });
+    let sqrt_prep_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  sqrt: dep prep in {:.0}ms ({} candidates, lazy expansion)", sqrt_prep_ms, useful_deps.len());
 
     let mut fail_rat_not_square = 0usize;
     let mut fail_alg_not_square = 0usize;
@@ -1713,7 +1712,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let dep_require_coprime_rel = std::env::var("RUST_NFS_DEP_REQUIRE_COPRIME_REL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let dep_lens: Vec<usize> = useful_deps.iter().map(|cand| cand.expanded.len()).collect();
+    // Use raw_weight as proxy for expanded length stats (avoids expanding all deps)
+    let dep_lens: Vec<usize> = useful_deps.iter().map(|cand| cand.raw_weight).collect();
     if let Some((min_len, p50, p90, p99, max_len)) = dependency_length_stats(&dep_lens) {
         let first_tier = dep_len_tiers.first().copied().flatten();
         let first_tier_count = first_tier
@@ -1774,13 +1774,35 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let mut deps_skipped_non_coprime = 0usize;
     let mut total_skipped_sim = 0usize;
 
-    let refill_pool = |pool: &mut Vec<usize>, next_cursor: &mut usize| {
-        while pool.len() < div_pool_size && *next_cursor < useful_deps.len() {
-            pool.push(*next_cursor);
-            *next_cursor += 1;
-        }
-    };
-    refill_pool(&mut untried_pool, &mut next_pool_cursor);
+    // Inline pool refill with lazy expansion
+    macro_rules! refill_pool_and_expand {
+        ($pool:expr, $next_cursor:expr) => {
+            while $pool.len() < div_pool_size && $next_cursor < useful_deps.len() {
+                let idx = $next_cursor;
+                if useful_deps[idx].expanded.is_none() {
+                    let dep = &deps[useful_deps[idx].dep_idx];
+                    let expanded = expand_dependency_over_sets(dep, dep_sets_ref);
+                    if expanded.is_empty() {
+                        $next_cursor += 1;
+                        continue;
+                    }
+                    let mut support: Vec<u32> = expanded.iter().map(|&x| x as u32).collect();
+                    support.sort_unstable();
+                    support.dedup();
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = DefaultHasher::new();
+                    support.hash(&mut hasher);
+                    useful_deps[idx].support_hash = hasher.finish();
+                    useful_deps[idx].support = Some(support);
+                    useful_deps[idx].expanded = Some(expanded);
+                }
+                $pool.push(idx);
+                $next_cursor += 1;
+            }
+        };
+    }
+    refill_pool_and_expand!(untried_pool, next_pool_cursor);
 
     // Fast Jaccard similarity for two sorted, deduplicated slices
     fn intersection_union_counts(a: &[u32], b: &[u32]) -> (usize, usize) {
@@ -1811,16 +1833,16 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             break;
         }
 
-        // Only consider untried deps that fit exactly in this tier
-        let is_eligible = |idx: usize| {
-            let len = useful_deps[idx].expanded.len();
-            tier_cap.map(|cap| len <= cap).unwrap_or(true) &&
-            // If there's a previous tier, it must be STRICTLY LARGER than that previous cap,
-            // otherwise it would have been processed in the earlier tier.
-            (tier_idx == 0 || dep_len_tiers[tier_idx-1].map(|prev| len > prev).unwrap_or(false))
-        };
+        // Only consider untried deps that fit exactly in this tier (inline to avoid borrow conflicts)
+        macro_rules! is_eligible {
+            ($idx:expr) => {{
+                let len = useful_deps[$idx].expanded.as_ref().map(|e| e.len()).unwrap_or(useful_deps[$idx].raw_weight);
+                tier_cap.map(|cap| len <= cap).unwrap_or(true) &&
+                (tier_idx == 0 || dep_len_tiers[tier_idx-1].map(|prev| len > prev).unwrap_or(false))
+            }};
+        }
 
-        let eligible_count = untried_pool.iter().filter(|&&i| is_eligible(i)).count();
+        let eligible_count = untried_pool.iter().filter(|&&i| is_eligible!(i)).count();
         eprintln!(
             "  sqrt: tier {}/{} cap={} eligible={}",
             tier_idx + 1,
@@ -1850,24 +1872,24 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             }
 
             for (p_idx, &cand_idx) in untried_pool.iter().enumerate() {
-                if !is_eligible(cand_idx) {
+                if !is_eligible!(cand_idx) {
                     continue;
                 }
                 let cand = &useful_deps[cand_idx];
 
-                if cand.expanded.len() < degree {
+                let exp_len = cand.expanded.as_ref().map(|e| e.len()).unwrap_or(0);
+                if exp_len < degree {
                     deps_skipped_short += 1;
-                    continue; // Will stay in pool but ignored; could remove, but ignoring is fine
+                    continue;
                 }
 
-                if dep_require_coprime_rel
-                    && cand
-                        .expanded
-                        .iter()
-                        .any(|&ri| !rel_is_coprime.get(ri).copied().unwrap_or(false))
-                {
-                    deps_skipped_non_coprime += 1;
-                    continue;
+                if dep_require_coprime_rel {
+                    if let Some(ref expanded) = cand.expanded {
+                        if expanded.iter().any(|&ri| !rel_is_coprime.get(ri).copied().unwrap_or(false)) {
+                            deps_skipped_non_coprime += 1;
+                            continue;
+                        }
+                    }
                 }
 
                 // Compute similarity to known trivial-gcd failures
@@ -1875,8 +1897,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                 let mut sum_sim = 0.0f64;
                 let mut overlap: Option<(usize, usize, usize, f64)> = None;
                 for (fail_idx, fail_supp) in failed_trivial_supports.iter().enumerate() {
+                    let cand_support = cand.support.as_deref().unwrap_or(&[]);
                     let (intersection, union) =
-                        intersection_union_counts(&cand.support, &fail_supp.support);
+                        intersection_union_counts(cand_support, &fail_supp.support);
                     let sim = if union == 0 {
                         1.0
                     } else {
@@ -1929,7 +1952,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                         } else if avg_sim > best_avg_sim + 0.01 {
                             false
                         } else {
-                            cand.expanded.len() < best_len
+                            exp_len < best_len
                         }
                     }
                 };
@@ -1938,7 +1961,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     best_pool_idx = Some(p_idx);
                     best_max_sim = max_sim;
                     best_avg_sim = avg_sim;
-                    best_len = cand.expanded.len();
+                    best_len = exp_len;
                     best_overlap = overlap;
                 }
             }
@@ -1949,11 +1972,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                 None => break,
             };
 
-            // Remove from pool
+            // Remove from pool (refill deferred to avoid borrow conflict)
             let cand_idx = untried_pool.swap_remove(p_idx);
-            refill_pool(&mut untried_pool, &mut next_pool_cursor);
             let cand = &useful_deps[cand_idx];
-            let dep_expanded = cand.expanded.as_slice();
+            let dep_expanded = cand.expanded.as_deref().unwrap();
 
             // Check exact cutoff again (it could have been skipped in the selection loop, but we want to count it)
             if best_max_sim >= max_similarity_cutoff {
@@ -1969,8 +1991,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     "  sqrt: attempt {} (id {}), weight={}, supp={}, hash={:016x}, max_sim={:.3}, avg_sim={:.3}",
                     i + 1,
                     cand.dep_idx,
-                    cand.expanded.len(),
-                    cand.support.len(),
+                    dep_expanded.len(),
+                    cand.support.as_ref().map(|s| s.len()).unwrap_or(0),
                     cand.support_hash,
                     best_max_sim,
                     best_avg_sim
@@ -1986,7 +2008,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             let (factor_opt, failure) = if i < verbose_deps {
                 gnfs::sqrt::extract_factor_verbose(
                     &gnfs_rels,
-                    &dep_expanded,
+                    dep_expanded,
                     &f_coeffs_big,
                     &m_big,
                     n,
@@ -1994,7 +2016,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             } else {
                 gnfs::sqrt::extract_factor_diagnostic_fast(
                     &gnfs_rels,
-                    &dep_expanded,
+                    dep_expanded,
                     &f_coeffs_big,
                     &m_big,
                     n,
@@ -2040,13 +2062,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     if enable_sim_log {
                         eprintln!("    -> result: TrivialGcd");
                     }
+                    let cand_support_ref = cand.support.as_deref().unwrap_or(&[]);
                     let duplicate_failure = failed_trivial_supports.iter().any(|failed| {
-                        failed.support_hash == cand.support_hash && failed.support == cand.support
+                        failed.support_hash == cand.support_hash && failed.support == cand_support_ref
                     });
                     if !duplicate_failure {
                         let failed = FailedSupport {
                             support_hash: cand.support_hash,
-                            support: cand.support.clone(),
+                            support: cand_support_ref.to_vec(),
                         };
                         if failed_trivial_supports.len() < div_history_max {
                             failed_trivial_supports.push(failed);
@@ -2082,15 +2105,18 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                 );
                 break;
             }
+
+            // Refill pool after cand borrow is released
+            refill_pool_and_expand!(untried_pool, next_pool_cursor);
         }
     }
 
     let deps_skipped_long = untried_pool
         .iter()
-        .filter(|&&i| useful_deps[i].expanded.len() >= degree)
+        .filter(|&&i| useful_deps[i].expanded.as_ref().map(|e| e.len()).unwrap_or(useful_deps[i].raw_weight) >= degree)
         .count()
         + (next_pool_cursor..useful_deps.len())
-            .filter(|&i| useful_deps[i].expanded.len() >= degree)
+            .filter(|&i| useful_deps[i].raw_weight >= degree)
             .count();
 
     if result.factor.is_none() {

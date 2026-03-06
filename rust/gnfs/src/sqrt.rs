@@ -806,23 +806,22 @@ fn extract_factor_inner(
     rat_fb_primes: Option<&[u64]>,
 ) -> (Option<Integer>, Option<FactorFailure>) {
     let d = f_coeffs.len() - 1;
+    let sqrt_profile = std::env::var("GNFS_SQRT_PROFILE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let t0 = std::time::Instant::now();
 
     // Step 1: Compute rational square root x such that x² ≡ ∏(a_i - b_i*m) mod N.
     let x = if let Some(fb_primes) = rat_fb_primes {
         // Fast path: compute x = ∏ p^{e/2} mod N using stored factorizations.
-        // For large primes (LPs) not in the factor base, we recover them by
-        // dividing |a - b*m| by all known FB factors. The remainder is the LP
-        // product, which we accumulate mod N and take its sqrt via even exponents.
-        //
-        // This avoids computing the exact ~500K-bit product entirely; all
-        // arithmetic stays mod N (~100 bits).
+        // Single pass: accumulate FB exponents and recover LP cofactors by
+        // dividing |a - b*m| by known FB factors using u64 arithmetic (norms
+        // are bounded by a*b*m ≈ 2^100, and FB primes are u32).
         use std::collections::HashMap;
         let mut exponents: HashMap<u64, u32> = HashMap::new();
         let mut sign_count = 0u32;
-        // Accumulate LP cofactors mod N. Since each LP appears an even number
-        // of times in the dependency (by GF(2) construction), their product
-        // mod N is a perfect square mod N. We track it as a running product.
-        let mut cofactor_product = Integer::from(1);
+        let mut cofactor_exact = Integer::from(1);
+        let m_u64 = m.to_u64().unwrap_or(0);
 
         for &idx in dependency {
             let rel = &relations[idx];
@@ -834,18 +833,19 @@ fn extract_factor_inner(
                 *exponents.entry(prime).or_insert(0) += exp as u32;
             }
 
-            // Recover LP cofactor by dividing |norm| by known FB factors.
-            let mut cofactor = (Integer::from(rel.a) - Integer::from(rel.b) * m).abs();
+            // Recover LP cofactor using u128 arithmetic where possible.
+            // norm = |a - b*m|; for c30: |a| < 2^50, b < 2^50, m < 2^34.
+            // b*m < 2^84, fits u128. Division by u64 primes stays in u128.
+            let norm_i128 = rel.a as i128 - (rel.b as u128 * m_u64 as u128) as i128;
+            let mut cofactor_u128 = norm_i128.unsigned_abs();
             for &(fb_idx, exp) in &rel.rational_factors {
-                let prime = Integer::from(fb_primes[fb_idx as usize]);
+                let p = fb_primes[fb_idx as usize] as u128;
                 for _ in 0..exp {
-                    cofactor /= &prime;
+                    cofactor_u128 /= p;
                 }
             }
-            // cofactor is now the product of large primes (typically 1 or a single LP)
-            if cofactor > 1 {
-                cofactor_product *= &cofactor;
-                cofactor_product %= n;
+            if cofactor_u128 > 1 {
+                cofactor_exact *= Integer::from(cofactor_u128);
             }
         }
 
@@ -868,7 +868,6 @@ fn extract_factor_inner(
         }
 
         // Compute x = (∏ p^{e/2} mod N) × (sqrt of cofactor_product mod N)
-        // For the FB part: straightforward modular exponentiation
         let mut x = Integer::from(1);
         for (&p, &e) in &exponents {
             let half_e = e / 2;
@@ -879,24 +878,7 @@ fn extract_factor_inner(
             }
         }
 
-        // For the cofactor part: we know the cofactor_product is a perfect square
-        // mod N. Its sqrt mod N requires factoring N (circular!). Fall back to
-        // computing the exact cofactor product and taking its integer sqrt.
-        // This is fast when the cofactor product is small (sparse LPs).
-        let mut cofactor_exact = Integer::from(1);
-        for &idx in dependency {
-            let rel = &relations[idx];
-            let mut cofactor = (Integer::from(rel.a) - Integer::from(rel.b) * m).abs();
-            for &(fb_idx, exp) in &rel.rational_factors {
-                let prime = Integer::from(fb_primes[fb_idx as usize]);
-                for _ in 0..exp {
-                    cofactor /= &prime;
-                }
-            }
-            if cofactor > 1 {
-                cofactor_exact *= cofactor;
-            }
-        }
+        // LP cofactor part: take exact sqrt (product is small: ~10-40K bits)
         if cofactor_exact > 1 {
             let cofactor_sqrt = cofactor_exact.clone().sqrt();
             if Integer::from(&cofactor_sqrt * &cofactor_sqrt) != cofactor_exact {
@@ -942,6 +924,8 @@ fn extract_factor_inner(
         }
     };
 
+    let t_rat = t0.elapsed();
+
     if verbose {
         eprintln!(
             "[diag] Rational: x={} ({} bits)",
@@ -955,6 +939,7 @@ fn extract_factor_inner(
     // Use a product-tree approach: multiply pairs, then pairs of pairs, etc.
     // This keeps intermediate products balanced in size, dramatically reducing
     // total work from O(n² M(n)) to O(n log²(n) M(n)).
+    let t_alg_start = std::time::Instant::now();
     let nf_elem_mode = std::env::var("GNFS_NF_ELEMENT_MODE").unwrap_or_else(|_| "a_minus_ba".to_string());
 
     let mut elements: Vec<Vec<Integer>> = dependency.iter().map(|&idx| {
@@ -989,6 +974,7 @@ fn extract_factor_inner(
         }
         elements = next;
     }
+    let t_alg_tree = t_alg_start.elapsed();
 
     let alg_product = elements.into_iter().next().unwrap_or_else(|| {
         let mut v = vec![Integer::from(0); d];
@@ -1048,6 +1034,7 @@ fn extract_factor_inner(
     // Since f is irreducible over Q, the ring Z[α]/(f) is an integral domain,
     // so γ and -γ are the only square roots. Both Newton and Couveignes
     // will find the same element.
+    let t_newton_start = std::time::Instant::now();
     let mut y_values = algebraic_sqrt_newton(&alg_product, f_coeffs, m, n);
     let mut used_newton = false;
     if !y_values.is_empty() {
@@ -1164,6 +1151,20 @@ fn extract_factor_inner(
         }
         None
     };
+
+    let t_newton = t_newton_start.elapsed();
+
+    if sqrt_profile {
+        let max_bits = alg_product.iter().map(|c| c.clone().abs().significant_bits()).max().unwrap_or(0);
+        eprintln!(
+            "  [sqrt-profile] dep_len={} rat={:.1}ms alg_tree={:.1}ms newton={:.1}ms alg_max_bits={}",
+            dependency.len(),
+            t_rat.as_secs_f64() * 1000.0,
+            t_alg_tree.as_secs_f64() * 1000.0,
+            t_newton.as_secs_f64() * 1000.0,
+            max_bits
+        );
+    }
 
     if let Some(g) = try_gcds(&y_values) {
         return (Some(g), None);
