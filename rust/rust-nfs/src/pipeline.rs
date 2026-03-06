@@ -178,6 +178,10 @@ fn effective_max_raw_rels(
 ///   4. Linear algebra (GF(2) Gaussian elimination)
 ///   5. Square root and factor extraction
 pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
+    let variant_start: u32 = std::env::var("RUST_NFS_VARIANT_START")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
     let max_variants: u32 = std::env::var("RUST_NFS_MAX_VARIANTS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
@@ -208,8 +212,9 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
 
     let mut last_result = None;
 
-    for variant in 0..max_variants {
-        if variant > 0 {
+    for variant_idx in 0..max_variants {
+        let variant = variant_start.saturating_add(variant_idx);
+        if variant_idx > 0 || variant_start > 0 {
             eprintln!(
                 "  === Trying polynomial variant {} (m_offset=-{}) ===",
                 variant, variant
@@ -283,6 +288,7 @@ impl RunLogger {
 
         let env_cfg = serde_json::json!({
             "RUST_NFS_MAX_VARIANTS": std::env::var("RUST_NFS_MAX_VARIANTS").ok(),
+            "RUST_NFS_VARIANT_START": std::env::var("RUST_NFS_VARIANT_START").ok(),
             "RUST_NFS_DEP_SEED": std::env::var("RUST_NFS_DEP_SEED").ok(),
             "RUST_NFS_DEP_XOR_K": std::env::var("RUST_NFS_DEP_XOR_K").ok(),
             "RUST_NFS_DEP_RANDOM_COUNT": std::env::var("RUST_NFS_DEP_RANDOM_COUNT").ok(),
