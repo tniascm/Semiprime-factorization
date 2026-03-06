@@ -1,7 +1,7 @@
 use crate::arith::nth_root;
 use crate::types::PolynomialPair;
-use rug::Integer;
 use rug::ops::Pow;
+use rug::Integer;
 
 /// Choose polynomial degree based on digit count of N.
 pub fn choose_degree(digits: u32) -> u32 {
@@ -24,6 +24,16 @@ pub fn choose_degree(digits: u32) -> u32 {
 /// The rational polynomial is g(x) = x - m, so g(m) = 0.
 /// We store: g0 = -m, g1 = 1.
 pub fn select_base_m(n: &Integer, degree: u32) -> PolynomialPair {
+    select_base_m_variant(n, degree, 0)
+}
+
+/// Base-m polynomial selection with variant index.
+///
+/// Variant 0: standard m = floor(N^{1/d}) (adjusted up for monic).
+/// Variant k > 0: try m = standard_m - k, using a different number field.
+/// This is critical when the standard polynomial produces a degenerate number
+/// field where the algebraic square root always gives trivial gcd.
+pub fn select_base_m_variant(n: &Integer, degree: u32, variant: u32) -> PolynomialPair {
     let d = degree as usize;
     let mut m = nth_root(n, degree);
     // Ensure monic: if leading coefficient > 1, increment m until it becomes 1
@@ -34,6 +44,18 @@ pub fn select_base_m(n: &Integer, degree: u32) -> PolynomialPair {
             break;
         }
         m += 1;
+    }
+
+    // For variant > 0, decrease m to get a different polynomial
+    if variant > 0 {
+        m -= Integer::from(variant);
+        // Verify still monic (leading coefficient = 1)
+        let m_pow_d = Integer::from(m.clone().pow(degree));
+        let lead = Integer::from(n / &m_pow_d);
+        if lead != 1 {
+            // Non-monic with this m, fall back to standard
+            return select_base_m_variant(n, degree, 0);
+        }
     }
 
     // Express N in base m
@@ -125,7 +147,9 @@ mod tests {
     #[test]
     fn test_base_m_60_digit() {
         // A 60-digit semiprime
-        let n: Integer = "523022617466601111760007224100074291200000259".parse().unwrap();
+        let n: Integer = "523022617466601111760007224100074291200000259"
+            .parse()
+            .unwrap();
         let d = choose_degree(n.significant_bits() as u32 * 3 / 10);
         let poly = select_base_m(&n, d);
         let f = poly.f_coeffs();

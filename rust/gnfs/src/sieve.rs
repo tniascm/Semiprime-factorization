@@ -238,12 +238,10 @@ pub fn lattice_sieve(
                 let mmp = m_mod_p[i];
 
                 // Rational transformed root
-                let rat_denom = ((qlat.a0 as i128 - mmp as i128 * qlat.b0 as i128) % p_i128
-                    + p_i128)
-                    % p_i128;
-                let rat_numer = ((mmp as i128 * qlat.b1 as i128 - qlat.a1 as i128) % p_i128
-                    + p_i128)
-                    % p_i128;
+                let rat_denom =
+                    ((qlat.a0 as i128 - mmp as i128 * qlat.b0 as i128) % p_i128 + p_i128) % p_i128;
+                let rat_numer =
+                    ((mmp as i128 * qlat.b1 as i128 - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
                 let rr = if rat_denom == 0 {
                     None
                 } else {
@@ -323,10 +321,8 @@ pub fn lattice_sieve(
                     }
 
                     // Map (i, j) → (a, b) via q-lattice basis
-                    let a_i128 =
-                        qlat.a0 as i128 * i_val as i128 + qlat.a1 as i128 * j as i128;
-                    let b_i128 =
-                        qlat.b0 as i128 * i_val as i128 + qlat.b1 as i128 * j as i128;
+                    let a_i128 = qlat.a0 as i128 * i_val as i128 + qlat.a1 as i128 * j as i128;
+                    let b_i128 = qlat.b0 as i128 * i_val as i128 + qlat.b1 as i128 * j as i128;
 
                     if b_i128 <= 0 {
                         continue;
@@ -353,8 +349,7 @@ pub fn lattice_sieve(
                     for k in (0..degree).rev() {
                         alg_val = alg_val * x + f_f64[k];
                     }
-                    let alg_norm_f64 =
-                        (alg_val.abs() * b_f64.powi(degree as i32)) / q as f64;
+                    let alg_norm_f64 = (alg_val.abs() * b_f64.powi(degree as i32)) / q as f64;
                     if alg_norm_f64 < 1.0 {
                         continue;
                     }
@@ -431,7 +426,10 @@ mod tests {
         let fb = build_factor_base(&f_i64, 200);
 
         let hits = line_sieve(&poly, &fb, 500, 100);
-        assert!(!hits.is_empty(), "Line sieve should find some candidate pairs");
+        assert!(
+            !hits.is_empty(),
+            "Line sieve should find some candidate pairs"
+        );
     }
 
     #[test]
@@ -451,7 +449,10 @@ mod tests {
             "Lattice sieve test: {} hits from q in [6000, 8000], log_i=8",
             hits.len()
         );
-        assert!(!hits.is_empty(), "Lattice sieve should find candidate pairs");
+        assert!(
+            !hits.is_empty(),
+            "Lattice sieve should find candidate pairs"
+        );
 
         // Verify all hits have special_q set and b > 0
         for h in &hits {

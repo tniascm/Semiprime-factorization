@@ -39,9 +39,7 @@ pub fn reduce_qlattice(q: u64, r: u64, skewness: f64) -> QLattice {
     let mut a1 = r as i64;
     let mut b1: i64 = 1;
 
-    let qform = |a: i64, b: i64| -> f64 {
-        (a as f64) * (a as f64) + s2 * (b as f64) * (b as f64)
-    };
+    let qform = |a: i64, b: i64| -> f64 { (a as f64) * (a as f64) + s2 * (b as f64) * (b as f64) };
 
     let inner = |xa: i64, xb: i64, ya: i64, yb: i64| -> f64 {
         (xa as f64) * (ya as f64) + s2 * (xb as f64) * (yb as f64)
@@ -126,7 +124,11 @@ mod tests {
         let check = |a: i64, b: i64| {
             let lhs = ((a as i128) % (q as i128) + (q as i128)) % (q as i128);
             let rhs = (((r as i128) * (b as i128)) % (q as i128) + (q as i128)) % (q as i128);
-            assert_eq!(lhs, rhs, "({}, {}) not in q-lattice: {} != {}", a, b, lhs, rhs);
+            assert_eq!(
+                lhs, rhs,
+                "({}, {}) not in q-lattice: {} != {}",
+                a, b, lhs, rhs
+            );
         };
         check(ql.a0, ql.b0);
         check(ql.a1, ql.b1);
@@ -155,7 +157,11 @@ mod tests {
         let check = |a: i64, b: i64| {
             let lhs = ((a as i128) % 97 + 97) % 97;
             let rhs = ((b as i128) % 97 + 97) % 97;
-            assert_eq!(lhs, rhs, "({}, {}) not in q-lattice: {} != {}", a, b, lhs, rhs);
+            assert_eq!(
+                lhs, rhs,
+                "({}, {}) not in q-lattice: {} != {}",
+                a, b, lhs, rhs
+            );
         };
         check(ql.a0, ql.b0);
         check(ql.a1, ql.b1);

@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+/// Sieve algorithm selection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SieveMode {
+    Line,
+    Lattice,
+}
+
 /// Full GNFS parameter set for a given digit size.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GnfsParams {
@@ -15,6 +22,10 @@ pub struct GnfsParams {
     pub max_b: u64,
     pub rels_wanted: u64,
     pub qmin: u64,
+    /// log2 of sieve half-width for lattice sieve (I = 2^log_i).
+    pub log_i: u32,
+    /// Sieve algorithm: Line (sweep all (a,b)) or Lattice (special-q).
+    pub sieve_mode: SieveMode,
 }
 
 impl GnfsParams {
@@ -31,7 +42,9 @@ impl GnfsParams {
             sieve_a: 200_000,
             max_b: 50_000,
             rels_wanted: 50_000,
-            qmin: 5_000,
+            qmin: 60_000,
+            log_i: 11,
+            sieve_mode: SieveMode::Lattice,
         }
     }
 
@@ -48,7 +61,9 @@ impl GnfsParams {
             sieve_a: 1_000_000,
             max_b: 100_000,
             rels_wanted: 500_000,
-            qmin: 50_000,
+            qmin: 250_000,
+            log_i: 13,
+            sieve_mode: SieveMode::Lattice,
         }
     }
 
@@ -66,24 +81,28 @@ impl GnfsParams {
             max_b: 2_000,
             rels_wanted: 2_000,
             qmin: 1_000,
+            log_i: 8,
+            sieve_mode: SieveMode::Line,
         }
     }
 
-    /// Parameters for ~30-50 digit numbers (100-166 bits).
+    /// Parameters for ~30-50 digit numbers (100-166 bits), matching CADO-NFS c30.
     pub fn c30() -> Self {
         Self {
             name: "c30".into(),
             degree: 3,
             lim0: 30_000,
             lim1: 30_000,
-            lpb0: 19,
-            lpb1: 19,
-            mfb0: 38,
-            mfb1: 38,
-            sieve_a: 200_000,
-            max_b: 50_000,
-            rels_wanted: 50_000,
-            qmin: 5_000,
+            lpb0: 17,
+            lpb1: 17,
+            mfb0: 18,
+            mfb1: 18,
+            sieve_a: 100_000,
+            max_b: 5_000,
+            rels_wanted: 30_000,
+            qmin: 50_000,
+            log_i: 9,
+            sieve_mode: SieveMode::Lattice,
         }
     }
 
@@ -102,6 +121,8 @@ impl GnfsParams {
             max_b: 10_000,
             rels_wanted: 10_000,
             qmin: 1_000,
+            log_i: 8,
+            sieve_mode: SieveMode::Line,
         }
     }
 

@@ -106,6 +106,7 @@ def run_profile(
     env_overrides: dict[str, str],
     timeout_s: int,
     raw_log: Path,
+    threads: int,
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env.setdefault("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
@@ -114,13 +115,17 @@ def run_profile(
             "RUST_NFS_MAX_VARIANTS": "1",
         }
     )
+    if threads > 0:
+        env["RAYON_NUM_THREADS"] = str(threads)
     env.update(env_overrides)
 
     t0 = time.perf_counter()
     timed_out = False
     try:
         proc = subprocess.run(
-            [str(rust_bin), "--factor", C30],
+            [str(rust_bin), "--factor", C30, "--threads", str(threads)]
+            if threads > 0
+            else [str(rust_bin), "--factor", C30],
             cwd=cwd,
             env=env,
             text=True,
@@ -169,14 +174,19 @@ def run_profile(
     }
 
 
-def score(run: dict[str, Any]) -> tuple[float, ...]:
+def engine_s(run: dict[str, Any]) -> float:
+    return float(run["result"].get("total_ms", 1e18) or 1e18) / 1000.0
+
+
+def score(run: dict[str, Any], metric: str) -> tuple[float, ...]:
     result = run["result"]
     viability = run["viability"]
     success = is_valid_factor(int(C30), result.get("factor"))
     factor_attempt = int(result.get("sqrt_factor_attempt", 10**9) or 10**9)
+    primary_s = engine_s(run) if metric == "engine" else float(run["wall_s"])
     return (
         1.0 if success else 0.0,
-        -float(result.get("total_ms", 1e18) or 1e18),
+        -primary_s,
         -float(factor_attempt),
         -float(int(viability.get("rows_minus_cols", -10**9) or -10**9)),
         -float(int(viability.get("remap_valid_relations", 0) or 0)),
@@ -191,7 +201,8 @@ def format_row(run: dict[str, Any]) -> str:
     return (
         f"{run['profile']:<22} "
         f"success={'yes' if success else 'no ':<3} "
-        f"total_ms={float(result.get('total_ms', 0.0) or 0.0):>8.1f} "
+        f"engine_s={engine_s(run):>7.3f} "
+        f"wall_s={float(run['wall_s']):>7.3f} "
         f"factor_try={str(result.get('sqrt_factor_attempt', 'none')):>4} "
         f"sqrt_tried={int(result.get('sqrt_attempts_tried', 0) or 0):>4} "
         f"remap={int(viability.get('remap_valid_relations', 0) or 0):>6} "
@@ -208,6 +219,8 @@ def main() -> None:
     ap.add_argument("--profiles", default="baseline,matrix_1p20_basis256,matrix_1p25_basis256,matrix_1p30_basis256")
     ap.add_argument("--output", default="")
     ap.add_argument("--timeout", type=int, default=240)
+    ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--metric", choices=("engine", "wall"), default="engine")
     ap.add_argument("--skip-build", action="store_true")
     args = ap.parse_args()
 
@@ -242,19 +255,22 @@ def main() -> None:
             env_overrides=PROFILE_ENVS[profile],
             timeout_s=args.timeout,
             raw_log=raw_dir / f"{profile}.json",
+            threads=args.threads,
         )
         runs.append(run)
         print(format_row(run), flush=True)
 
-    ranked = sorted(runs, key=score, reverse=True)
+    ranked = sorted(runs, key=lambda run: score(run, args.metric), reverse=True)
     artifact = {
         "timestamp_unix": ts,
         "repo": str(repo),
         "case": C30,
         "profiles": profiles,
+        "threads": args.threads,
+        "metric": args.metric,
         "ranking_keys": [
             "factor_found",
-            "-total_ms",
+            "-engine_s" if args.metric == "engine" else "-wall_s",
             "-sqrt_factor_attempt",
             "-rows_minus_cols",
             "-remap_valid_relations",
@@ -266,6 +282,7 @@ def main() -> None:
                 "returncode": run["returncode"],
                 "timed_out": run["timed_out"],
                 "wall_s": run["wall_s"],
+                "engine_s": engine_s(run),
                 "factor_found": is_valid_factor(int(C30), run["result"].get("factor")),
                 "sqrt_factor_attempt": run["result"].get("sqrt_factor_attempt"),
                 "result": run["result"],

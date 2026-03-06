@@ -2,12 +2,12 @@ use rug::Integer;
 use std::path::Path;
 
 use crate::arith::select_quad_char_primes;
-use crate::log::StageLogger;
 use crate::linalg::{build_matrix, find_dependencies, randomize_dependencies};
-use crate::params::GnfsParams;
+use crate::log::StageLogger;
+use crate::params::{GnfsParams, SieveMode};
 use crate::polyselect::select_base_m_variant;
 use crate::relation::collect_smooth_relations;
-use crate::sieve::{build_factor_base, line_sieve, poly_coeffs_to_i64};
+use crate::sieve::{build_factor_base, lattice_sieve, line_sieve, poly_coeffs_to_i64};
 use crate::sqrt::{extract_factor_diagnostic, extract_factor_verbose, FactorFailure};
 
 /// Result of the GNFS pipeline.
@@ -28,11 +28,7 @@ pub struct GnfsResult {
 /// Tries the primary polynomial degree first. If all dependencies produce
 /// trivial gcd (indicating a degenerate polynomial/number field), automatically
 /// retries with alternate degrees.
-pub fn factor_gnfs(
-    n: &Integer,
-    params: &GnfsParams,
-    output_dir: Option<&Path>,
-) -> GnfsResult {
+pub fn factor_gnfs(n: &Integer, params: &GnfsParams, output_dir: Option<&Path>) -> GnfsResult {
     // Strategy: try polynomial variants (different m at same degree) first,
     // then switch degree as a last resort.
     // Different m values produce different number fields with independent
@@ -66,7 +62,6 @@ fn factor_gnfs_inner(
     variant: u32,
     label: &str,
 ) -> GnfsResult {
-
     let mut result = GnfsResult {
         factor: None,
         n: n.to_string(),
@@ -136,37 +131,109 @@ fn factor_gnfs_inner(
     // Excess needed: small matrices need high excess (short deps → trivial gcd),
     // larger matrices produce long deps naturally. Randomized dep XOR helps even at
     // moderate excess. Conservative values to avoid excessive sieving.
-    let excess_frac = if ncols_est < 200 { 3.0 } else if ncols_est < 500 { 2.0 } else if ncols_est < 2000 { 1.0 } else { 0.5 };
+    let excess_frac = if ncols_est < 200 {
+        3.0
+    } else if ncols_est < 500 {
+        2.0
+    } else if ncols_est < 2000 {
+        1.0
+    } else {
+        0.5
+    };
     let target_rels = ncols_est + ((ncols_est as f64 * excess_frac) as usize).max(50);
     let mut all_hits = Vec::new();
-    let mut sieve_a = params.sieve_a;
-    let mut max_b = params.max_b;
 
-    for expansion in 0..10 {
-        let hits = line_sieve(&poly, &fb, sieve_a, max_b);
-        let (rels, partials) = collect_smooth_relations(&hits, &fb, params.large_prime_bound_0(), degree as usize);
-
+    if params.sieve_mode == SieveMode::Lattice {
+        // --- Lattice sieve with special-q ---
+        // Use 1LP for adequate yield. Sparse LP/SQ columns are handled by
+        // column reordering (sparse first) + aggressive randomization of
+        // GE basis vectors with high k to produce long deps.
+        let lpb = params.large_prime_bound_0();
+        let qmax = params.qmin + 10_000; // initial q range
         sieve_log.log(&format!(
-            "Expansion {}: sieve_a={}, max_b={} → {} hits, {} smooth, {} partial",
-            expansion, sieve_a, max_b, hits.len(), rels.len(), partials
+            "Lattice sieve: log_i={}, qmin={}, qmax={}, lpb={}",
+            params.log_i, params.qmin, qmax, lpb
         ));
 
-        for rel in rels {
-            if !all_hits.iter().any(|r: &crate::types::Relation| r.a == rel.a && r.b == rel.b) {
-                all_hits.push(rel);
+        let mut qmin = params.qmin;
+        let mut qmax_curr = qmax;
+        for expansion in 0..10 {
+            let hits = lattice_sieve(&poly, &fb, params.log_i, qmin, qmax_curr);
+            let (rels, partials) = collect_smooth_relations(&hits, &fb, lpb, degree as usize);
+
+            sieve_log.log(&format!(
+                "Expansion {}: q=[{}, {}] → {} hits, {} smooth, {} partial",
+                expansion,
+                qmin,
+                qmax_curr,
+                hits.len(),
+                rels.len(),
+                partials
+            ));
+
+            for rel in rels {
+                if !all_hits
+                    .iter()
+                    .any(|r: &crate::types::Relation| r.a == rel.a && r.b == rel.b)
+                {
+                    all_hits.push(rel);
+                }
             }
-        }
 
-        if all_hits.len() >= target_rels {
-            break;
-        }
+            if all_hits.len() >= target_rels {
+                break;
+            }
 
-        sieve_a = (sieve_a as f64 * 1.5) as u64;
-        max_b = (max_b as f64 * 1.3) as u64;
+            // Expand q range for next iteration
+            qmin = qmax_curr;
+            qmax_curr += 10_000;
+        }
+    } else {
+        // --- Line sieve (original) ---
+        // No 1LP for line sieve: fully smooth only. 1LP creates huge sparse
+        // matrices that make GE and sqrt slow for small numbers.
+        let lpb = 0u64; // remainder must be 1 (fully smooth)
+        let mut sieve_a = params.sieve_a;
+        let mut max_b = params.max_b;
+
+        for expansion in 0..10 {
+            let hits = line_sieve(&poly, &fb, sieve_a, max_b);
+            let (rels, partials) = collect_smooth_relations(&hits, &fb, lpb, degree as usize);
+
+            sieve_log.log(&format!(
+                "Expansion {}: sieve_a={}, max_b={} → {} hits, {} smooth, {} partial",
+                expansion,
+                sieve_a,
+                max_b,
+                hits.len(),
+                rels.len(),
+                partials
+            ));
+
+            for rel in rels {
+                if !all_hits
+                    .iter()
+                    .any(|r: &crate::types::Relation| r.a == rel.a && r.b == rel.b)
+                {
+                    all_hits.push(rel);
+                }
+            }
+
+            if all_hits.len() >= target_rels {
+                break;
+            }
+
+            sieve_a = (sieve_a as f64 * 1.5) as u64;
+            max_b = (max_b as f64 * 1.3) as u64;
+        }
     }
 
     result.relations_found = all_hits.len();
-    sieve_log.log(&format!("Total relations: {} (target: {})", all_hits.len(), target_rels));
+    sieve_log.log(&format!(
+        "Total relations: {} (target: {})",
+        all_hits.len(),
+        target_rels
+    ));
 
     if let Some(dir) = output_dir {
         sieve_log.checkpoint(
@@ -183,11 +250,69 @@ fn factor_gnfs_inner(
     }
 
     // --- Stage 3: Filtering ---
+    let mut filter_log = StageLogger::new("filter", output_dir);
+    filter_log.start(&serde_json::json!({"relations": all_hits.len()}));
+
+    // Singleton filtering: remove relations whose large primes appear only once.
+    // A singleton LP can never cancel in a dependency (it's the only source of
+    // that column's bit), so including it wastes matrix space.
+    let pre_filter = all_hits.len();
+    {
+        use std::collections::HashMap;
+        loop {
+            // Count occurrences of each rational LP
+            let mut rat_lp_count: HashMap<u64, usize> = HashMap::new();
+            for rel in &all_hits {
+                if let Some(lp) = rel.rat_lp {
+                    *rat_lp_count.entry(lp).or_insert(0) += 1;
+                }
+            }
+            // Count occurrences of each algebraic LP
+            let mut alg_lp_count: HashMap<(u64, u64), usize> = HashMap::new();
+            for rel in &all_hits {
+                if let Some(lp) = rel.alg_lp {
+                    *alg_lp_count.entry(lp).or_insert(0) += 1;
+                }
+            }
+            // Count occurrences of each special-q
+            let mut sq_count: HashMap<(u64, u64), usize> = HashMap::new();
+            for rel in &all_hits {
+                if let Some(sq) = rel.special_q {
+                    *sq_count.entry(sq).or_insert(0) += 1;
+                }
+            }
+
+            let before = all_hits.len();
+            all_hits.retain(|rel| {
+                if let Some(lp) = rel.rat_lp {
+                    if rat_lp_count.get(&lp).copied().unwrap_or(0) < 2 {
+                        return false;
+                    }
+                }
+                if let Some(lp) = rel.alg_lp {
+                    if alg_lp_count.get(&lp).copied().unwrap_or(0) < 2 {
+                        return false;
+                    }
+                }
+                if let Some(sq) = rel.special_q {
+                    if sq_count.get(&sq).copied().unwrap_or(0) < 2 {
+                        return false;
+                    }
+                }
+                true
+            });
+            if all_hits.len() == before {
+                break; // No more singletons
+            }
+        }
+    }
+    filter_log.log(&format!(
+        "Singleton filtering: {} → {} relations",
+        pre_filter,
+        all_hits.len()
+    ));
+
     // Cap relations to prevent O(n²) memory explosion in dense GE history matrix.
-    // The GE history tracks which original rows compose each current row using BitRows
-    // of width n, so total memory is O(n × n/64) bytes. For n=100K: ~12.5 GB.
-    // Cap at a moderate multiple of ncols: enough null space diversity for sqrt,
-    // but bounded memory. With ncols+excess relations, null space has 'excess' dimensions.
     let max_relations = ncols_est.saturating_mul(5).max(ncols_est + 2000);
     if all_hits.len() > max_relations {
         // Keep relations with smallest |a| — these produce smaller algebraic
@@ -195,6 +320,7 @@ fn factor_gnfs_inner(
         all_hits.sort_by_key(|r| r.a.unsigned_abs());
         all_hits.truncate(max_relations);
     }
+    filter_log.finish(&serde_json::json!({"relations_after": all_hits.len()}));
 
     // --- Stage 4: Linear Algebra ---
     let mut la_log = StageLogger::new("linalg", output_dir);
@@ -202,9 +328,15 @@ fn factor_gnfs_inner(
 
     // Select quadratic character primes to ensure algebraic product is a square in O_K
     let quad_chars = select_quad_char_primes(&f_i64, &fb.primes, n_quad_chars);
-    la_log.log(&format!("Quadratic characters: {} primes", quad_chars.primes.len()));
+    la_log.log(&format!(
+        "Quadratic characters: {} primes",
+        quad_chars.primes.len()
+    ));
 
-    la_log.log(&format!("HD ideal primes: {} (columns for degree-2+ ideals)", alg_hd));
+    la_log.log(&format!(
+        "HD ideal primes: {} (columns for degree-2+ ideals)",
+        alg_hd
+    ));
     let (matrix, ncols) = build_matrix(&all_hits, fb.primes.len(), alg_pairs, alg_hd, &quad_chars);
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
@@ -216,13 +348,19 @@ fn factor_gnfs_inner(
     // Randomize: combine GE basis vectors to produce decorrelated dependencies.
     // GE basis vectors are short and correlated → trivial gcd. Random XOR
     // combinations produce longer deps with ~50% nontrivial-factor probability.
-    let n_random = ge_deps.len().min(5000);
-    let k = 3; // combine k basis vectors per random dep
+    // Very high k ensures deps involve 100+ original relations for the algebraic
+    // sqrt to produce sufficiently random values mod p vs mod q.
+    let n_random = ge_deps.len().min(10000);
+    let k = (ge_deps.len() / 3).max(50).min(500);
     let deps = randomize_dependencies(&ge_deps, n_random, k, 42);
     result.dependencies_found = deps.len();
 
-    la_log.log(&format!("Dependencies: {} GE basis + {} random combinations = {} total",
-        ge_deps.len(), deps.len() - ge_deps.len(), deps.len()));
+    la_log.log(&format!(
+        "Dependencies: {} GE basis + {} random combinations = {} total",
+        ge_deps.len(),
+        deps.len() - ge_deps.len(),
+        deps.len()
+    ));
     la_log.finish(&serde_json::json!({"ge_deps": ge_deps.len(), "random_deps": deps.len() - ge_deps.len(), "total_deps": deps.len()}));
 
     if deps.is_empty() {
@@ -237,15 +375,16 @@ fn factor_gnfs_inner(
     // When the product of k < d linear terms never reduces modulo f(α),
     // P(m) = ∏(aᵢ - bᵢm) exactly, so γ(m) = ±√R = ±x always.
     let min_dep_size = degree as usize;
-    let mut useful_deps: Vec<&Vec<usize>> = deps.iter()
-        .filter(|d| d.len() >= min_dep_size)
-        .collect();
+    let mut useful_deps: Vec<&Vec<usize>> =
+        deps.iter().filter(|d| d.len() >= min_dep_size).collect();
     // Sort by size descending: longer deps (random combinations) tried first,
     // as they have higher probability of giving nontrivial factors.
     useful_deps.sort_by(|a, b| b.len().cmp(&a.len()));
     sqrt_log.log(&format!(
         "Filtered: {} → {} useful dependencies (min size {}, largest {})",
-        deps.len(), useful_deps.len(), min_dep_size,
+        deps.len(),
+        useful_deps.len(),
+        min_dep_size,
         useful_deps.first().map_or(0, |d| d.len())
     ));
 
@@ -259,7 +398,11 @@ fn factor_gnfs_inner(
     } else {
         &useful_deps[..]
     };
-    sqrt_log.log(&format!("Will try up to {} dependencies (of {} useful)", useful_deps_capped.len(), useful_deps.len()));
+    sqrt_log.log(&format!(
+        "Will try up to {} dependencies (of {} useful)",
+        useful_deps_capped.len(),
+        useful_deps.len()
+    ));
 
     let mut fail_rat = 0usize;
     let mut fail_alg = 0usize;
@@ -267,7 +410,12 @@ fn factor_gnfs_inner(
 
     for (i, dep) in useful_deps_capped.iter().enumerate() {
         result.dependencies_tried = i + 1;
-        sqrt_log.log(&format!("Trying dependency {}/{} ({} relations)", i + 1, useful_deps_capped.len(), dep.len()));
+        sqrt_log.log(&format!(
+            "Trying dependency {}/{} ({} relations)",
+            i + 1,
+            useful_deps_capped.len(),
+            dep.len()
+        ));
 
         let (factor_opt, failure) = if i < 10 {
             extract_factor_verbose(&all_hits, dep, &f_coeffs, &m, n)
@@ -277,8 +425,10 @@ fn factor_gnfs_inner(
         if let Some(factor) = factor_opt {
             if Integer::from(n % &factor) == 0 && factor > 1 && factor < *n {
                 sqrt_log.log(&format!("Factor found: {}", factor));
-                sqrt_log.log(&format!("Failures up to this point: rat_not_sq={}, alg_not_sq={}, trivial_gcd={}",
-                    fail_rat, fail_alg, fail_gcd));
+                sqrt_log.log(&format!(
+                    "Failures up to this point: rat_not_sq={}, alg_not_sq={}, trivial_gcd={}",
+                    fail_rat, fail_alg, fail_gcd
+                ));
                 result.factor = Some(factor.to_string());
 
                 if let Some(dir) = output_dir {
@@ -295,7 +445,8 @@ fn factor_gnfs_inner(
                     );
                 }
 
-                sqrt_log.finish(&serde_json::json!({"factor": factor.to_string(), "dep_tried": i + 1}));
+                sqrt_log
+                    .finish(&serde_json::json!({"factor": factor.to_string(), "dep_tried": i + 1}));
                 result.total_secs = sqrt_log.elapsed_secs();
                 return result;
             }
@@ -324,8 +475,10 @@ fn factor_gnfs_inner(
         }
     }
 
-    sqrt_log.log(&format!("No factor extracted — rat_not_sq={}, alg_not_sq={}, trivial_gcd={}",
-        fail_rat, fail_alg, fail_gcd));
+    sqrt_log.log(&format!(
+        "No factor extracted — rat_not_sq={}, alg_not_sq={}, trivial_gcd={}",
+        fail_rat, fail_alg, fail_gcd
+    ));
     sqrt_log.finish(&serde_json::json!({"factor": serde_json::Value::Null, "deps_tried": result.dependencies_tried}));
     result.total_secs = sqrt_log.elapsed_secs();
     result
@@ -348,8 +501,10 @@ mod tests {
             eprintln!("Factored 8051: {}", f);
         } else {
             eprintln!("Pipeline did not factor 8051 (may need parameter tuning)");
-            eprintln!("  relations: {}, deps: {}, tried: {}",
-                result.relations_found, result.dependencies_found, result.dependencies_tried);
+            eprintln!(
+                "  relations: {}, deps: {}, tried: {}",
+                result.relations_found, result.dependencies_found, result.dependencies_tried
+            );
         }
     }
 
@@ -358,23 +513,30 @@ mod tests {
         let n = Integer::from(15347u64); // 103 * 149
         let params = GnfsParams::test_small();
         let result = factor_gnfs(&n, &params, None);
-        eprintln!("Pipeline 15347: factor={:?}, rels={}, deps={}",
-            result.factor, result.relations_found, result.dependencies_found);
+        eprintln!(
+            "Pipeline 15347: factor={:?}, rels={}, deps={}",
+            result.factor, result.relations_found, result.dependencies_found
+        );
     }
 }
 
 #[cfg(test)]
 mod tests_5b {
     use super::*;
-    
+
     #[test]
     fn test_pipeline_5b() {
         // 70001 * 71429 — balanced 33-bit semiprime
         let n = Integer::from(5000101429u64);
         let params = GnfsParams::c20();
         let result = factor_gnfs(&n, &params, None);
-        eprintln!("Pipeline 5000101429: factor={:?}, rels={}, deps={}, tried={}",
-            result.factor, result.relations_found, result.dependencies_found, result.dependencies_tried);
+        eprintln!(
+            "Pipeline 5000101429: factor={:?}, rels={}, deps={}, tried={}",
+            result.factor,
+            result.relations_found,
+            result.dependencies_found,
+            result.dependencies_tried
+        );
         if let Some(ref f) = result.factor {
             let fint: Integer = f.parse().unwrap();
             assert!(Integer::from(&n % &fint) == 0);

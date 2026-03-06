@@ -79,21 +79,21 @@ impl SpecialQConfig {
                 allow_2lp: true,
             },
             97..=112 => Self {
-                fb_bound: 1 << 15,
-                lpb: 24,
-                sq_half_i: 1 << 12,
-                sq_max_j: 1 << 10,
-                q_min: (1 << 15) + 1,
-                q_max: 1 << 17,
-                allow_2lp: true,
-            },
-            113..=128 => Self {
                 fb_bound: 1 << 16,
-                lpb: 26,
+                lpb: 25,
                 sq_half_i: 1 << 12,
                 sq_max_j: 1 << 10,
                 q_min: (1 << 16) + 1,
                 q_max: 1 << 18,
+                allow_2lp: true,
+            },
+            113..=128 => Self {
+                fb_bound: 1 << 17,
+                lpb: 27,
+                sq_half_i: 1 << 12,
+                sq_max_j: 1 << 10,
+                q_min: (1 << 17) + 1,
+                q_max: 1 << 19,
                 allow_2lp: true,
             },
             129..=160 => Self {
@@ -455,6 +455,14 @@ struct SQResult {
     sieve_ns: u64,
     scan_ns: u64,
     cofactor_ns: u64,
+    // Diagnostic counters for cofact rejection analysis
+    reject_rat_norm_zero: usize,
+    reject_rat_cofactor_bound: usize,
+    reject_rat_2lp: usize,
+    reject_alg_mod_q: usize,
+    reject_alg_cofactor_bound: usize,
+    reject_alg_2lp: usize,
+    accept: usize,
 }
 
 /// Main entry point: collect relations using special-q lattice sieve.
@@ -535,6 +543,13 @@ pub fn collect_relations_specialq(
     let mut total_sieve_ns = 0u64;
     let mut total_scan_ns = 0u64;
     let mut total_cofactor_ns = 0u64;
+    let mut total_reject_rat_norm_zero = 0usize;
+    let mut total_reject_rat_cofactor_bound = 0usize;
+    let mut total_reject_rat_2lp = 0usize;
+    let mut total_reject_alg_mod_q = 0usize;
+    let mut total_reject_alg_cofactor_bound = 0usize;
+    let mut total_reject_alg_2lp = 0usize;
+    let mut total_accept = 0usize;
 
     for r in &results {
         all_relations.extend(r.relations.iter().cloned());
@@ -542,6 +557,13 @@ pub fn collect_relations_specialq(
         total_sieve_ns += r.sieve_ns;
         total_scan_ns += r.scan_ns;
         total_cofactor_ns += r.cofactor_ns;
+        total_reject_rat_norm_zero += r.reject_rat_norm_zero;
+        total_reject_rat_cofactor_bound += r.reject_rat_cofactor_bound;
+        total_reject_rat_2lp += r.reject_rat_2lp;
+        total_reject_alg_mod_q += r.reject_alg_mod_q;
+        total_reject_alg_cofactor_bound += r.reject_alg_cofactor_bound;
+        total_reject_alg_2lp += r.reject_alg_2lp;
+        total_accept += r.accept;
     }
 
     let threads = rayon::current_num_threads() as f64;
@@ -576,6 +598,21 @@ pub fn collect_relations_specialq(
         scan_ms,
         cofactor_ms,
     );
+
+    if total_candidates > 0 {
+        eprintln!(
+            "    Cofact breakdown: {} candidates → {} accept ({:.2}%), reject: rat_zero={}, rat_bound={}, rat_2lp={}, alg_mod_q={}, alg_bound={}, alg_2lp={}",
+            total_candidates,
+            total_accept,
+            total_accept as f64 / total_candidates as f64 * 100.0,
+            total_reject_rat_norm_zero,
+            total_reject_rat_cofactor_bound,
+            total_reject_rat_2lp,
+            total_reject_alg_mod_q,
+            total_reject_alg_cofactor_bound,
+            total_reject_alg_2lp,
+        );
+    }
 
     (all_relations, timings)
 }
@@ -811,10 +848,26 @@ fn sieve_one_specialq(
     // === COFACTORIZATION ===
     let cofactor_start = Instant::now();
     let mut relations = Vec::new();
+    let mut reject_rat_norm_zero = 0usize;
+    let mut reject_rat_cofactor_bound = 0usize;
+    let mut reject_rat_2lp = 0usize;
+    let mut reject_alg_mod_q = 0usize;
+    let mut reject_alg_cofactor_bound = 0usize;
+    let mut reject_alg_2lp = 0usize;
+    let mut accept = 0usize;
 
     for &(a, b) in &all_candidates {
-        if let Some(rel) = try_cofactorize_sq(a, b, q, shared, poly) {
-            relations.push(rel);
+        match try_cofactorize_sq(a, b, q, shared, poly) {
+            Ok(rel) => {
+                relations.push(rel);
+                accept += 1;
+            }
+            Err(CofactReject::RatNormZero) => reject_rat_norm_zero += 1,
+            Err(CofactReject::RatCofactorBound) => reject_rat_cofactor_bound += 1,
+            Err(CofactReject::Rat2LP) => reject_rat_2lp += 1,
+            Err(CofactReject::AlgModQ) => reject_alg_mod_q += 1,
+            Err(CofactReject::AlgCofactorBound) => reject_alg_cofactor_bound += 1,
+            Err(CofactReject::Alg2LP) => reject_alg_2lp += 1,
         }
     }
 
@@ -826,6 +879,13 @@ fn sieve_one_specialq(
         sieve_ns: total_sieve_ns,
         scan_ns: total_scan_ns,
         cofactor_ns,
+        reject_rat_norm_zero,
+        reject_rat_cofactor_bound,
+        reject_rat_2lp,
+        reject_alg_mod_q,
+        reject_alg_cofactor_bound,
+        reject_alg_2lp,
+        accept,
     }
 }
 
@@ -945,6 +1005,17 @@ fn trial_divide_sparse_u128(mut val: u128, primes: &[u64]) -> (Vec<(u64, u32)>, 
     (factors, val)
 }
 
+/// Rejection reason for cofactorization diagnostics.
+#[derive(Debug, Clone, Copy)]
+enum CofactReject {
+    RatNormZero,
+    RatCofactorBound,
+    Rat2LP,
+    AlgModQ,
+    AlgCofactorBound,
+    Alg2LP,
+}
+
 /// Cofactorize a candidate (a, b) from a special-q lattice.
 /// Uses sparse trial division with p² early exit for both sides.
 fn try_cofactorize_sq(
@@ -953,12 +1024,12 @@ fn try_cofactorize_sq(
     q: u64,
     shared: &SQSharedData,
     poly: &NfsPolynomial,
-) -> Option<Relation> {
+) -> Result<Relation, CofactReject> {
     // Rational norm: |a - b*m|
     let rat_norm_i128 = a as i128 - (b as i128) * (shared.m as i128);
     let rat_norm = rat_norm_i128.unsigned_abs();
     if rat_norm == 0 {
-        return None;
+        return Err(CofactReject::RatNormZero);
     }
 
     let cofactor_bound = if shared.allow_2lp {
@@ -976,12 +1047,12 @@ fn try_cofactorize_sq(
     };
 
     if rat_cofactor > cofactor_bound {
-        return None;
+        return Err(CofactReject::RatCofactorBound);
     }
     let rat_cofactor_u64 = rat_cofactor as u64;
     if rat_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
         if !can_split_2lp(rat_cofactor_u64, shared.lpb_bound) {
-            return None;
+            return Err(CofactReject::Rat2LP);
         }
     }
 
@@ -992,23 +1063,23 @@ fn try_cofactorize_sq(
         b,
     ) {
         if norm % (q as u128) != 0 {
-            return None;
+            return Err(CofactReject::AlgModQ);
         }
         let div = norm / (q as u128);
         if div == 0 {
-            return None;
+            return Err(CofactReject::AlgModQ);
         }
         div
     } else {
         let alg_norm_big = eval_homogeneous_abs(&poly.coefficients, a, b);
         let q_big = BigUint::from(q);
         if &alg_norm_big % &q_big != BigUint::from(0u32) {
-            return None;
+            return Err(CofactReject::AlgModQ);
         }
         let div = &alg_norm_big / &q_big;
         match div.to_u128() {
             Some(v) if v > 0 => v,
-            _ => return None,
+            _ => return Err(CofactReject::AlgModQ),
         }
     };
 
@@ -1021,18 +1092,18 @@ fn try_cofactorize_sq(
     };
 
     if alg_cofactor > cofactor_bound {
-        return None;
+        return Err(CofactReject::AlgCofactorBound);
     }
     let alg_cofactor_u64 = alg_cofactor as u64;
     if alg_cofactor_u64 > shared.lpb_bound && shared.allow_2lp {
         if !can_split_2lp(alg_cofactor_u64, shared.lpb_bound) {
-            return None;
+            return Err(CofactReject::Alg2LP);
         }
     }
 
     alg_factors.push((q, 1));
 
-    Some(Relation {
+    Ok(Relation {
         a,
         b,
         rat_factors,

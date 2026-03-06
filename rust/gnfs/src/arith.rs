@@ -350,7 +350,11 @@ pub fn lagrange_interpolation_mod(
             // New coefficients: new[k] = basis[k-1] + (-x_j) * basis[k]
             let mut new_basis = vec![Integer::from(0); d];
             for k in (0..=deg + 1).rev() {
-                let from_shift = if k > 0 { &basis[k - 1] } else { &Integer::from(0) };
+                let from_shift = if k > 0 {
+                    &basis[k - 1]
+                } else {
+                    &Integer::from(0)
+                };
                 let from_scale = Integer::from(&basis[k] * &neg_xj) % modulus;
                 new_basis[k] = Integer::from(from_shift + &from_scale) % modulus;
                 if new_basis[k] < 0 {
@@ -383,11 +387,13 @@ pub struct QuadCharSet {
 }
 
 /// Select quadratic character primes: primes q not in the factor base where f has a root.
-pub fn select_quad_char_primes(
-    f_coeffs: &[i64],
-    fb_primes: &[u64],
-    count: usize,
-) -> QuadCharSet {
+pub fn select_quad_char_primes(f_coeffs: &[i64], fb_primes: &[u64], count: usize) -> QuadCharSet {
+    if count == 0 {
+        return QuadCharSet {
+            primes: Vec::new(),
+            roots: Vec::new(),
+        };
+    }
     use std::collections::HashSet;
     let fb_set: HashSet<u64> = fb_primes.iter().cloned().collect();
     let mut result = QuadCharSet {

@@ -56,8 +56,22 @@ struct ProductionOutput {
 }
 
 fn main() {
-    let bit_sizes: Vec<u32> = vec![32, 48, 64, 80, 96, 112, 128];
-    let semiprimes_per_size = 3;
+    let args: Vec<String> = std::env::args().collect();
+    let min_bits: u32 = args
+        .iter()
+        .position(|a| a == "--min-bits")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let semiprimes_per_size: usize = args
+        .iter()
+        .position(|a| a == "--semiprimes")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3);
+
+    let all_sizes: Vec<u32> = vec![32, 48, 64, 80, 96, 112, 128];
+    let bit_sizes: Vec<u32> = all_sizes.into_iter().filter(|&b| b >= min_bits).collect();
     let seed_base = 42u64;
     let threads = rayon::current_num_threads();
 

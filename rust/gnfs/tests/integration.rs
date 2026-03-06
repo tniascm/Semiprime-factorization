@@ -1,6 +1,6 @@
-use rug::Integer;
 use gnfs::params::GnfsParams;
 use gnfs::pipeline::factor_gnfs;
+use rug::Integer;
 
 fn assert_factors(n: u64) {
     let n_int = Integer::from(n);

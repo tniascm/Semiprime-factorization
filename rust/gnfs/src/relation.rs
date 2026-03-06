@@ -1,3 +1,4 @@
+use crate::arith::mod_inverse_u64;
 use crate::sieve::SieveHit;
 use crate::types::{FactorBase, Relation};
 
@@ -33,13 +34,16 @@ fn p_adic_val(mut val: u64, p: u64) -> u8 {
     e
 }
 
-/// Collect smooth relations from sieve hits by trial division.
+/// Collect smooth and 1-large-prime relations from sieve hits.
 ///
 /// For each hit, trial-divide both rational and algebraic norms by factor base primes.
+/// Accepts relations where both remainders are 1 (fully smooth) OR where a remainder
+/// is a single prime ≤ large_prime_bound (1LP relation).
+///
 /// Algebraic factors are tracked per (prime, root) pair — one entry per degree-1 prime
 /// ideal — to ensure the GF(2) matrix correctly constrains individual ideal exponents.
 ///
-/// Returns (full_relations, partial_relation_count).
+/// Returns (full_relations + 1LP_relations, partial_count).
 pub fn collect_smooth_relations(
     hits: &[SieveHit],
     fb: &FactorBase,
@@ -58,7 +62,12 @@ pub fn collect_smooth_relations(
         let (rat_factors, rat_remainder) = trial_divide(rat_abs, &fb.primes);
 
         let alg_sign_neg = hit.algebraic_norm < 0;
-        let mut alg_abs = hit.algebraic_norm.clone().abs().to_u64().unwrap_or(u64::MAX);
+        let mut alg_abs = hit
+            .algebraic_norm
+            .clone()
+            .abs()
+            .to_u64()
+            .unwrap_or(u64::MAX);
         if alg_abs == u64::MAX || alg_abs == 0 {
             continue;
         }
@@ -72,20 +81,27 @@ pub fn collect_smooth_relations(
         }
         let (alg_prime_factors, alg_remainder) = trial_divide(alg_abs, &fb.primes);
 
-        let is_smooth = rat_remainder == 1 && alg_remainder == 1;
-        if !is_smooth {
-            if rat_remainder <= large_prime_bound && alg_remainder <= large_prime_bound {
-                partial_count += 1;
-            }
+        // Accept: fully smooth (remainder=1) or 1LP (remainder is prime ≤ lpb).
+        // Since lpb ≤ FB_bound², any remainder ≤ lpb after trial division is prime.
+        let rat_lp = if rat_remainder == 1 {
+            None
+        } else if rat_remainder <= large_prime_bound {
+            Some(rat_remainder)
+        } else {
+            partial_count += 1;
             continue;
-        }
+        };
+
+        let alg_lp_prime = if alg_remainder == 1 {
+            None
+        } else if alg_remainder <= large_prime_bound {
+            Some(alg_remainder)
+        } else {
+            partial_count += 1;
+            continue;
+        };
 
         // Decompose algebraic exponents per (prime, root) pair.
-        // For each prime p dividing the norm with roots r_1,...,r_k of f mod p:
-        //   v_{(p,r_i)}(a - b*alpha) = v_p(a - b*r_i)
-        // The residual (v_p(norm) - sum of per-root exponents) comes from
-        // higher-degree ideals; it's always even for degree-2 factors.
-        // Reject relations where the residual is odd (inert prime with odd mult).
         let mut alg_pair_factors: Vec<(u32, u8)> = Vec::new();
         let mut valid = true;
 
@@ -96,7 +112,6 @@ pub fn collect_smooth_relations(
 
             let mut root_exp_sum = 0u8;
             for (root_idx, &r) in roots.iter().enumerate() {
-                // Compute v_p(|a - b*r|) using i128 to avoid overflow
                 let val_i128 = hit.a as i128 - hit.b as i128 * r as i128;
                 let val_abs = val_i128.unsigned_abs() as u64;
                 let e = p_adic_val(val_abs, p);
@@ -106,9 +121,6 @@ pub fn collect_smooth_relations(
                 }
             }
 
-            // Higher-degree ideal: residual = total_exp - root_exp_sum
-            // For a prime with k roots of a degree-d poly, the HD ideal has degree (d - k).
-            // The residual in the norm = hd_degree * v_{HD}(a-bα), so must divide evenly.
             if root_exp_sum < total_exp {
                 let residual = total_exp - root_exp_sum;
                 let hd_degree = poly_degree - roots.len();
@@ -117,7 +129,6 @@ pub fn collect_smooth_relations(
                     break;
                 }
                 let hd_exp = residual as usize / hd_degree;
-                // Store HD ideal exponent using flat index after per-root columns
                 if let Some(hd_off) = fb.hd_offset(prime_idx as usize, poly_degree) {
                     let hd_flat_idx = fb.algebraic_pair_count() + hd_off;
                     alg_pair_factors.push((hd_flat_idx as u32, hd_exp as u8));
@@ -129,6 +140,26 @@ pub fn collect_smooth_relations(
             continue;
         }
 
+        // For algebraic LP: identify ideal (p, r). CADO convention:
+        // if b is not invertible mod p, use projective ideal (p, p).
+        let alg_lp = if let Some(p) = alg_lp_prime {
+            let b_mod_p = hit.b % p;
+            if b_mod_p == 0 {
+                Some((p, p))
+            } else {
+                match mod_inverse_u64(b_mod_p, p) {
+                    Some(b_inv) => {
+                        let a_mod_p = ((hit.a as i128).rem_euclid(p as i128)) as u64;
+                        let r = ((a_mod_p as u128 * b_inv as u128) % p as u128) as u64;
+                        Some((p, r))
+                    }
+                    None => Some((p, p)),
+                }
+            }
+        } else {
+            None
+        };
+
         relations.push(Relation {
             a: hit.a,
             b: hit.b,
@@ -137,6 +168,8 @@ pub fn collect_smooth_relations(
             rational_sign_negative: rat_sign_neg,
             algebraic_sign_negative: alg_sign_neg,
             special_q: hit.special_q,
+            rat_lp,
+            alg_lp,
         });
     }
 
@@ -187,9 +220,10 @@ mod tests {
         let fb = build_factor_base(&f_i64, 200);
 
         let hits = line_sieve(&poly, &fb, 500, 100);
-        let (relations, _partial_count) = collect_smooth_relations(
-            &hits, &fb, 1 << 16, 3,
+        let (relations, _partial_count) = collect_smooth_relations(&hits, &fb, 1 << 16, 3);
+        assert!(
+            !relations.is_empty(),
+            "Should find smooth relations for 8051"
         );
-        assert!(!relations.is_empty(), "Should find smooth relations for 8051");
     }
 }

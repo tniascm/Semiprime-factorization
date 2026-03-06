@@ -55,10 +55,25 @@ fn main() {
             let digits = n.to_string().len() as u32;
             let bits = n.significant_bits();
 
-            println!("[{}] [init] ========================================", utc_timestamp());
-            println!("[{}] [init]   GNFS v0.1 — Production Factorization", utc_timestamp());
-            println!("[{}] [init] ========================================", utc_timestamp());
-            println!("[{}] [init]   N = {} ({} digits, {} bits)", utc_timestamp(), &n, digits, bits);
+            println!(
+                "[{}] [init] ========================================",
+                utc_timestamp()
+            );
+            println!(
+                "[{}] [init]   GNFS v0.1 — Production Factorization",
+                utc_timestamp()
+            );
+            println!(
+                "[{}] [init] ========================================",
+                utc_timestamp()
+            );
+            println!(
+                "[{}] [init]   N = {} ({} digits, {} bits)",
+                utc_timestamp(),
+                &n,
+                digits,
+                bits
+            );
             println!("[{}] [init]   Seed: {}", utc_timestamp(), seed);
 
             let params = match params_name.as_str() {
@@ -74,11 +89,21 @@ fn main() {
                 }
             };
 
-            println!("[{}] [init]   Params: {} (degree={}, lim={}, lpb={})",
-                utc_timestamp(), params.name, params.degree, params.lim0, params.lpb0);
+            println!(
+                "[{}] [init]   Params: {} (degree={}, lim={}, lpb={})",
+                utc_timestamp(),
+                params.name,
+                params.degree,
+                params.lim0,
+                params.lpb0
+            );
 
             let run_dir = setup_run_dir(&output_dir, digits, seed);
-            println!("[{}] [init]   Run dir: {}", utc_timestamp(), run_dir.display());
+            println!(
+                "[{}] [init]   Run dir: {}",
+                utc_timestamp(),
+                run_dir.display()
+            );
 
             // Write run config
             let config = serde_json::json!({
@@ -91,32 +116,63 @@ fn main() {
             std::fs::write(
                 run_dir.join("run_config.json"),
                 serde_json::to_string_pretty(&config).unwrap(),
-            ).ok();
+            )
+            .ok();
 
             // Run pipeline
             let result = factor_gnfs(&n, &params, Some(&run_dir));
 
             // Summary
-            println!("[{}] [done] ========================================", utc_timestamp());
+            println!(
+                "[{}] [done] ========================================",
+                utc_timestamp()
+            );
             if let Some(ref f) = result.factor {
                 let factor: Integer = f.parse().unwrap();
                 let cofactor = Integer::from(&n / &factor);
-                println!("[{}] [done]   {} = {} × {}", utc_timestamp(), &n, f, cofactor);
+                println!(
+                    "[{}] [done]   {} = {} × {}",
+                    utc_timestamp(),
+                    &n,
+                    f,
+                    cofactor
+                );
             } else {
                 println!("[{}] [done]   No factor found", utc_timestamp());
             }
-            println!("[{}] [done]   Relations: {}", utc_timestamp(), result.relations_found);
-            println!("[{}] [done]   Matrix: {} × {}", utc_timestamp(), result.matrix_rows, result.matrix_cols);
-            println!("[{}] [done]   Dependencies: {} found, {} tried",
-                utc_timestamp(), result.dependencies_found, result.dependencies_tried);
-            println!("[{}] [done]   Time: {:.1}s", utc_timestamp(), result.total_secs);
-            println!("[{}] [done] ========================================", utc_timestamp());
+            println!(
+                "[{}] [done]   Relations: {}",
+                utc_timestamp(),
+                result.relations_found
+            );
+            println!(
+                "[{}] [done]   Matrix: {} × {}",
+                utc_timestamp(),
+                result.matrix_rows,
+                result.matrix_cols
+            );
+            println!(
+                "[{}] [done]   Dependencies: {} found, {} tried",
+                utc_timestamp(),
+                result.dependencies_found,
+                result.dependencies_tried
+            );
+            println!(
+                "[{}] [done]   Time: {:.1}s",
+                utc_timestamp(),
+                result.total_secs
+            );
+            println!(
+                "[{}] [done] ========================================",
+                utc_timestamp()
+            );
 
             // Write summary
             std::fs::write(
                 run_dir.join("summary.json"),
                 serde_json::to_string_pretty(&result).unwrap(),
-            ).ok();
+            )
+            .ok();
         }
     }
 }

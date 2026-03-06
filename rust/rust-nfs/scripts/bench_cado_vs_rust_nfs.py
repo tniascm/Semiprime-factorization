@@ -178,6 +178,14 @@ def main() -> None:
     ap.add_argument("--norm-block", type=int, default=0)
     ap.add_argument("--rel-target-mult", type=float, default=0.0)
     ap.add_argument("--rel-target-min", type=int, default=0)
+    ap.add_argument("--adaptive-rows-ratio", type=float, default=0.0)
+    ap.add_argument("--adaptive-rows-min", type=int, default=0)
+    ap.add_argument("--adaptive-margin-pct", type=float, default=0.0)
+    ap.add_argument("--adaptive-check-every", type=int, default=0)
+    ap.add_argument("--adaptive-check-min-raw", type=int, default=0)
+    ap.add_argument("--adaptive-raw-step", type=int, default=0)
+    ap.add_argument("--max-raw-rels", type=int, default=0)
+    ap.add_argument("--sq-batch-size", type=int, default=0)
     ap.add_argument("--max-lp-keys", type=int, default=0)
     ap.add_argument("--partial-merge-maxsets", type=int, default=0)
     ap.add_argument("--skip-build-rust", action="store_true")
@@ -234,6 +242,22 @@ def main() -> None:
             "rust_norm_block": args.norm_block if args.norm_block > 0 else None,
             "rust_rel_target_mult": args.rel_target_mult if args.rel_target_mult > 0 else None,
             "rust_rel_target_min": args.rel_target_min if args.rel_target_min > 0 else None,
+            "rust_adaptive_rows_ratio": args.adaptive_rows_ratio
+            if args.adaptive_rows_ratio > 0
+            else None,
+            "rust_adaptive_rows_min": args.adaptive_rows_min if args.adaptive_rows_min > 0 else None,
+            "rust_adaptive_margin_pct": args.adaptive_margin_pct
+            if args.adaptive_margin_pct > 0
+            else None,
+            "rust_adaptive_check_every": args.adaptive_check_every
+            if args.adaptive_check_every > 0
+            else None,
+            "rust_adaptive_check_min_raw": args.adaptive_check_min_raw
+            if args.adaptive_check_min_raw > 0
+            else None,
+            "rust_adaptive_raw_step": args.adaptive_raw_step if args.adaptive_raw_step > 0 else None,
+            "rust_max_raw_rels": args.max_raw_rels if args.max_raw_rels > 0 else None,
+            "rust_sq_batch_size": args.sq_batch_size if args.sq_batch_size > 0 else None,
             "rust_max_lp_keys": args.max_lp_keys if args.max_lp_keys > 0 else None,
             "rust_partial_merge_maxsets": args.partial_merge_maxsets
             if args.partial_merge_maxsets > 0
@@ -278,8 +302,15 @@ def main() -> None:
             cado_metrics = parse_cado(cado_out, cado_err)
             cado_metrics["returncode"] = cado_rc
             cado_metrics["wall_s"] = cado_wall
+            cado_metrics["post_startup_s"] = cado_metrics.get("elapsed_s")
+            if cado_metrics["post_startup_s"] is not None:
+                cado_metrics["startup_overhead_s"] = max(
+                    0.0,
+                    cado_wall - float(cado_metrics["post_startup_s"]),
+                )
 
             rust_env = env_base.copy()
+            rust_env["RAYON_NUM_THREADS"] = str(args.threads)
             rust_env["RUST_NFS_MAX_VARIANTS"] = str(args.variants)
             if args.q_windows > 0:
                 rust_env["RUST_NFS_MAX_Q_WINDOWS"] = str(args.q_windows)
@@ -299,11 +330,27 @@ def main() -> None:
                 rust_env["RUST_NFS_REL_TARGET_MULT"] = str(args.rel_target_mult)
             if args.rel_target_min > 0:
                 rust_env["RUST_NFS_REL_TARGET_MIN"] = str(args.rel_target_min)
+            if args.adaptive_rows_ratio > 0:
+                rust_env["RUST_NFS_ADAPTIVE_ROWS_RATIO"] = str(args.adaptive_rows_ratio)
+            if args.adaptive_rows_min > 0:
+                rust_env["RUST_NFS_ADAPTIVE_ROWS_MIN"] = str(args.adaptive_rows_min)
+            if args.adaptive_margin_pct > 0:
+                rust_env["RUST_NFS_ADAPTIVE_MARGIN_PCT"] = str(args.adaptive_margin_pct)
+            if args.adaptive_check_every > 0:
+                rust_env["RUST_NFS_ADAPTIVE_CHECK_EVERY"] = str(args.adaptive_check_every)
+            if args.adaptive_check_min_raw > 0:
+                rust_env["RUST_NFS_ADAPTIVE_CHECK_MIN_RAW"] = str(args.adaptive_check_min_raw)
+            if args.adaptive_raw_step > 0:
+                rust_env["RUST_NFS_ADAPTIVE_RAW_STEP"] = str(args.adaptive_raw_step)
+            if args.max_raw_rels > 0:
+                rust_env["RUST_NFS_MAX_RAW_RELS"] = str(args.max_raw_rels)
+            if args.sq_batch_size > 0:
+                rust_env["RUST_NFS_SQ_BATCH_SIZE"] = str(args.sq_batch_size)
             if args.max_lp_keys > 0:
                 rust_env["RUST_NFS_MAX_LP_KEYS"] = str(args.max_lp_keys)
             if args.partial_merge_maxsets > 0:
                 rust_env["RUST_NFS_PARTIAL_MERGE_MAXSETS"] = str(args.partial_merge_maxsets)
-            rust_cmd = [str(rust_bin), "--factor", n]
+            rust_cmd = [str(rust_bin), "--factor", n, "--threads", str(args.threads)]
             rust_rc, rust_out, rust_err, rust_wall = run_cmd(
                 rust_cmd,
                 cwd=repo / "rust/rust-nfs",
@@ -313,6 +360,16 @@ def main() -> None:
             rust_metrics = parse_rust(rust_out, rust_err)
             rust_metrics["returncode"] = rust_rc
             rust_metrics["wall_s"] = rust_wall
+            rust_metrics["post_startup_s"] = (
+                float(rust_metrics.get("total_ms", 0.0) or 0.0) / 1000.0
+                if rust_metrics
+                else None
+            )
+            if rust_metrics.get("post_startup_s") is not None:
+                rust_metrics["startup_overhead_s"] = max(
+                    0.0,
+                    rust_wall - float(rust_metrics["post_startup_s"]),
+                )
 
             benchmark["runs"].append(
                 {

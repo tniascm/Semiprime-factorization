@@ -1,5 +1,5 @@
-use rug::Integer;
 use rug::ops::Pow;
+use rug::Integer;
 use serde::{Deserialize, Serialize};
 
 /// A polynomial pair (f, g) where f(m) ≡ g(m) ≡ 0 (mod N).
@@ -26,13 +26,24 @@ impl PolynomialPair {
     }
 
     pub fn f_coeffs(&self) -> Vec<Integer> {
-        self.f_coeffs_str.iter().map(|s| s.parse::<Integer>().unwrap()).collect()
+        self.f_coeffs_str
+            .iter()
+            .map(|s| s.parse::<Integer>().unwrap())
+            .collect()
     }
 
-    pub fn g0(&self) -> Integer { self.g_coeffs_str[0].parse().unwrap() }
-    pub fn g1(&self) -> Integer { self.g_coeffs_str[1].parse().unwrap() }
-    pub fn m(&self) -> Integer { self.m_str.parse().unwrap() }
-    pub fn n(&self) -> Integer { self.n_str.parse().unwrap() }
+    pub fn g0(&self) -> Integer {
+        self.g_coeffs_str[0].parse().unwrap()
+    }
+    pub fn g1(&self) -> Integer {
+        self.g_coeffs_str[1].parse().unwrap()
+    }
+    pub fn m(&self) -> Integer {
+        self.m_str.parse().unwrap()
+    }
+    pub fn n(&self) -> Integer {
+        self.n_str.parse().unwrap()
+    }
 
     /// Evaluate f(a, b) = b^d * f(a/b) = c0*b^d + c1*a*b^(d-1) + ... + cd*a^d
     pub fn eval_f_homogeneous(&self, a: i64, b: u64) -> Integer {
@@ -69,6 +80,10 @@ pub struct Relation {
     /// Special-q prime and root (q, r) if this relation came from a lattice sieve.
     /// None for line-sieve relations.
     pub special_q: Option<(u64, u64)>,
+    /// Single large prime on rational side (prime not in FB, appears with exponent 1).
+    pub rat_lp: Option<u64>,
+    /// Single large prime on algebraic side: (prime, root) identifying the ideal.
+    pub alg_lp: Option<(u64, u64)>,
 }
 
 /// Factor base: sorted list of primes with precomputed roots.
@@ -89,14 +104,18 @@ impl FactorBase {
     /// Flat index offset for prime at index `prime_idx`.
     /// The (prime_idx, root_idx) pair has flat index = pair_offset(prime_idx) + root_idx.
     pub fn pair_offset(&self, prime_idx: usize) -> usize {
-        self.algebraic_roots[..prime_idx].iter().map(|r| r.len()).sum()
+        self.algebraic_roots[..prime_idx]
+            .iter()
+            .map(|r| r.len())
+            .sum()
     }
 
     /// Count of primes that have a higher-degree ideal factor.
     /// For a degree-d polynomial, primes with k < d roots have a residual ideal
     /// of degree (d - k). We need one matrix column per such prime.
     pub fn higher_degree_ideal_count(&self, poly_degree: usize) -> usize {
-        self.algebraic_roots.iter()
+        self.algebraic_roots
+            .iter()
             .filter(|roots| !roots.is_empty() && roots.len() < poly_degree)
             .count()
     }
@@ -108,7 +127,8 @@ impl FactorBase {
         if roots.is_empty() || roots.len() >= poly_degree {
             return None;
         }
-        let offset = self.algebraic_roots[..prime_idx].iter()
+        let offset = self.algebraic_roots[..prime_idx]
+            .iter()
             .filter(|r| !r.is_empty() && r.len() < poly_degree)
             .count();
         Some(offset)

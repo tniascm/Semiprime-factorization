@@ -584,17 +584,23 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     );
 
     // --- Stage 2: Sieve ---
-    // Build gnfs-compatible algebraic FB metadata early for adaptive relation targets.
-    let gnfs_fb = gnfs::sieve::build_factor_base(&f_coeffs_i64, params.lim0.max(params.lim1));
     let degree = params.degree as usize;
-    let bad_root_offsets = compute_bad_root_offsets(&gnfs_fb, &f_coeffs_big);
-    let alg_bad = bad_root_offsets.len();
 
     // Build factor bases for both sides.
     // Rational polynomial: g(x) = x - m, coefficients [-m, 1].
     let rat_coeffs = vec![-(m as i64), 1i64];
     let rat_fb = crate::factorbase::FactorBase::new(&rat_coeffs, params.lim0, 1.442);
     let alg_fb = crate::factorbase::FactorBase::new_roots_only(&f_coeffs_i64, params.lim1, 1.442);
+
+    // Build gnfs-compatible algebraic FB from alg_fb (reuses its efficient
+    // Cantor-Zassenhaus root-finding instead of gnfs's O(p) brute force).
+    let gnfs_fb = gnfs::types::FactorBase {
+        primes: alg_fb.primes.clone(),
+        algebraic_roots: alg_fb.roots.clone(),
+        log_p: alg_fb.primes.iter().map(|&p| ((p as f64).log2() * 20.0).round() as u8).collect(),
+    };
+    let bad_root_offsets = compute_bad_root_offsets(&gnfs_fb, &f_coeffs_big);
+    let alg_bad = bad_root_offsets.len();
     let max_q_windows = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -632,6 +638,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             );
         }
     }
+    let startup_ms = start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  startup: FB construction in {:.0}ms", startup_ms);
+
     let mut all_sieve_relations = Vec::new();
     let mut total_sieve_ms = 0.0;
     let mut total_survivors = 0;
@@ -4133,8 +4142,12 @@ mod tests {
     fn test_remap_hybrid_routes_repeated_root_residual_to_bad_column() {
         let coeffs_i64 = vec![5_142_430_355i64, 6_255_823_782i64, 0, 1];
         let coeffs_big: Vec<Integer> = coeffs_i64.iter().copied().map(Integer::from).collect();
-        let gnfs_fb = gnfs::sieve::build_factor_base(&coeffs_i64, 100);
         let alg_fb = crate::factorbase::FactorBase::new_roots_only(&coeffs_i64, 100, 1.442);
+        let gnfs_fb = gnfs::types::FactorBase {
+            primes: alg_fb.primes.clone(),
+            algebraic_roots: alg_fb.roots.clone(),
+            log_p: alg_fb.primes.iter().map(|&p| ((p as f64).log2() * 20.0).round() as u8).collect(),
+        };
         let rat_fb = crate::factorbase::FactorBase::new(&[-88, 1], 100, 1.442);
         let alg_idx = alg_fb
             .primes
