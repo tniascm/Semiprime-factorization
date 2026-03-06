@@ -96,25 +96,20 @@ impl BucketArray {
     /// is exhausted. In a production NFS implementation the capacity would be
     /// grown dynamically; for now a clear panic message aids tuning.
     #[inline(always)]
+    /// Push a bucket update. Hot path — inlined with unchecked indexing in release.
+    ///
+    /// # Safety invariant
+    /// Caller must ensure `bucket < n_buckets` and that the bucket has capacity.
+    /// These are checked via `debug_assert` in debug builds.
+    #[inline(always)]
     pub fn push(&mut self, bucket: usize, update: BucketUpdate) {
-        debug_assert!(
-            bucket < self.n_buckets,
-            "BucketArray::push: bucket index {} out of range (n_buckets = {})",
-            bucket,
-            self.n_buckets,
-        );
-
-        let wp = self.write_pos[bucket];
-        assert!(
-            wp < self.ends[bucket],
-            "BucketArray::push: bucket {} overflowed (capacity {}). \
-             Increase updates_per_bucket.",
-            bucket,
-            self.ends[bucket] - self.starts[bucket],
-        );
-
-        self.data[wp] = update;
-        self.write_pos[bucket] = wp + 1;
+        debug_assert!(bucket < self.n_buckets);
+        let wp = unsafe { *self.write_pos.get_unchecked(bucket) };
+        debug_assert!(wp < unsafe { *self.ends.get_unchecked(bucket) });
+        unsafe {
+            *self.data.get_unchecked_mut(wp) = update;
+            *self.write_pos.get_unchecked_mut(bucket) = wp + 1;
+        }
     }
 
     /// Get all updates for a bucket region.

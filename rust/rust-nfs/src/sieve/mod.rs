@@ -133,12 +133,15 @@ pub fn sieve_specialq(
     let mut total_bucket_setup_ns = 0u64;
     let mut total_region_scan_ns = 0u64;
     let mut total_cofact_ns = 0u64;
+    let mut total_norm_ns = 0u64;
+    let mut total_small_sieve_ns = 0u64;
+    let mut total_bucket_apply_ns = 0u64;
     let mut sq_count = 0usize;
     let norm_block = std::env::var("RUST_NFS_NORM_BLOCK")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
-        .unwrap_or(1usize);
+        .unwrap_or(16usize);
 
     let q_end = q_start + q_range;
     let sq_primes: Vec<u64> = sieve_primes(q_end)
@@ -198,7 +201,7 @@ pub fn sieve_specialq(
     let updates_per_bucket = (est_updates * 2).max(1024);
 
     for chunk in qr_pairs.chunks(batch_size.max(1)) {
-        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64)> = chunk
+        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64)> = chunk
             .par_iter()
             .copied()
             .map_init(
@@ -313,6 +316,9 @@ pub fn sieve_specialq(
 
                     // 4. Process each bucket region (sequentially)
                     let region_start_time = std::time::Instant::now();
+                    let mut norm_ns: u64 = 0;
+                    let mut small_sieve_ns: u64 = 0;
+                    let mut bucket_apply_ns: u64 = 0;
                     let rat_bound = ((params.mfb0 as f64) * scale).min(255.0) as u8;
                     let alg_bound = ((params.mfb1 as f64) * scale).min(255.0) as u8;
                     let d = f_coeffs.len().saturating_sub(1);
@@ -346,6 +352,7 @@ pub fn sieve_specialq(
                             let overlap_len = local_end - local_start;
                             let i_offset_in_row = overlap_start - row_start_global;
 
+                            let t_norm = std::time::Instant::now();
                             let slope_rat = g1 * (qlat.a0 as f64) + g0 * (qlat.b0 as f64);
                             let intercept_rat =
                                 (g1 * (qlat.a1 as f64) + g0 * (qlat.b1 as f64)) * (j_row as f64);
@@ -400,6 +407,9 @@ pub fn sieve_specialq(
                                 }
                             }
 
+                            norm_ns += t_norm.elapsed().as_nanos() as u64;
+
+                            let t_ss = std::time::Instant::now();
                             let region_offset = i_offset_in_row;
                             small_sieve_region(
                                 &mut rat_sieve[local_start..local_end],
@@ -417,8 +427,10 @@ pub fn sieve_specialq(
                                 overlap_len,
                                 sieve_width,
                             );
+                            small_sieve_ns += t_ss.elapsed().as_nanos() as u64;
                         }
 
+                        let t_ba = std::time::Instant::now();
                         let rat_updates = rat_buckets.updates_for_bucket(bucket_idx);
                         let alg_updates = alg_buckets.updates_for_bucket(bucket_idx);
                         apply_bucket_updates(&mut rat_sieve[..region_len], rat_updates);
@@ -460,6 +472,7 @@ pub fn sieve_specialq(
 
                             survivors_this_sq.push((a as i64, b as u64));
                         }
+                        bucket_apply_ns += t_ba.elapsed().as_nanos() as u64;
                     }
 
                     let region_scan_elapsed = region_start_time.elapsed().as_nanos() as u64;
@@ -519,17 +532,23 @@ pub fn sieve_specialq(
                         bucket_setup_elapsed,
                         region_scan_elapsed,
                         cofact_elapsed,
+                        norm_ns,
+                        small_sieve_ns,
+                        bucket_apply_ns,
                     )
                 },
             )
             .collect();
 
-        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns) in chunk_results {
+        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, ss_ns, ba_ns) in chunk_results {
             all_relations.extend(rels);
             total_survivors += survivors;
             total_bucket_setup_ns += bucket_setup_ns;
             total_region_scan_ns += region_scan_ns;
             total_cofact_ns += cofact_ns;
+            total_norm_ns += n_ns;
+            total_small_sieve_ns += ss_ns;
+            total_bucket_apply_ns += ba_ns;
         }
 
         if let Some(limit) = max_relations {
@@ -543,6 +562,19 @@ pub fn sieve_specialq(
         if all_relations.len() > limit {
             all_relations.truncate(limit);
         }
+    }
+
+    let sieve_profile = std::env::var("RUST_NFS_SIEVE_PROFILE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if sieve_profile {
+        eprintln!(
+            "  sieve-profile: norm={:.0}ms small_sieve={:.0}ms bucket_apply+scan={:.0}ms (of region_scan={:.0}ms)",
+            total_norm_ns as f64 / 1_000_000.0,
+            total_small_sieve_ns as f64 / 1_000_000.0,
+            total_bucket_apply_ns as f64 / 1_000_000.0,
+            total_region_scan_ns as f64 / 1_000_000.0,
+        );
     }
 
     SieveResult {
@@ -609,20 +641,6 @@ fn scatter_bucket_updates_for_prime(
     max_j: usize,
     half_i: i64,
 ) {
-    let pl = reduce_plattice(p, root, qlat, log_i);
-    if !pl.hits {
-        return;
-    }
-
-    // Use the FK walk parameters for 1D traversal through the sieve area.
-    // The PLattice provides inc_step (primary stride in 1D sieve coords).
-    // For correctness, we use a simpler per-row approach that directly computes
-    // hit positions, which is equivalent in work.
-
-    // To compute per-row hits, we need the transformed root R' in (i,j) space.
-    // The PLattice reduction already computed this implicitly. We can recover it
-    // by using the original root transformation.
-
     let p_i128 = p as i128;
 
     // Recompute the transformed root R' = (root*b1 - a1) * (a0 - root*b0)^{-1} mod p
@@ -636,26 +654,29 @@ fn scatter_bucket_updates_for_prime(
             let row_base = j * sieve_width;
             for i_pos in 0..sieve_width {
                 let global_pos = row_base + i_pos;
-                let bucket_idx = global_pos >> LOG_BUCKET_REGION;
-                let bucket_pos = (global_pos & (BUCKET_REGION - 1)) as u16;
-                if bucket_idx < buckets.n_buckets() {
-                    buckets.push(
-                        bucket_idx,
-                        BucketUpdate {
-                            pos: bucket_pos,
-                            logp,
-                        },
-                    );
-                }
+                buckets.push(
+                    global_pos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
             }
         }
         return;
     }
+
+    // Compute transformed root R' = numer * denom^{-1} mod p
     let inv = match crate::arith::mod_inverse(denom as u64, p) {
         Some(v) => v,
         None => return,
     };
     let r_prime = ((numer as u128 * inv as u128) % p as u128) as u64;
+
+    // Quick hit check: if r_prime == 0 and p >= half_width, no hits in sieve area.
+    if r_prime == 0 && p >= half_i as u64 {
+        return;
+    }
 
     let p_usize = p as usize;
     let mut start_mod_p = (half_i as u64) % p;
@@ -672,19 +693,13 @@ fn scatter_bucket_updates_for_prime(
 
         while i_pos < sieve_width {
             let global_pos = row_base + i_pos;
-            let bucket_idx = global_pos >> LOG_BUCKET_REGION;
-            let bucket_pos = (global_pos & (BUCKET_REGION - 1)) as u16;
-
-            if bucket_idx < buckets.n_buckets() {
-                buckets.push(
-                    bucket_idx,
-                    BucketUpdate {
-                        pos: bucket_pos,
-                        logp,
-                    },
-                );
-            }
-
+            buckets.push(
+                global_pos >> LOG_BUCKET_REGION,
+                BucketUpdate {
+                    pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                    logp,
+                },
+            );
             i_pos += p_usize;
         }
 
@@ -1012,6 +1027,23 @@ mod tests {
         assert!(result.total_ms >= 0.0);
         assert!(result.sieve_ms >= 0.0);
         assert!(result.cofactor_ms >= 0.0);
+    }
+
+    #[test]
+    fn test_scatter_bucket_updates_projective_rows_reach_bucket_path() {
+        let qlat = QLattice {
+            a0: 5,
+            b0: 1,
+            a1: 1,
+            b1: 0,
+        };
+        let mut buckets = BucketArray::new(1, 64);
+        scatter_bucket_updates_for_prime(5, 0, 7, &qlat, 4, &mut buckets, 8, 10, 4);
+
+        let updates = buckets.updates_for_bucket(0);
+        // denom == 0 and numer != 0 => every p-th row is hit in full.
+        assert_eq!(updates.len(), 16);
+        assert!(updates.iter().all(|u| u.log_prime() == 7));
     }
 
     #[test]
