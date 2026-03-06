@@ -221,11 +221,15 @@ pub fn small_sieve_region(
             start_in_row + steps * p
         };
 
-        // Stride through the region.
+        // Stride through the region using unchecked access (hot path).
         let mut pos = first_hit;
         while pos < region_end {
             let local = pos - region_start;
-            sieve[local] = sieve[local].saturating_sub(logp);
+            debug_assert!(local < sieve.len());
+            unsafe {
+                let cell = sieve.get_unchecked_mut(local);
+                *cell = cell.saturating_sub(logp);
+            }
             pos += p;
         }
     }

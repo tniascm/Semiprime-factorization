@@ -34,8 +34,10 @@ pub fn apply_bucket_updates(sieve: &mut [u8], updates: &[BucketUpdate]) {
         let upd = *u;
         let pos = upd.position() as usize;
         let logp = upd.log_prime();
-        if pos < sieve.len() {
-            sieve[pos] = sieve[pos].saturating_sub(logp);
+        debug_assert!(pos < sieve.len());
+        unsafe {
+            let cell = sieve.get_unchecked_mut(pos);
+            *cell = cell.saturating_sub(logp);
         }
     }
 }
