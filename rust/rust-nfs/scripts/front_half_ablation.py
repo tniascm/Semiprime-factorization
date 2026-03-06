@@ -71,6 +71,16 @@ def score_run(run: dict[str, Any]) -> tuple[float, ...]:
     return (float(deps), float(rows_minus_cols), remap_keep, set_row_yield)
 
 
+def derive_metrics(viability: dict[str, Any]) -> dict[str, float]:
+    filtered = int(viability.get("filtered_relations", 0) or 0)
+    remap_valid = int(viability.get("remap_valid_relations", 0) or 0)
+    set_rows = int(viability.get("set_rows_recomputed", 0) or 0)
+    return {
+        "set_rows_per_filtered": set_rows / filtered if filtered else 0.0,
+        "set_rows_per_remap_valid": set_rows / remap_valid if remap_valid else 0.0,
+    }
+
+
 def run_case(
     rust_bin: Path,
     cwd: Path,
@@ -130,18 +140,25 @@ def run_case(
         "wall_s": wall_s,
         "result": result,
         "viability": viability,
+        "derived": derive_metrics(viability),
         "score": score_run({"viability": viability}),
     }
 
 
 def format_row(run: dict[str, Any]) -> str:
     viability = run.get("viability") or {}
+    filtered = int(viability.get("filtered_relations", 0) or 0)
+    remap_valid = int(viability.get("remap_valid_relations", 0) or 0)
+    set_rows = int(viability.get("set_rows_recomputed", 0) or 0)
+    sets_per_filtered = set_rows / filtered if filtered else 0.0
+    sets_per_remap = set_rows / remap_valid if remap_valid else 0.0
     return (
         f"{run['profile']:<16} "
-        f"filtered={int(viability.get('filtered_relations', 0) or 0):>5} "
-        f"remap={int(viability.get('remap_valid_relations', 0) or 0):>5} "
+        f"filtered={filtered:>5} "
+        f"remap={remap_valid:>5} "
         f"hd_res={int(viability.get('remap_invalid_hd_residual', 0) or 0):>5} "
-        f"sets={int(viability.get('set_rows_recomputed', 0) or 0):>5} "
+        f"sets={set_rows:>5} "
+        f"set_yield=({sets_per_filtered:>4.2f},{sets_per_remap:>4.2f}) "
         f"dense=({int(viability.get('active_dense_rat_cols', 0) or 0):>4},"
         f"{int(viability.get('active_dense_alg_cols', 0) or 0):>4},"
         f"{int(viability.get('active_special_q_cols', 0) or 0):>3}) "
@@ -269,6 +286,7 @@ def main() -> None:
                     "profile": run["profile"],
                     "score": list(run["score"]),
                     "viability": run["viability"],
+                    "derived": run["derived"],
                 }
                 for run in ranked
             ]
