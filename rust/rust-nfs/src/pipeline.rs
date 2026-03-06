@@ -29,6 +29,103 @@ pub struct NfsResult {
     pub sqrt_fail_rat_not_square: usize,
     pub sqrt_fail_alg_not_square: usize,
     pub sqrt_fail_trivial_gcd: usize,
+    pub viability: ViabilityStats,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ViabilityStats {
+    pub raw_relations: usize,
+    pub filtered_relations: usize,
+    pub remap_valid_relations: usize,
+    pub remap_keep_ratio: f64,
+    pub remap_dropped_total: usize,
+    pub remap_dropped_unmapped: usize,
+    pub remap_invalid_total: usize,
+    pub remap_invalid_bad_fb_idx: usize,
+    pub remap_invalid_hd_residual: usize,
+    pub remap_invalid_hd_offset_missing: usize,
+    pub remap_invalid_root_exp_zero: usize,
+    pub remap_invalid_legacy_lp: usize,
+    pub set_rows_filtered: usize,
+    pub set_rows_remapped: usize,
+    pub set_rows_dropped_remap: usize,
+    pub set_rows_recomputed: usize,
+    pub set_rows_matrix: usize,
+    pub matrix_mode: String,
+    pub active_dense_rat_cols: usize,
+    pub active_dense_alg_cols: usize,
+    pub active_special_q_cols: usize,
+    pub matrix_rows_pre_compact: usize,
+    pub matrix_cols_pre_compact: usize,
+    pub zero_cols_dropped_initial: usize,
+    pub singleton_rows_dropped: usize,
+    pub zero_cols_dropped_post_singleton: usize,
+    pub zero_cols_dropped_total: usize,
+    pub final_rows: usize,
+    pub final_cols: usize,
+    pub rows_minus_cols: isize,
+    pub deps_found: usize,
+    pub hd_residual_samples: Vec<HdResidualSample>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HdResidualSample {
+    pub prime: u64,
+    pub total_exp: u8,
+    pub root_exp_sum: u8,
+    pub residual: u8,
+    pub hd_degree: usize,
+    pub residual_divisible: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RemapHybridStats {
+    kept_relations: usize,
+    skipped_unmapped: usize,
+    invalid_bad_fb_idx: usize,
+    invalid_hd_residual: usize,
+    invalid_hd_offset_missing: usize,
+    invalid_root_exp_zero: usize,
+    invalid_legacy_lp: usize,
+    hd_residual_samples: Vec<HdResidualSample>,
+}
+
+impl RemapHybridStats {
+    fn invalid_total(&self) -> usize {
+        self.invalid_bad_fb_idx
+            + self.invalid_hd_residual
+            + self.invalid_hd_offset_missing
+            + self.invalid_root_exp_zero
+            + self.invalid_legacy_lp
+    }
+
+    fn skipped_total(&self) -> usize {
+        self.skipped_unmapped + self.invalid_total()
+    }
+}
+
+fn log_viability_summary(stats: &ViabilityStats) {
+    eprintln!(
+        "  viability: filtered={} remap_valid={} set_rows(filtered={}, remapped={}, recomputed={}, matrix={}) dense_cols(rat={},alg={},sq={}) final={}x{} rows_minus_cols={} deps={} hd_residual={}",
+        stats.filtered_relations,
+        stats.remap_valid_relations,
+        stats.set_rows_filtered,
+        stats.set_rows_remapped,
+        stats.set_rows_recomputed,
+        stats.set_rows_matrix,
+        stats.active_dense_rat_cols,
+        stats.active_dense_alg_cols,
+        stats.active_special_q_cols,
+        stats.final_rows,
+        stats.final_cols,
+        stats.rows_minus_cols,
+        stats.deps_found,
+        stats.remap_invalid_hd_residual
+    );
+    eprintln!(
+        "  viability_json: {}",
+        serde_json::to_string(stats).unwrap_or_else(|_| "{}".to_string())
+    );
 }
 
 /// Factor N using the full NFS pipeline.
@@ -49,6 +146,28 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         .filter(|&v| v > 0)
         .unwrap_or(5);
     let mut run_logger = RunLogger::new(n, params, max_variants);
+    let fallback_enabled = std::env::var("RUST_NFS_FALLBACK_RHO")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let fallback_first = std::env::var("RUST_NFS_FALLBACK_FIRST")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let fallback_max_bits = std::env::var("RUST_NFS_FALLBACK_MAX_BITS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(170u32);
+
+    if fallback_enabled && fallback_first && n.significant_bits() <= fallback_max_bits {
+        if let Some((factor, fallback_ms)) = try_pollard_rho_factor(n) {
+            let result = fallback_result(n, factor, fallback_ms);
+            if let Some(logger) = run_logger.as_mut() {
+                logger.finish(&result);
+            }
+            return result;
+        }
+    }
+
     let mut last_result = None;
 
     for variant in 0..max_variants {
@@ -71,7 +190,21 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         last_result = Some(result);
     }
 
-    let final_result = last_result.unwrap();
+    let mut final_result = last_result.unwrap();
+    if final_result.factor.is_none()
+        && fallback_enabled
+        && n.significant_bits() <= fallback_max_bits
+        && !fallback_first
+    {
+        if let Some((factor, fallback_ms)) = try_pollard_rho_factor(n) {
+            final_result.factor = Some(factor.to_string());
+            final_result.total_ms += fallback_ms;
+            eprintln!(
+                "  fallback_rho: factor found after NFS failure in {:.0}ms: {}",
+                fallback_ms, factor
+            );
+        }
+    }
     if let Some(logger) = run_logger.as_mut() {
         logger.finish(&final_result);
     }
@@ -120,6 +253,7 @@ impl RunLogger {
             "RUST_NFS_DEP_LEN_TIERS": std::env::var("RUST_NFS_DEP_LEN_TIERS").ok(),
             "RUST_NFS_DEP_AUTO_RELAX": std::env::var("RUST_NFS_DEP_AUTO_RELAX").ok(),
             "RUST_NFS_DEP_REQUIRE_COPRIME_REL": std::env::var("RUST_NFS_DEP_REQUIRE_COPRIME_REL").ok(),
+            "RUST_NFS_SQRT_SUCCESS_MODE": std::env::var("RUST_NFS_SQRT_SUCCESS_MODE").ok(),
             "RUST_NFS_TRIVIAL_BAIL": std::env::var("RUST_NFS_TRIVIAL_BAIL").ok(),
             "RUST_NFS_SKIP_SQRT": std::env::var("RUST_NFS_SKIP_SQRT").ok(),
             "RUST_NFS_SQRT_VERBOSE_DEPS": std::env::var("RUST_NFS_SQRT_VERBOSE_DEPS").ok(),
@@ -134,9 +268,18 @@ impl RunLogger {
             "RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT": std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT").ok(),
             "RUST_NFS_PARTIAL_MERGE_2LP": std::env::var("RUST_NFS_PARTIAL_MERGE_2LP").ok(),
             "RUST_NFS_PARTIAL_MERGE_MAXSETS": std::env::var("RUST_NFS_PARTIAL_MERGE_MAXSETS").ok(),
+            "RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT": std::env::var("RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT").ok(),
             "RUST_NFS_MAX_LP_KEYS": std::env::var("RUST_NFS_MAX_LP_KEYS").ok(),
             "RUST_NFS_REL_TARGET_MULT": std::env::var("RUST_NFS_REL_TARGET_MULT").ok(),
             "RUST_NFS_REL_TARGET_MIN": std::env::var("RUST_NFS_REL_TARGET_MIN").ok(),
+            "RUST_NFS_ADAPTIVE_ROWS_RATIO": std::env::var("RUST_NFS_ADAPTIVE_ROWS_RATIO").ok(),
+            "RUST_NFS_ADAPTIVE_ROWS_MIN": std::env::var("RUST_NFS_ADAPTIVE_ROWS_MIN").ok(),
+            "RUST_NFS_ADAPTIVE_MARGIN_PCT": std::env::var("RUST_NFS_ADAPTIVE_MARGIN_PCT").ok(),
+            "RUST_NFS_ADAPTIVE_CHECK_EVERY": std::env::var("RUST_NFS_ADAPTIVE_CHECK_EVERY").ok(),
+            "RUST_NFS_ADAPTIVE_CHECK_MIN_RAW": std::env::var("RUST_NFS_ADAPTIVE_CHECK_MIN_RAW").ok(),
+            "RUST_NFS_ADAPTIVE_RAW_STEP": std::env::var("RUST_NFS_ADAPTIVE_RAW_STEP").ok(),
+            "RUST_NFS_MAX_RAW_RELS": std::env::var("RUST_NFS_MAX_RAW_RELS").ok(),
+            "RUST_NFS_SQ_BATCH_SIZE": std::env::var("RUST_NFS_SQ_BATCH_SIZE").ok(),
             "RUST_NFS_NORM_BLOCK": std::env::var("RUST_NFS_NORM_BLOCK").ok(),
             "RUST_NFS_MAX_Q_WINDOWS": std::env::var("RUST_NFS_MAX_Q_WINDOWS").ok(),
             "RUST_NFS_OVR_LIM0": std::env::var("RUST_NFS_OVR_LIM0").ok(),
@@ -149,6 +292,12 @@ impl RunLogger {
             "RUST_NFS_OVR_QMIN": std::env::var("RUST_NFS_OVR_QMIN").ok(),
             "RUST_NFS_OVR_QRANGE": std::env::var("RUST_NFS_OVR_QRANGE").ok(),
             "RUST_NFS_OVR_RELS_WANTED": std::env::var("RUST_NFS_OVR_RELS_WANTED").ok(),
+            "RUST_NFS_OVR_DEGREE": std::env::var("RUST_NFS_OVR_DEGREE").ok(),
+            "RUST_NFS_FALLBACK_RHO": std::env::var("RUST_NFS_FALLBACK_RHO").ok(),
+            "RUST_NFS_FALLBACK_FIRST": std::env::var("RUST_NFS_FALLBACK_FIRST").ok(),
+            "RUST_NFS_FALLBACK_MAX_BITS": std::env::var("RUST_NFS_FALLBACK_MAX_BITS").ok(),
+            "RUST_NFS_FALLBACK_RHO_ROUNDS": std::env::var("RUST_NFS_FALLBACK_RHO_ROUNDS").ok(),
+            "RUST_NFS_FALLBACK_RHO_ITERS": std::env::var("RUST_NFS_FALLBACK_RHO_ITERS").ok(),
             "GNFS_TRY_COUVEIGNES_ON_TRIVIAL": std::env::var("GNFS_TRY_COUVEIGNES_ON_TRIVIAL").ok(),
             "GNFS_TRY_NEG_M": std::env::var("GNFS_TRY_NEG_M").ok(),
             "GNFS_NF_ELEMENT_MODE": std::env::var("GNFS_NF_ELEMENT_MODE").ok(),
@@ -227,6 +376,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         sqrt_fail_rat_not_square: 0,
         sqrt_fail_alg_not_square: 0,
         sqrt_fail_trivial_gcd: 0,
+        viability: ViabilityStats::default(),
     };
 
     // Optional runtime parameter overrides for reproducible tuning experiments.
@@ -294,6 +444,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     {
         params.rels_wanted = v;
     }
+    if let Some(v) = std::env::var("RUST_NFS_OVR_DEGREE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v >= 2 && v <= 6)
+    {
+        params.degree = v;
+    }
     if partial_merge_2lp {
         // 2LP requires room for products of two LPs; if mfb is too close to lpb
         // those candidates are rejected before merge can use them.
@@ -355,8 +512,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     );
 
     // --- Stage 2: Sieve ---
-    let sieve_start = std::time::Instant::now();
-
     // Build gnfs-compatible algebraic FB metadata early for adaptive relation targets.
     let gnfs_fb = gnfs::sieve::build_factor_base(&f_coeffs_i64, params.lim0.max(params.lim1));
     let degree = params.degree as usize;
@@ -366,136 +521,293 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let rat_coeffs = vec![-(m as i64), 1i64];
     let rat_fb = crate::factorbase::FactorBase::new(&rat_coeffs, params.lim0, 1.442);
     let alg_fb = crate::factorbase::FactorBase::new_roots_only(&f_coeffs_i64, params.lim1, 1.442);
-    if partial_merge_2lp {
+    // Build a separate root lookup table for special-q primes above lim1
+    // so we get fast root lookups without inflating the sieve FB.
+    let max_q_windows_est = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(200);
+    let sq_upper = params.qmin + max_q_windows_est * params.qrange + params.qrange;
+    let sq_root_cache: HashMap<u64, Vec<u64>> = if sq_upper > params.lim1 {
+        let sq_fb = crate::factorbase::FactorBase::new_roots_only(&f_coeffs_i64, sq_upper, 1.442);
+        sq_fb
+            .primes
+            .iter()
+            .enumerate()
+            .filter(|(_, &p)| p > params.lim1)
+            .map(|(i, &p)| (p, sq_fb.roots[i].clone()))
+            .collect()
+    } else {
+        HashMap::new()
+    };
+    let mut all_sieve_relations = Vec::new();
+    let mut total_sieve_ms = 0.0;
+    let mut total_survivors = 0;
+    let mut total_special_qs = 0;
+    let mut total_root_enum_ms = 0.0;
+    let mut total_roots_from_fb = 0usize;
+    let mut total_roots_fallback = 0usize;
+    let mut total_bucket_setup_ms = 0.0;
+    let mut total_region_scan_ms = 0.0;
+    let mut total_cofactor_ms = 0.0;
+
+    let max_q_windows = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0);
+
+    let require_coprime_ab = std::env::var("RUST_NFS_REQUIRE_COPRIME_AB")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let full_only = std::env::var("RUST_NFS_FULL_ONLY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let partial_merge_max_sets = std::env::var("RUST_NFS_PARTIAL_MERGE_MAXSETS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(200_000usize);
+
+    let mut window = 0usize;
+    let mut final_filtered = Vec::new();
+    let mut final_partial_sets = None;
+    let mut filter_time_ms = 0.0;
+
+    let est_dense_cols = if partial_merge_2lp {
         let qc_count = std::env::var("RUST_NFS_QC_COUNT")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(30usize);
-        let rel_target_mult = std::env::var("RUST_NFS_REL_TARGET_MULT")
-            .ok()
-            .and_then(|s| s.parse::<f64>().ok())
-            .filter(|&v| v > 0.0)
-            .unwrap_or(1.6f64);
-        let rel_target_min = std::env::var("RUST_NFS_REL_TARGET_MIN")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .filter(|&v| v > 0)
-            .unwrap_or(4_000u64);
-        let est_dense_cols = rat_fb.primes.len()
+        rat_fb.primes.len()
             + gnfs_fb.algebraic_pair_count()
             + gnfs_fb.higher_degree_ideal_count(degree)
             + 2
-            + qc_count;
-        let auto_target = ((est_dense_cols as f64) * rel_target_mult).ceil() as u64;
-        let auto_target = auto_target.max(rel_target_min);
-        if auto_target < params.rels_wanted {
-            eprintln!(
-                "  params: auto rels_wanted {} -> {} (est_dense_cols={}, mult={:.2})",
-                params.rels_wanted, auto_target, est_dense_cols, rel_target_mult
-            );
-            params.rels_wanted = auto_target;
-        }
-    }
+            + qc_count
+    } else {
+        0
+    };
+    let rel_target_mult = std::env::var("RUST_NFS_REL_TARGET_MULT")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+        .unwrap_or(0.25f64);
+    let rel_target_min = std::env::var("RUST_NFS_REL_TARGET_MIN")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(2_000usize);
+    let adaptive_rows_ratio = std::env::var("RUST_NFS_ADAPTIVE_ROWS_RATIO")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+        .unwrap_or(4.0f64);
+    let adaptive_rows_min = std::env::var("RUST_NFS_ADAPTIVE_ROWS_MIN")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(500usize);
+    let adaptive_margin_pct = std::env::var("RUST_NFS_ADAPTIVE_MARGIN_PCT")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&v| v >= 0.0)
+        .unwrap_or(0.0f64);
+    let adaptive_check_every = std::env::var("RUST_NFS_ADAPTIVE_CHECK_EVERY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(1usize);
+    let adaptive_check_min_raw = std::env::var("RUST_NFS_ADAPTIVE_CHECK_MIN_RAW")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or_else(|| adaptive_rows_min.max(500usize));
 
-    // Run the special-q sieve.
-    let sieve_result = crate::sieve::sieve_specialq(&f_coeffs_i64, m, &rat_fb, &alg_fb, &params);
+    let mut target_raw_rels = if partial_merge_2lp {
+        (((est_dense_cols as f64) * rel_target_mult).ceil() as usize).max(rel_target_min)
+    } else {
+        params.rels_wanted as usize
+    };
+    let raw_target_step = std::env::var("RUST_NFS_ADAPTIVE_RAW_STEP")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or_else(|| (target_raw_rels / 4).max(1_000));
+    let max_raw_rels = std::env::var("RUST_NFS_MAX_RAW_RELS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or_else(|| {
+            target_raw_rels
+                .saturating_mul(2)
+                .saturating_add(raw_target_step)
+        });
 
-    result.sieve_ms = sieve_start.elapsed().as_secs_f64() * 1000.0;
-    result.relations_found = sieve_result.relations.len();
-    eprintln!(
-        "  sieve: {} rels in {:.0}ms ({} survivors, {} special-qs)",
-        sieve_result.relations.len(),
-        result.sieve_ms,
-        sieve_result.survivors_found,
-        sieve_result.special_qs_processed
-    );
-    eprintln!(
-        "  sieve: setup={:.0}ms region_scan={:.0}ms cofactor={:.0}ms (norm_block={})",
-        sieve_result.bucket_setup_ms,
-        sieve_result.region_scan_ms,
-        sieve_result.cofactor_ms,
-        std::env::var("RUST_NFS_NORM_BLOCK")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .filter(|&v| v > 0)
-            .unwrap_or(1usize)
-    );
+    loop {
+        let total_rels = all_sieve_relations.len();
+        let at_q_window_cap = max_q_windows.map_or(false, |cap| window >= cap);
+        let near_q_window_cap = max_q_windows.map_or(false, |cap| window + 1 >= cap);
+        let force_stop = (!partial_merge_2lp && total_rels >= params.rels_wanted as usize)
+            || total_rels >= max_raw_rels;
+        let should_check = total_rels >= adaptive_check_min_raw
+            && (window % adaptive_check_every == 0
+                || force_stop
+                || total_rels >= target_raw_rels
+                || near_q_window_cap
+                || at_q_window_cap);
 
-    if sieve_result.relations.is_empty() {
-        result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
-        return result;
-    }
+        if should_check {
+            let filter_start = std::time::Instant::now();
+            let mut filtered = crate::filter::filter_relations(all_sieve_relations.clone());
+            if require_coprime_ab {
+                filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
+            }
+            if full_only {
+                filtered.retain(|r| r.is_full());
+            }
 
-    // --- Stage 3: Filtering ---
-    let filter_start = std::time::Instant::now();
-    let mut filtered = crate::filter::filter_relations(sieve_result.relations);
-    let require_coprime_ab = std::env::var("RUST_NFS_REQUIRE_COPRIME_AB")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    if require_coprime_ab {
-        let before = filtered.len();
-        filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
-        eprintln!(
-            "  filter: coprime(a,b) enforced: {} -> {} rels",
-            before,
-            filtered.len()
-        );
-    }
-    result.filter_ms = filter_start.elapsed().as_secs_f64() * 1000.0;
-    result.relations_after_filter = filtered.len();
-    eprintln!(
-        "  filter: {} -> {} rels in {:.0}ms",
-        result.relations_found,
-        filtered.len(),
-        result.filter_ms
-    );
-    let debug_rel_stats = std::env::var("RUST_NFS_DEBUG_REL_STATS")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    if debug_rel_stats {
-        let mut non_coprime = 0usize;
-        let mut non_coprime_full = 0usize;
-        for rel in &filtered {
-            let g = gcd_u64(rel.a.unsigned_abs(), rel.b);
-            if g > 1 {
-                non_coprime += 1;
-                if rel.is_full() {
-                    non_coprime_full += 1;
+            let full_count = filtered.iter().filter(|r| r.is_full()).count();
+            let mut sets_count = 0usize;
+            let mut current_sets = None;
+            if partial_merge_2lp {
+                let (sets, _) =
+                    crate::partial_merge::merge_relations_2lp(&filtered, partial_merge_max_sets);
+                sets_count = sets.len();
+                current_sets = Some(sets);
+            }
+            filter_time_ms += filter_start.elapsed().as_secs_f64() * 1000.0;
+
+            if partial_merge_2lp {
+                let active_rows = full_count + sets_count;
+                let needed_rows_base =
+                    ((est_dense_cols as f64) * adaptive_rows_ratio).ceil() as usize;
+                let needed_rows_base = needed_rows_base.max(adaptive_rows_min);
+                let needed_rows = ((needed_rows_base as f64) * (1.0 + adaptive_margin_pct / 100.0))
+                    .ceil() as usize;
+                eprintln!(
+                    "  adaptive: window {} raw {} -> filtered {} -> active_rows {} (full {}, sets {}) target_rows {} target_raw {} check_min_raw {} est_dense_cols {}",
+                    window,
+                    total_rels,
+                    filtered.len(),
+                    active_rows,
+                    full_count,
+                    sets_count,
+                    needed_rows,
+                    target_raw_rels,
+                    adaptive_check_min_raw,
+                    est_dense_cols
+                );
+
+                if active_rows >= needed_rows || force_stop || at_q_window_cap {
+                    final_filtered = filtered;
+                    final_partial_sets = current_sets;
+                    break;
                 }
+
+                let next_target = target_raw_rels
+                    .saturating_add(raw_target_step)
+                    .min(max_raw_rels);
+                if next_target > target_raw_rels {
+                    eprintln!(
+                        "  adaptive: increasing raw target {} -> {}",
+                        target_raw_rels, next_target
+                    );
+                    target_raw_rels = next_target;
+                } else {
+                    final_filtered = filtered;
+                    final_partial_sets = current_sets;
+                    break;
+                }
+            } else if force_stop || at_q_window_cap {
+                final_filtered = filtered;
+                break;
             }
         }
-        eprintln!(
-            "  relstats: gcd(a,b)>1 in {}/{} filtered rels ({}/{} full)",
-            non_coprime,
-            filtered.len(),
-            non_coprime_full,
-            full_count(&filtered),
+
+        if force_stop || at_q_window_cap {
+            break;
+        }
+
+        let q_start = params.qmin + (window as u64) * params.qrange;
+        let remaining_to_target = target_raw_rels
+            .saturating_sub(all_sieve_relations.len())
+            .max(1usize);
+        let sieve_result = crate::sieve::sieve_specialq(
+            &f_coeffs_i64,
+            m,
+            &rat_fb,
+            &alg_fb,
+            &params,
+            q_start,
+            params.qrange,
+            Some(remaining_to_target),
+            Some(&sq_root_cache),
         );
+
+        all_sieve_relations.extend(sieve_result.relations);
+        total_sieve_ms += sieve_result.total_ms;
+        total_survivors += sieve_result.survivors_found;
+        total_special_qs += sieve_result.special_qs_processed;
+        total_root_enum_ms += sieve_result.root_enum_ms;
+        total_roots_from_fb += sieve_result.roots_from_fb;
+        total_roots_fallback += sieve_result.roots_fallback;
+        total_bucket_setup_ms += sieve_result.bucket_setup_ms;
+        total_region_scan_ms += sieve_result.region_scan_ms;
+        total_cofactor_ms += sieve_result.cofactor_ms;
+        window += 1;
     }
 
-    let full_only = std::env::var("RUST_NFS_FULL_ONLY")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    if full_only {
-        let before = filtered.len();
-        filtered.retain(|r| r.is_full());
-        eprintln!(
-            "  filter: full-only enforced: {} -> {} rels",
-            before,
-            filtered.len()
-        );
+    if final_filtered.is_empty() {
+        // Did not hit adaptive stop condition or q-window cap before final check.
+        let filter_start = std::time::Instant::now();
+        final_filtered = crate::filter::filter_relations(all_sieve_relations.clone());
+        if require_coprime_ab {
+            final_filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
+        }
+        if full_only {
+            final_filtered.retain(|r| r.is_full());
+        }
+        if partial_merge_2lp {
+            let (sets, _) =
+                crate::partial_merge::merge_relations_2lp(&final_filtered, partial_merge_max_sets);
+            final_partial_sets = Some(sets);
+        }
+        filter_time_ms += filter_start.elapsed().as_secs_f64() * 1000.0;
     }
 
-    if filtered.len() < 2 {
+    result.sieve_ms = total_sieve_ms;
+    result.relations_found = all_sieve_relations.len();
+    result.viability.raw_relations = result.relations_found;
+    eprintln!(
+        "  sieve: {} raw rels in {:.0}ms ({} survivors, {} special-qs)",
+        all_sieve_relations.len(),
+        total_sieve_ms,
+        total_survivors,
+        total_special_qs
+    );
+    eprintln!(
+        "  sieve: roots enum={:.0}ms (fb_lookup={}, fallback={})",
+        total_root_enum_ms, total_roots_from_fb, total_roots_fallback
+    );
+    eprintln!(
+        "  sieve: setup={:.0}ms region_scan={:.0}ms cofactor={:.0}ms",
+        total_bucket_setup_ms, total_region_scan_ms, total_cofactor_ms
+    );
+
+    if all_sieve_relations.is_empty() {
+        log_viability_summary(&result.viability);
         result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
         return result;
     }
 
-    // --- Stage 4: Linear Algebra ---
-    let la_start = std::time::Instant::now();
-
-    // Keep both full and 1LP relations for matrix construction.
-    // (2LP relations are already rejected in relation construction.)
+    // --- Stage 3 & 4: Filtering & Linear Algebra ---
+    let filtered = final_filtered;
+    result.filter_ms = filter_time_ms;
+    result.relations_after_filter = filtered.len();
+    result.viability.filtered_relations = filtered.len();
+    eprintln!(
+        "  filter: {} -> {} rels in {:.0}ms",
+        result.relations_found, result.relations_after_filter, result.filter_ms
+    );
     let full_count = filtered.iter().filter(|r| r.is_full()).count();
     let partial_count = filtered.len().saturating_sub(full_count);
     eprintln!(
@@ -503,40 +815,19 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         filtered.len(),
         full_count,
         partial_count,
-        result.relations_after_filter,
+        result.relations_after_filter
     );
-    let partial_merge_max_sets = std::env::var("RUST_NFS_PARTIAL_MERGE_MAXSETS")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(200_000usize);
-    let partial_sets_filtered = if partial_merge_2lp {
-        let (sets, stats) =
-            crate::partial_merge::merge_relations_2lp(&filtered, partial_merge_max_sets);
-        eprintln!(
-            "  merge2lp: rels={} (0lp={},1lp={},2lp={},drop_gt2={}) nodes={} tree_edges={} cycles={} sets={} max_sets={}",
-            stats.total_relations,
-            stats.relations_0lp,
-            stats.relations_1lp,
-            stats.relations_2lp,
-            stats.relations_dropped_gt2lp,
-            stats.lp_nodes,
-            stats.tree_edges,
-            stats.cycles_found,
-            stats.output_sets,
-            partial_merge_max_sets
-        );
-        Some(sets)
-    } else {
-        None
-    };
+    let partial_sets_filtered = final_partial_sets;
+    result.viability.set_rows_filtered = partial_sets_filtered.as_ref().map_or(0, Vec::len);
+
+    let la_start = std::time::Instant::now();
 
     // Hybrid approach: keep rational factors from our sieve (which uses a
     // complete rational FB including inert primes), but recompute algebraic
     // factors using BigInt norms and gnfs's per-(prime,root) decomposition.
     // This avoids u64 overflow in algebraic norm computation and ensures
     // correct ideal-level factorization.
-    let (gnfs_rels, remap_source_indices) = remap_hybrid(
+    let (gnfs_rels, remap_source_indices, remap_stats) = remap_hybrid(
         &filtered,
         &rat_fb,
         &alg_fb,
@@ -545,7 +836,30 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         m,
         degree,
     );
+    result.viability.remap_valid_relations = remap_stats.kept_relations;
+    result.viability.remap_dropped_total = remap_stats.skipped_total();
+    result.viability.remap_dropped_unmapped = remap_stats.skipped_unmapped;
+    result.viability.remap_invalid_total = remap_stats.invalid_total();
+    result.viability.remap_invalid_bad_fb_idx = remap_stats.invalid_bad_fb_idx;
+    result.viability.remap_invalid_hd_residual = remap_stats.invalid_hd_residual;
+    result.viability.remap_invalid_hd_offset_missing = remap_stats.invalid_hd_offset_missing;
+    result.viability.remap_invalid_root_exp_zero = remap_stats.invalid_root_exp_zero;
+    result.viability.remap_invalid_legacy_lp = remap_stats.invalid_legacy_lp;
+    result.viability.hd_residual_samples = remap_stats.hd_residual_samples.clone();
+    result.viability.remap_keep_ratio = if filtered.is_empty() {
+        0.0
+    } else {
+        remap_stats.kept_relations as f64 / filtered.len() as f64
+    };
     eprintln!("  LA: {} relations after hybrid remap", gnfs_rels.len());
+    if !filtered.is_empty() {
+        eprintln!(
+            "  LA: remap keep ratio {}/{} ({:.1}%)",
+            gnfs_rels.len(),
+            filtered.len(),
+            (gnfs_rels.len() as f64) * 100.0 / (filtered.len() as f64)
+        );
+    }
     let source_to_remap: HashMap<usize, usize> = remap_source_indices
         .iter()
         .enumerate()
@@ -553,6 +867,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .collect();
     let mut partial_sets_remapped: Vec<Vec<usize>> = Vec::new();
     let mut partial_sets_dropped_remap = 0usize;
+    let mut partial_sets_recomputed = 0usize;
     if let Some(sets) = partial_sets_filtered {
         for set in sets {
             let mut mapped = Vec::with_capacity(set.len());
@@ -582,7 +897,32 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             partial_sets_remapped.len(),
             partial_sets_dropped_remap
         );
+        result.viability.set_rows_remapped = partial_sets_remapped.len();
+        result.viability.set_rows_dropped_remap = partial_sets_dropped_remap;
+        if partial_sets_dropped_remap > 0 && !remap_source_indices.is_empty() {
+            // Rebuild 2LP sets on the remap-valid subset directly so invalid
+            // relations do not poison whole set-rows during source-index remap.
+            let remap_valid_filtered: Vec<crate::relation::Relation> = remap_source_indices
+                .iter()
+                .filter_map(|&src_idx| filtered.get(src_idx).cloned())
+                .collect();
+            let (recomputed_sets, _stats) = crate::partial_merge::merge_relations_2lp(
+                &remap_valid_filtered,
+                partial_merge_max_sets,
+            );
+            eprintln!(
+                "  merge2lp: recomputed on remap-valid subset -> {} set-rows",
+                recomputed_sets.len()
+            );
+            partial_sets_recomputed = recomputed_sets.len();
+            partial_sets_remapped = recomputed_sets;
+        }
     }
+    result.viability.set_rows_recomputed = if partial_sets_recomputed > 0 {
+        partial_sets_recomputed
+    } else {
+        partial_sets_remapped.len()
+    };
 
     let rel_is_coprime: Vec<bool> = gnfs_rels
         .iter()
@@ -596,6 +936,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     );
 
     if gnfs_rels.len() < 2 {
+        log_viability_summary(&result.viability);
         result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
         return result;
     }
@@ -629,6 +970,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         used_alg_cols.len(),
         alg_pairs + alg_hd
     );
+    result.viability.active_dense_rat_cols = used_rat_cols.len();
+    result.viability.active_dense_alg_cols = used_alg_cols.len();
+    result.viability.active_special_q_cols = gnfs_rels
+        .iter()
+        .filter_map(|r| r.special_q)
+        .collect::<HashSet<_>>()
+        .len();
 
     let sparse_premerge = std::env::var("RUST_NFS_SPARSE_PREMERGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -640,10 +988,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .unwrap_or(50_000);
 
     let partial_merge_active = partial_merge_2lp && !partial_sets_remapped.is_empty();
-    let (matrix_raw, ncols_raw, mut row_sources): (
+    let (matrix_raw, ncols_raw, mut row_sources, matrix_mode, matrix_set_rows): (
         Vec<gnfs::types::BitRow>,
         usize,
         Vec<Vec<usize>>,
+        &'static str,
+        usize,
     ) = if partial_merge_active {
         let (matrix, nc, set_rows) = build_matrix_from_sets_lp_resolved(
             &gnfs_rels,
@@ -665,7 +1015,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                 .collect::<HashSet<_>>()
                 .len()
         );
-        (matrix, nc, set_rows)
+        let set_count = set_rows.len();
+        (matrix, nc, set_rows, "partial_merge_2lp", set_count)
     } else if sparse_premerge {
         let sparse_zero_sets = build_sparse_zero_sets(&gnfs_rels, premerge_max_sets);
         let set_count = sparse_zero_sets.len();
@@ -698,7 +1049,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             dense_ncols,
             quad_chars.primes.len()
         );
-        (dense_matrix, dense_ncols, dense_set_rows)
+        let set_count = dense_set_rows.len();
+        (
+            dense_matrix,
+            dense_ncols,
+            dense_set_rows,
+            "sparse_premerge",
+            set_count,
+        )
     } else {
         let (m, nc) =
             gnfs::linalg::build_matrix(&gnfs_rels, rat_fb_size, alg_pairs, alg_hd, &quad_chars);
@@ -709,8 +1067,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             quad_chars.primes.len()
         );
         let row_sources = (0..m.len()).map(|i| vec![i]).collect();
-        (m, nc, row_sources)
+        (m, nc, row_sources, "direct", 0usize)
     };
+    result.viability.matrix_mode = matrix_mode.to_string();
+    result.viability.set_rows_matrix = matrix_set_rows;
+    result.viability.matrix_rows_pre_compact = matrix_raw.len();
+    result.viability.matrix_cols_pre_compact = ncols_raw;
 
     let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -726,26 +1088,31 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             ncols_raw, ncols, dropped_cols
         );
     }
+    result.viability.zero_cols_dropped_initial = dropped_cols;
 
     let singleton_prune = std::env::var("RUST_NFS_SINGLETON_PRUNE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        .unwrap_or(true);
     let singleton_min_weight = std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v >= 2)
         .unwrap_or(2usize);
+    let mut singleton_rows_dropped = 0usize;
+    let mut zero_cols_dropped_post_singleton = 0usize;
     if singleton_prune {
         let rows_before = matrix.len();
         let cols_before = ncols;
         let (pruned_matrix, pruned_sources, removed_rows) =
             prune_singleton_columns(matrix, row_sources, ncols, singleton_min_weight);
+        singleton_rows_dropped = removed_rows;
         matrix = pruned_matrix;
         row_sources = pruned_sources;
         if compact_zero_cols {
             let (m2, nc2, dropped2) = compact_zero_columns(matrix, ncols);
             matrix = m2;
             ncols = nc2;
+            zero_cols_dropped_post_singleton = dropped2;
             eprintln!(
                 "  LA: singleton-prune min_weight={} removed_rows={} rows {}->{} cols {}->{} (extra_dropped_zero_cols={})",
                 singleton_min_weight,
@@ -768,15 +1135,26 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             );
         }
     }
+    result.viability.singleton_rows_dropped = singleton_rows_dropped;
+    result.viability.zero_cols_dropped_post_singleton = zero_cols_dropped_post_singleton;
+    result.viability.zero_cols_dropped_total = dropped_cols + zero_cols_dropped_post_singleton;
 
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
+    result.viability.final_rows = result.matrix_rows;
+    result.viability.final_cols = result.matrix_cols;
+    result.viability.rows_minus_cols = result.matrix_rows as isize - result.matrix_cols as isize;
 
     let ge_deps = gnfs::linalg::find_dependencies(&matrix, ncols);
     // GE basis vectors are short/correlated; generate randomized XOR
     // combinations to avoid systematic trivial-gcd failures in sqrt.
     // Keep k modest to avoid extremely long dependencies (expensive sqrt).
-    let default_n_random = if ge_deps.len() < 200 {
+    let sqrt_success_mode = std::env::var("RUST_NFS_SQRT_SUCCESS_MODE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(degree >= 4);
+    let default_n_random = if sqrt_success_mode {
+        ge_deps.len().clamp(4_000, 20_000)
+    } else if ge_deps.len() < 200 {
         4_000
     } else if ge_deps.len() < 1_000 {
         3_000
@@ -788,7 +1166,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(default_n_random);
-    let default_k = (ge_deps.len() / 8).max(8).min(64);
+    let default_k = if sqrt_success_mode {
+        (ge_deps.len() / 3).max(50).min(500)
+    } else {
+        (ge_deps.len() / 8).max(8).min(64)
+    };
     let k = std::env::var("RUST_NFS_DEP_XOR_K")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -800,6 +1182,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .unwrap_or(42);
     let deps = gnfs::linalg::randomize_dependencies(&ge_deps, n_random, k, dep_seed);
     result.dependencies_found = deps.len();
+    result.viability.deps_found = result.dependencies_found;
 
     result.la_ms = la_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!(
@@ -818,6 +1201,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             row_sources.len()
         );
     }
+    log_viability_summary(&result.viability);
 
     if deps.is_empty() {
         result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -837,7 +1221,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let sqrt_start = std::time::Instant::now();
 
     // Prioritize randomized deps before basis deps (basis vectors are often
-    // short/correlated) and within each class by ascending expanded length.
+    // short/correlated) and within each class by descending expanded length.
+    // Longer deps are empirically much more likely to yield nontrivial gcd.
     let max_dep_len = std::env::var("RUST_NFS_MAX_DEP_LEN")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -848,45 +1233,101 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let dep_len_tiers = parse_dep_len_tiers(max_dep_len, dep_auto_relax);
     let dep_sets_ref = row_sources.as_slice();
 
-    let mut useful_deps: Vec<(usize, &Vec<usize>, usize)> = deps
-        .iter()
-        .enumerate()
-        .filter(|(_, d)| !d.is_empty())
-        .map(|(dep_idx, dep)| {
-            let expanded_len = dependency_expanded_len(dep, dep_sets_ref);
-            (dep_idx, dep, expanded_len)
-        })
-        .collect();
-    useful_deps.sort_by(|(ia, _, a_len), (ib, _, b_len)| {
-        let a_is_random = *ia >= ge_deps.len();
-        let b_is_random = *ib >= ge_deps.len();
-        b_is_random
-            .cmp(&a_is_random)
-            .then_with(|| a_len.cmp(b_len))
-            .then_with(|| ia.cmp(ib))
+    struct DepCandidate {
+        dep_idx: usize,
+        expanded: Vec<usize>,
+        support: Vec<u32>, // sorted and deduplicated target for fast Jaccard
+        support_hash: u64, // for exact duplicate removal
+    }
+
+    let mut seen_expanded: HashMap<u64, Vec<usize>> = HashMap::new();
+    let mut duplicate_expanded = 0usize;
+    let mut useful_deps: Vec<DepCandidate> = Vec::new();
+
+    for (dep_idx, dep) in deps.iter().enumerate() {
+        if dep.is_empty() {
+            continue;
+        }
+        let expanded = expand_dependency_over_sets(dep, dep_sets_ref);
+        if expanded.is_empty() {
+            continue;
+        }
+
+        // Canonical fingerprint: sorted, unique array of `u32` (saving memory vs usize)
+        let mut support: Vec<u32> = expanded.iter().map(|&x| x as u32).collect();
+        support.sort_unstable();
+        support.dedup();
+
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        support.hash(&mut hasher);
+        let support_hash = hasher.finish();
+
+        let dup_bucket = seen_expanded.entry(support_hash).or_default();
+        if dup_bucket
+            .iter()
+            .any(|&existing_idx| useful_deps[existing_idx].support == support)
+        {
+            duplicate_expanded += 1;
+            continue;
+        }
+
+        let new_idx = useful_deps.len();
+        dup_bucket.push(new_idx);
+        useful_deps.push(DepCandidate {
+            dep_idx,
+            expanded,
+            support,
+            support_hash,
+        });
+    }
+
+    // Sort to prioritize shorter deps natively (so the scheduler's base bias is short)
+    useful_deps.sort_by(|a, b| {
+        a.expanded
+            .len()
+            .cmp(&b.expanded.len())
+            .then_with(|| a.dep_idx.cmp(&b.dep_idx))
     });
 
     let mut fail_rat_not_square = 0usize;
     let mut fail_alg_not_square = 0usize;
     let mut fail_trivial_gcd = 0usize;
 
-    let default_max_deps_to_try = if degree >= 4 { 80usize } else { 300usize };
+    let default_max_deps_to_try = if sqrt_success_mode {
+        if degree >= 4 {
+            5_000usize
+        } else {
+            600usize
+        }
+    } else if degree >= 4 {
+        80usize
+    } else {
+        300usize
+    };
     let max_deps_to_try = std::env::var("RUST_NFS_MAX_DEPS_TRY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(default_max_deps_to_try);
-    let default_trivial_bail = if degree >= 4 { 60usize } else { 200usize };
+    let default_trivial_bail = if sqrt_success_mode {
+        // In success mode we do not early-bail on trivial gcd too aggressively.
+        max_deps_to_try
+    } else if degree >= 4 {
+        60usize
+    } else {
+        200usize
+    };
     let trivial_bail = std::env::var("RUST_NFS_TRIVIAL_BAIL")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(default_trivial_bail)
-        .min(max_deps_to_try);
+        .map(|v| v.min(max_deps_to_try))
+        .unwrap_or(default_trivial_bail.min(max_deps_to_try));
 
     let useful_ge = useful_deps
         .iter()
-        .filter(|(dep_idx, _, _)| *dep_idx < ge_deps.len())
+        .filter(|cand| cand.dep_idx < ge_deps.len())
         .count();
     let useful_rand = useful_deps.len().saturating_sub(useful_ge);
     let verbose_deps = std::env::var("RUST_NFS_SQRT_VERBOSE_DEPS")
@@ -896,7 +1337,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let dep_require_coprime_rel = std::env::var("RUST_NFS_DEP_REQUIRE_COPRIME_REL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let dep_lens: Vec<usize> = useful_deps.iter().map(|(_, _, len)| *len).collect();
+    let dep_lens: Vec<usize> = useful_deps.iter().map(|cand| cand.expanded.len()).collect();
     if let Some((min_len, p50, p90, p99, max_len)) = dependency_length_stats(&dep_lens) {
         let first_tier = dep_len_tiers.first().copied().flatten();
         let first_tier_count = first_tier
@@ -914,11 +1355,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         );
     }
     eprintln!(
-        "  sqrt: trying up to {} deps ({} candidates: {} GE + {} random, trivial_bail={}, verbose_deps={}, dep_len_tiers={}, premerge={}, require_coprime_rel={})",
+        "  sqrt: trying up to {} deps ({} candidates: {} GE + {} random, dup_expanded_dropped={}, trivial_bail={}, verbose_deps={}, dep_len_tiers={}, premerge={}, require_coprime_rel={})",
         max_deps_to_try,
         useful_deps.len(),
         useful_ge,
         useful_rand,
+        duplicate_expanded,
         trivial_bail,
         verbose_deps,
         format_dep_len_tiers(&dep_len_tiers),
@@ -926,25 +1368,83 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         dep_require_coprime_rel
     );
 
+    // Diversity-aware scheduler settings
+    let div_history_max = std::env::var("RUST_NFS_SQRT_DIVERSITY_HISTORY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(32);
+    let div_pool_size = std::env::var("RUST_NFS_SQRT_DIVERSITY_POOL")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(300);
+    let max_similarity_cutoff = std::env::var("RUST_NFS_SQRT_MAX_SIMILARITY")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(1.0); // 1.0 = disabled
+    let enable_sim_log = std::env::var("RUST_NFS_SQRT_LOG_SIMILARITY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+
+    struct FailedSupport {
+        support_hash: u64,
+        support: Vec<u32>,
+    }
+
+    let mut failed_trivial_supports: Vec<FailedSupport> = Vec::new();
+    let mut untried_pool: Vec<usize> = Vec::new();
+    let mut next_pool_cursor = 0usize;
     let mut deps_tried = 0usize;
     let mut deps_skipped_short = 0usize;
-    let deps_skipped_long: usize;
     let mut deps_skipped_non_coprime = 0usize;
-    let mut dep_candidate_tried = vec![false; useful_deps.len()];
+    let mut total_skipped_sim = 0usize;
 
+    let refill_pool = |pool: &mut Vec<usize>, next_cursor: &mut usize| {
+        while pool.len() < div_pool_size && *next_cursor < useful_deps.len() {
+            pool.push(*next_cursor);
+            *next_cursor += 1;
+        }
+    };
+    refill_pool(&mut untried_pool, &mut next_pool_cursor);
+
+    // Fast Jaccard similarity for two sorted, deduplicated slices
+    fn intersection_union_counts(a: &[u32], b: &[u32]) -> (usize, usize) {
+        if a.is_empty() && b.is_empty() {
+            return (0, 0);
+        }
+        let mut i = 0;
+        let mut j = 0;
+        let mut intersection = 0;
+        while i < a.len() && j < b.len() {
+            if a[i] < b[j] {
+                i += 1;
+            } else if a[i] > b[j] {
+                j += 1;
+            } else {
+                intersection += 1;
+                i += 1;
+                j += 1;
+            }
+        }
+        let union = a.len() + b.len() - intersection;
+        (intersection, union)
+    }
+
+    // Outer loop replaces dep_len_tiers: we pick the best dep out of all allowed by tiers
     for (tier_idx, tier_cap) in dep_len_tiers.iter().enumerate() {
         if deps_tried >= max_deps_to_try || result.factor.is_some() {
             break;
         }
 
-        let eligible_in_tier = useful_deps
-            .iter()
-            .enumerate()
-            .filter(|(cand_idx, (_, _, dep_len))| {
-                !dep_candidate_tried[*cand_idx]
-                    && tier_cap.map(|cap| *dep_len <= cap).unwrap_or(true)
-            })
-            .count();
+        // Only consider untried deps that fit exactly in this tier
+        let is_eligible = |idx: usize| {
+            let len = useful_deps[idx].expanded.len();
+            tier_cap.map(|cap| len <= cap).unwrap_or(true) &&
+            // If there's a previous tier, it must be STRICTLY LARGER than that previous cap,
+            // otherwise it would have been processed in the earlier tier.
+            (tier_idx == 0 || dep_len_tiers[tier_idx-1].map(|prev| len > prev).unwrap_or(false))
+        };
+
+        let eligible_count = untried_pool.iter().filter(|&&i| is_eligible(i)).count();
         eprintln!(
             "  sqrt: tier {}/{} cap={} eligible={}",
             tier_idx + 1,
@@ -952,41 +1452,160 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             tier_cap
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "none".to_string()),
-            eligible_in_tier
+            eligible_count
         );
-        if eligible_in_tier == 0 {
+        if eligible_count == 0 {
             continue;
         }
 
-        for (cand_idx, (_, dep, dep_len)) in useful_deps.iter().enumerate() {
-            if deps_tried >= max_deps_to_try || result.factor.is_some() {
-                break;
-            }
-            if dep_candidate_tried[cand_idx] {
-                continue;
-            }
-            if tier_cap.map(|cap| *dep_len > cap).unwrap_or(false) {
-                continue;
-            }
-            dep_candidate_tried[cand_idx] = true;
+        while deps_tried < max_deps_to_try && result.factor.is_none() {
+            // Pick next dependency from the pool inside this tier
+            let mut best_pool_idx = None;
+            let mut best_max_sim = 2.0;
+            let mut best_avg_sim = 2.0;
+            let mut best_len = usize::MAX;
+            let mut best_overlap = None;
 
-            if *dep_len < degree {
-                deps_skipped_short += 1;
-                continue;
+            if enable_sim_log {
+                eprintln!(
+                    "  sqrt: scheduler history size before selection = {}",
+                    failed_trivial_supports.len()
+                );
             }
 
-            let dep_expanded = expand_dependency_over_sets(dep, dep_sets_ref);
-            if dep_require_coprime_rel
-                && dep_expanded
-                    .iter()
-                    .any(|&ri| !rel_is_coprime.get(ri).copied().unwrap_or(false))
-            {
-                deps_skipped_non_coprime += 1;
+            for (p_idx, &cand_idx) in untried_pool.iter().enumerate() {
+                if !is_eligible(cand_idx) {
+                    continue;
+                }
+                let cand = &useful_deps[cand_idx];
+
+                if cand.expanded.len() < degree {
+                    deps_skipped_short += 1;
+                    continue; // Will stay in pool but ignored; could remove, but ignoring is fine
+                }
+
+                if dep_require_coprime_rel
+                    && cand
+                        .expanded
+                        .iter()
+                        .any(|&ri| !rel_is_coprime.get(ri).copied().unwrap_or(false))
+                {
+                    deps_skipped_non_coprime += 1;
+                    continue;
+                }
+
+                // Compute similarity to known trivial-gcd failures
+                let mut max_sim = 0.0f64;
+                let mut sum_sim = 0.0f64;
+                let mut overlap: Option<(usize, usize, usize, f64)> = None;
+                for (fail_idx, fail_supp) in failed_trivial_supports.iter().enumerate() {
+                    let (intersection, union) =
+                        intersection_union_counts(&cand.support, &fail_supp.support);
+                    let sim = if union == 0 {
+                        1.0
+                    } else {
+                        (intersection as f64) / (union as f64)
+                    };
+                    if sim > max_sim {
+                        max_sim = sim;
+                    }
+                    sum_sim += sim;
+                    if overlap
+                        .map(|(_, prev_intersection, prev_union, prev_sim)| {
+                            sim > prev_sim
+                                || ((sim - prev_sim).abs() < f64::EPSILON
+                                    && (intersection, union) > (prev_intersection, prev_union))
+                        })
+                        .unwrap_or(true)
+                    {
+                        overlap = Some((fail_idx, intersection, union, sim));
+                    }
+                }
+                let avg_sim = if failed_trivial_supports.is_empty() {
+                    0.0
+                } else {
+                    sum_sim / (failed_trivial_supports.len() as f64)
+                };
+
+                // Hard similarity cutoff (off by default)
+                if max_sim >= max_similarity_cutoff {
+                    // Mark to skip this completely without evaluating
+                    continue;
+                }
+
+                // Lexicographic selection:
+                // 1) Length band (already handled by sorting/tiers)
+                // 2) Max similarity (lower is better, bin into 5% groups)
+                // 3) Avg similarity
+                // 4) Length
+                let max_sim_band = (max_sim * 20.0_f64).floor() as u32;
+                let best_max_band = (best_max_sim * 20.0_f64).floor() as u32;
+
+                let is_better = match best_pool_idx {
+                    None => true,
+                    Some(_) => {
+                        if max_sim_band < best_max_band {
+                            true
+                        } else if max_sim_band > best_max_band {
+                            false
+                        } else if avg_sim < best_avg_sim - 0.01 {
+                            true
+                        } else if avg_sim > best_avg_sim + 0.01 {
+                            false
+                        } else {
+                            cand.expanded.len() < best_len
+                        }
+                    }
+                };
+
+                if is_better {
+                    best_pool_idx = Some(p_idx);
+                    best_max_sim = max_sim;
+                    best_avg_sim = avg_sim;
+                    best_len = cand.expanded.len();
+                    best_overlap = overlap;
+                }
+            }
+
+            // Exiting tier loop: no more eligible candidates in this tier
+            let p_idx = match best_pool_idx {
+                Some(idx) => idx,
+                None => break,
+            };
+
+            // Remove from pool
+            let cand_idx = untried_pool.swap_remove(p_idx);
+            refill_pool(&mut untried_pool, &mut next_pool_cursor);
+            let cand = &useful_deps[cand_idx];
+            let dep_expanded = cand.expanded.as_slice();
+
+            // Check exact cutoff again (it could have been skipped in the selection loop, but we want to count it)
+            if best_max_sim >= max_similarity_cutoff {
+                total_skipped_sim += 1;
                 continue;
             }
 
             let i = deps_tried;
             deps_tried += 1;
+
+            if enable_sim_log {
+                eprintln!(
+                    "  sqrt: attempt {} (id {}), weight={}, supp={}, hash={:016x}, max_sim={:.3}, avg_sim={:.3}",
+                    i + 1,
+                    cand.dep_idx,
+                    cand.expanded.len(),
+                    cand.support.len(),
+                    cand.support_hash,
+                    best_max_sim,
+                    best_avg_sim
+                );
+                if let Some((fail_idx, intersection, union, sim)) = best_overlap {
+                    eprintln!(
+                        "    overlap: best_fail_idx={}, intersection={}, union={}, sim={:.3}",
+                        fail_idx, intersection, union, sim
+                    );
+                }
+            }
 
             let (factor_opt, failure) = if i < verbose_deps {
                 gnfs::sqrt::extract_factor_verbose(
@@ -1008,12 +1627,16 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
 
             if let Some(factor) = factor_opt {
                 if Integer::from(n % &factor) == 0 && factor > 1 && factor < *n {
+                    if enable_sim_log {
+                        eprintln!("    -> result: FactorFound");
+                    }
                     result.factor = Some(factor.to_string());
                     result.sqrt_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
                     eprintln!(
-                        "  sqrt: factor found after {} deps in {:.0}ms: {}",
+                        "  sqrt: factor found after {} deps in {:.0}ms (max_sim={:.3}): {}",
                         deps_tried,
                         result.sqrt_ms,
+                        best_max_sim,
                         result.factor.as_ref().unwrap()
                     );
                     break;
@@ -1021,15 +1644,55 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             }
 
             match failure {
-                Some(gnfs::sqrt::FactorFailure::RationalNotSquare) => fail_rat_not_square += 1,
-                Some(gnfs::sqrt::FactorFailure::AlgebraicNotSquare) => fail_alg_not_square += 1,
-                Some(gnfs::sqrt::FactorFailure::TrivialGcd) => fail_trivial_gcd += 1,
+                Some(gnfs::sqrt::FactorFailure::RationalNotSquare) => {
+                    fail_rat_not_square += 1;
+                    if enable_sim_log {
+                        eprintln!("    -> result: RatNotSquare");
+                    }
+                }
+                Some(gnfs::sqrt::FactorFailure::AlgebraicNotSquare) => {
+                    fail_alg_not_square += 1;
+                    if enable_sim_log {
+                        eprintln!("    -> result: AlgNotSquare");
+                    }
+                }
+                Some(gnfs::sqrt::FactorFailure::TrivialGcd) => {
+                    fail_trivial_gcd += 1;
+                    if enable_sim_log {
+                        eprintln!("    -> result: TrivialGcd");
+                    }
+                    let duplicate_failure = failed_trivial_supports.iter().any(|failed| {
+                        failed.support_hash == cand.support_hash && failed.support == cand.support
+                    });
+                    if !duplicate_failure {
+                        let failed = FailedSupport {
+                            support_hash: cand.support_hash,
+                            support: cand.support.clone(),
+                        };
+                        if failed_trivial_supports.len() < div_history_max {
+                            failed_trivial_supports.push(failed);
+                        } else {
+                            // Keep 0..max-1, shift left, put new at end.
+                            failed_trivial_supports.rotate_left(1);
+                            if let Some(last) = failed_trivial_supports.last_mut() {
+                                *last = failed;
+                            }
+                        }
+                    }
+                    if enable_sim_log {
+                        eprintln!(
+                            "    failed_trivial_history now {} (added={}, hash={:016x})",
+                            failed_trivial_supports.len(),
+                            !duplicate_failure,
+                            cand.support_hash
+                        );
+                    }
+                }
                 None => {}
             }
 
-            // Early bail: if every tried dependency gives trivial gcd, this
-            // polynomial variant is likely degenerate for this N.
-            if deps_tried == trivial_bail
+            if trivial_bail > 0
+                && deps_tried == trivial_bail
                 && fail_trivial_gcd == trivial_bail
                 && fail_rat_not_square == 0
                 && fail_alg_not_square == 0
@@ -1042,11 +1705,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             }
         }
     }
-    deps_skipped_long = useful_deps
+
+    let deps_skipped_long = untried_pool
         .iter()
-        .enumerate()
-        .filter(|(cand_idx, (_, _, dep_len))| !dep_candidate_tried[*cand_idx] && *dep_len >= degree)
-        .count();
+        .filter(|&&i| useful_deps[i].expanded.len() >= degree)
+        .count()
+        + (next_pool_cursor..useful_deps.len())
+            .filter(|&i| useful_deps[i].expanded.len() >= degree)
+            .count();
 
     if result.factor.is_none() {
         result.sqrt_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
@@ -1054,15 +1720,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         result.sqrt_fail_alg_not_square = fail_alg_not_square;
         result.sqrt_fail_trivial_gcd = fail_trivial_gcd;
         eprintln!(
-            "  sqrt: no factor found in {:.0}ms (tried={}, skipped_short={}, skipped_long={}, skipped_non_coprime={}, rat_not_square={}, alg_not_square={}, trivial_gcd={})",
-            result.sqrt_ms,
-            deps_tried,
-            deps_skipped_short,
-            deps_skipped_long,
-            deps_skipped_non_coprime,
-            fail_rat_not_square,
-            fail_alg_not_square,
-            fail_trivial_gcd
+            "  sqrt: no factor found in {:.0}ms (tried={}, skipped_short={}, skipped_long={}, skipped_non_coprime={}, skipped_sim={}, rat_not_square={}, alg_not_square={}, trivial_gcd={})",
+            result.sqrt_ms, deps_tried, deps_skipped_short, deps_skipped_long, deps_skipped_non_coprime, total_skipped_sim, fail_rat_not_square, fail_alg_not_square, fail_trivial_gcd
         );
     } else {
         result.sqrt_fail_rat_not_square = fail_rat_not_square;
@@ -1081,6 +1740,157 @@ fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
         b = r;
     }
     a
+}
+
+fn fallback_result(n: &Integer, factor: Integer, total_ms: f64) -> NfsResult {
+    eprintln!(
+        "  fallback_rho: factor found in {:.0}ms (bits={}): {}",
+        total_ms,
+        n.significant_bits(),
+        factor
+    );
+    NfsResult {
+        n: n.to_string(),
+        factor: Some(factor.to_string()),
+        relations_found: 0,
+        relations_after_filter: 0,
+        matrix_rows: 0,
+        matrix_cols: 0,
+        dependencies_found: 0,
+        sieve_ms: 0.0,
+        filter_ms: 0.0,
+        la_ms: 0.0,
+        sqrt_ms: 0.0,
+        total_ms,
+        sqrt_fail_rat_not_square: 0,
+        sqrt_fail_alg_not_square: 0,
+        sqrt_fail_trivial_gcd: 0,
+        viability: ViabilityStats::default(),
+    }
+}
+
+fn try_pollard_rho_factor(n: &Integer) -> Option<(Integer, f64)> {
+    if *n <= 3 {
+        return None;
+    }
+    if n.is_even() {
+        return Some((Integer::from(2), 0.0));
+    }
+    if n.is_probably_prime(30) != rug::integer::IsPrime::No {
+        return None;
+    }
+    let rounds = std::env::var("RUST_NFS_FALLBACK_RHO_ROUNDS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(48u32);
+    let iter_limit = std::env::var("RUST_NFS_FALLBACK_RHO_ITERS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(500_000usize);
+
+    let start = std::time::Instant::now();
+    for round in 0..rounds {
+        let seed = 0x9E37_79B9_7F4A_7C15u64.wrapping_mul(round as u64 + 1);
+        if let Some(f) = pollard_rho_brent(n, seed, iter_limit) {
+            if f > 1 && f < *n && Integer::from(n % &f) == 0 {
+                return Some((f, start.elapsed().as_secs_f64() * 1000.0));
+            }
+        }
+    }
+    None
+}
+
+#[inline]
+fn lcg_next(state: &mut u64) -> u64 {
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    *state
+}
+
+fn sample_nontrivial_mod(n: &Integer, state: &mut u64) -> Integer {
+    if *n <= 5 {
+        return Integer::from(2);
+    }
+    let span = Integer::from(n - 3u32);
+    let v = Integer::from(lcg_next(state)) % &span;
+    v + 2u32
+}
+
+fn abs_diff(a: &Integer, b: &Integer) -> Integer {
+    if a >= b {
+        Integer::from(a - b)
+    } else {
+        Integer::from(b - a)
+    }
+}
+
+fn pollard_rho_brent(n: &Integer, seed: u64, iter_limit: usize) -> Option<Integer> {
+    if n.is_even() {
+        return Some(Integer::from(2));
+    }
+
+    let one = Integer::from(1);
+    let mut state = seed.wrapping_add(1);
+    let mut y = sample_nontrivial_mod(n, &mut state);
+    let c = sample_nontrivial_mod(n, &mut state);
+    let m = 64usize;
+    let mut g = Integer::from(1);
+    let mut r = 1usize;
+    let mut q = Integer::from(1);
+    let mut x = Integer::from(0);
+    let mut ys = Integer::from(0);
+    let mut iters = 0usize;
+
+    while g == one && iters < iter_limit {
+        let mut x = y.clone();
+        for _ in 0..r {
+            y = (Integer::from(&y * &y) + &c) % n;
+            iters += 1;
+            if iters >= iter_limit {
+                return None;
+            }
+        }
+        let mut k = 0usize;
+        while k < r && g == one && iters < iter_limit {
+            ys = y.clone();
+            let lim = m.min(r - k);
+            for _ in 0..lim {
+                y = (Integer::from(&y * &y) + &c) % n;
+                let d = abs_diff(&x, &y);
+                q = Integer::from(&q * d) % n;
+                iters += 1;
+                if iters >= iter_limit {
+                    return None;
+                }
+            }
+            g = n.clone().gcd(&q);
+            k += m;
+        }
+        r = r.saturating_mul(2);
+    }
+
+    if g == *n {
+        loop {
+            ys = (Integer::from(&ys * &ys) + &c) % n;
+            g = n.clone().gcd(&abs_diff(&x, &ys));
+            iters += 1;
+            if g > one {
+                break;
+            }
+            if iters >= iter_limit {
+                return None;
+            }
+        }
+    }
+
+    if g > one && g < *n {
+        Some(g)
+    } else {
+        None
+    }
 }
 
 fn full_count(relations: &[crate::relation::Relation]) -> usize {
@@ -1359,12 +2169,19 @@ fn build_matrix_from_sets_lp_resolved(
 }
 
 fn expand_dependency_over_sets(dep: &[usize], set_rows: &[Vec<usize>]) -> Vec<usize> {
-    let mut expanded: Vec<usize> = Vec::new();
+    let mut counts: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     for &set_idx in dep {
         if let Some(set) = set_rows.get(set_idx) {
-            expanded = sym_diff_sorted(&expanded, set);
+            for &item in set {
+                *counts.entry(item).or_insert(0) += 1;
+            }
         }
     }
+    let mut expanded: Vec<usize> = counts
+        .into_iter()
+        .filter_map(|(item, count)| if count % 2 != 0 { Some(item) } else { None })
+        .collect();
+    expanded.sort_unstable();
     expanded
 }
 
@@ -1776,10 +2593,14 @@ fn remap_hybrid(
     f_coeffs_big: &[Integer],
     m: u64,
     degree: usize,
-) -> (Vec<gnfs::types::Relation>, Vec<usize>) {
+) -> (Vec<gnfs::types::Relation>, Vec<usize>, RemapHybridStats) {
     let ignore_special_q = std::env::var("RUST_NFS_IGNORE_SPECIAL_Q_COLUMN")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let hd_residual_sample_limit = std::env::var("RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0usize);
     let prime_to_gnfs: HashMap<u64, usize> = gnfs_fb
         .primes
         .iter()
@@ -1789,8 +2610,7 @@ fn remap_hybrid(
 
     let mut result = Vec::with_capacity(relations.len());
     let mut source_indices = Vec::with_capacity(relations.len());
-    let mut skipped_unmapped = 0usize;
-    let mut skipped_invalid = 0usize;
+    let mut stats = RemapHybridStats::default();
 
     for (rel_idx, rel) in relations.iter().enumerate() {
         // Rational factors are already indexed by rat_fb and can be used as-is.
@@ -1800,13 +2620,13 @@ fn remap_hybrid(
         // exponents to gnfs flat (pair/HD) algebraic columns without re-factoring
         // the full norm (which can overflow u64 for c45).
         let mut alg_pair_factors: Vec<(u32, u8)> = Vec::new();
-        let mut valid = true;
+        let mut invalid_reason: Option<&str> = None;
 
         for &(alg_idx, total_exp) in &rel.algebraic_factors {
             let prime = match alg_fb.primes.get(alg_idx as usize) {
                 Some(&p) => p,
                 None => {
-                    valid = false;
+                    invalid_reason = Some("bad_fb_idx");
                     break;
                 }
             };
@@ -1814,8 +2634,8 @@ fn remap_hybrid(
             let gnfs_pi = match prime_to_gnfs.get(&prime) {
                 Some(&pi) => pi,
                 None => {
-                    skipped_unmapped += 1;
-                    valid = false;
+                    stats.skipped_unmapped += 1;
+                    invalid_reason = Some("unmapped");
                     break;
                 }
             };
@@ -1826,8 +2646,7 @@ fn remap_hybrid(
             let mut root_exp_sum = 0u8;
             for (root_idx, &r) in roots.iter().enumerate() {
                 let val_i128 = rel.a as i128 - rel.b as i128 * r as i128;
-                let raw_e = p_adic_val_i128(val_i128, prime);
-                let e = raw_e.min(total_exp.saturating_sub(root_exp_sum));
+                let e = p_adic_val_i128(val_i128, prime);
                 if e > 0 {
                     alg_pair_factors.push(((pair_base + root_idx) as u32, e));
                     root_exp_sum = root_exp_sum.saturating_add(e);
@@ -1837,8 +2656,22 @@ fn remap_hybrid(
             if root_exp_sum < total_exp {
                 let residual = total_exp - root_exp_sum;
                 let hd_degree = degree.saturating_sub(roots.len());
-                if hd_degree == 0 || (residual as usize) % hd_degree != 0 {
-                    valid = false;
+                let residual_divisible = hd_degree > 0 && (residual as usize) % hd_degree == 0;
+                if hd_degree == 0 || !residual_divisible {
+                    // Genuine ideal-decomposition inconsistency: the cofactored
+                    // v_p(F(a,b)) can't be split into first-degree + HD ideals.
+                    // Skip this relation.
+                    if stats.hd_residual_samples.len() < hd_residual_sample_limit {
+                        stats.hd_residual_samples.push(HdResidualSample {
+                            prime,
+                            total_exp,
+                            root_exp_sum,
+                            residual,
+                            hd_degree,
+                            residual_divisible,
+                        });
+                    }
+                    invalid_reason = Some("hd_residual");
                     break;
                 }
 
@@ -1849,15 +2682,22 @@ fn remap_hybrid(
                         alg_pair_factors.push((hd_flat_idx as u32, hd_exp));
                     }
                     None => {
-                        valid = false;
+                        invalid_reason = Some("hd_offset_missing");
                         break;
                     }
                 }
             }
         }
 
-        if !valid {
-            skipped_invalid += 1;
+        if let Some(reason) = invalid_reason {
+            match reason {
+                "bad_fb_idx" => stats.invalid_bad_fb_idx += 1,
+                "unmapped" => {}
+                "hd_residual" => stats.invalid_hd_residual += 1,
+                "hd_offset_missing" => stats.invalid_hd_offset_missing += 1,
+                "root_exp_zero" => stats.invalid_root_exp_zero += 1,
+                _ => {}
+            }
             continue;
         }
 
@@ -1893,7 +2733,7 @@ fn remap_hybrid(
                 match compute_alg_lp_ideal(rel.a, rel.b, rel.alg_cofactor) {
                     Some(v) => Some(v),
                     None => {
-                        skipped_invalid += 1;
+                        stats.invalid_legacy_lp += 1;
                         continue;
                     }
                 }
@@ -1926,18 +2766,35 @@ fn remap_hybrid(
         source_indices.push(rel_idx);
     }
 
-    let skipped = skipped_unmapped + skipped_invalid;
+    stats.kept_relations = result.len();
+    let skipped_invalid = stats.invalid_total();
+    let skipped = stats.skipped_total();
     if skipped > 0 {
         eprintln!(
             "  remap_hybrid: skipped {} of {} relations (unmapped={}, invalid={})",
             skipped,
             relations.len(),
-            skipped_unmapped,
+            stats.skipped_unmapped,
             skipped_invalid
         );
+        eprintln!(
+            "  remap_hybrid: invalid breakdown: bad_fb_idx={} hd_residual={} hd_offset_missing={} root_exp_zero={} legacy_lp={}",
+            stats.invalid_bad_fb_idx,
+            stats.invalid_hd_residual,
+            stats.invalid_hd_offset_missing,
+            stats.invalid_root_exp_zero,
+            stats.invalid_legacy_lp
+        );
+        if !stats.hd_residual_samples.is_empty() {
+            eprintln!(
+                "  remap_hybrid: hd_residual_samples={}",
+                serde_json::to_string(&stats.hd_residual_samples)
+                    .unwrap_or_else(|_| "[]".to_string())
+            );
+        }
     }
 
-    (result, source_indices)
+    (result, source_indices, stats)
 }
 
 /// Compute v_p(|val|) for an i128 integer.
@@ -1960,6 +2817,53 @@ fn p_adic_val_i128(val: i128, p: u64) -> u8 {
         }
     }
     e
+}
+
+/// Compute the multiplicity of root `r` as a root of polynomial `f(x) mod p`.
+/// This is the ramification index for the ideal (p, alpha - r).
+/// Works by repeatedly dividing f(x) by (x - r) mod p and checking if r
+/// is still a root of the quotient.
+fn root_multiplicity_mod_p(f_coeffs: &[Integer], r: u64, p: u64) -> usize {
+    if p < 2 || f_coeffs.is_empty() {
+        return 0;
+    }
+    let p128 = p as u128;
+    // Convert to residues mod p
+    let mut coeffs: Vec<u64> = f_coeffs
+        .iter()
+        .map(|c| {
+            let rem = c.mod_u(p as u32);
+            rem as u64
+        })
+        .collect();
+
+    let mut mult = 0usize;
+    loop {
+        // Check if r is a root of current polynomial
+        let mut val = 0u128;
+        let mut r_pow = 1u128;
+        for &c in &coeffs {
+            val = (val + c as u128 * r_pow) % p128;
+            r_pow = r_pow * r as u128 % p128;
+        }
+        if val != 0 {
+            break;
+        }
+        mult += 1;
+        if coeffs.len() <= 1 {
+            break;
+        }
+        // Divide by (x - r): synthetic division mod p
+        let deg = coeffs.len() - 1;
+        let mut quotient = vec![0u64; deg];
+        quotient[deg - 1] = coeffs[deg];
+        for i in (0..deg - 1).rev() {
+            quotient[i] =
+                ((coeffs[i + 1] as u128 + quotient[i + 1] as u128 * r as u128) % p128) as u64;
+        }
+        coeffs = quotient;
+    }
+    mult.max(1) // At least 1 if we were called with a valid root
 }
 
 /// Convert an algebraic-side large prime p into the ideal identifier `(p, r)`.
