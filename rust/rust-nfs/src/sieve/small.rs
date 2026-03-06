@@ -21,6 +21,9 @@ pub struct SmallSieveEntry {
     pub p: u64,
     /// Quantized log2(p) to subtract from sieve cells.
     pub logp: u8,
+    /// For projective roots in q-lattice coordinates, every cell in each
+    /// `projective_row_period`-th row is hit. Zero means an affine root.
+    pub projective_row_period: u64,
     /// Transformed root in q-lattice coordinates.
     ///
     /// For row `j`, the first hit position (mod `p`) is `(root_i * j_unsigned) mod p`.
@@ -40,9 +43,12 @@ pub struct SmallSieveEntry {
 ///
 /// and `root_i = -(a1 - m*b1) * (a0 - m*b0)^{-1} mod p`.
 ///
-/// If the denominator is 0 mod `p`, the prime has a projective root (all positions
-/// in the row are hit, or none are). These are skipped (returned with `p = 0` as
-/// a sentinel that callers can filter).
+/// If the denominator is 0 mod `p`, the transformed root is projective in
+/// `(i,j)` coordinates. For prime `p`, that means either:
+/// - every cell in rows `j ≡ 0 (mod p)` is hit, or
+/// - every cell in every row is hit (the degenerate `numer == 0` case).
+///
+/// We keep those entries so the small sieve does not silently drop them.
 pub fn precompute_small_sieve_rat(
     primes: &[u64],
     log_p: &[u8],
@@ -63,9 +69,17 @@ pub fn precompute_small_sieve_rat(
         let denom =
             ((qlat.a0 as i128 - (m as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
 
+        let numer =
+            ((-(qlat.a1 as i128 - (m as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
+
         if denom == 0 {
-            // Projective root: skip this prime for the line sieve.
-            // The caller can handle these separately if needed.
+            let projective_row_period = if numer == 0 { 1 } else { p };
+            entries.push(SmallSieveEntry {
+                p,
+                logp: log_p[idx],
+                projective_row_period,
+                root_i: 0,
+            });
             continue;
         }
 
@@ -74,15 +88,12 @@ pub fn precompute_small_sieve_rat(
             None => continue, // gcd(denom, p) > 1 — shouldn't happen for prime p
         };
 
-        // Compute -(a1 - m*b1) mod p
-        let numer =
-            ((-(qlat.a1 as i128 - (m as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
-
         let root_i = ((numer as u128 * inv as u128) % p as u128) as u64;
 
         entries.push(SmallSieveEntry {
             p,
             logp: log_p[idx],
+            projective_row_period: 0,
             root_i,
         });
     }
@@ -122,7 +133,17 @@ pub fn precompute_small_sieve_alg(
             let denom =
                 ((qlat.a0 as i128 - (r as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
 
+            let numer =
+                ((-(qlat.a1 as i128 - (r as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
+
             if denom == 0 {
+                let projective_row_period = if numer == 0 { 1 } else { p };
+                entries.push(SmallSieveEntry {
+                    p,
+                    logp: log_p[idx],
+                    projective_row_period,
+                    root_i: 0,
+                });
                 continue;
             }
 
@@ -131,14 +152,12 @@ pub fn precompute_small_sieve_alg(
                 None => continue,
             };
 
-            let numer =
-                ((-(qlat.a1 as i128 - (r as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
-
             let root_i = ((numer as u128 * inv as u128) % p as u128) as u64;
 
             entries.push(SmallSieveEntry {
                 p,
                 logp: log_p[idx],
+                projective_row_period: 0,
                 root_i,
             });
         }
@@ -168,11 +187,18 @@ pub fn small_sieve_region(
     let half_i = sieve_width / 2;
 
     for entry in entries {
-        let p = entry.p as usize;
-        if p == 0 {
+        let logp = entry.logp;
+        let row_period = entry.projective_row_period;
+        if row_period != 0 {
+            if j.rem_euclid(row_period as i32) == 0 {
+                for cell in sieve.iter_mut() {
+                    *cell = cell.saturating_sub(logp);
+                }
+            }
             continue;
         }
-        let logp = entry.logp;
+
+        let p = entry.p as usize;
 
         // Compute first hit position in the full sieve row.
         // j can be negative; we need (root_i * j) mod p with proper unsigned handling.
@@ -256,6 +282,7 @@ mod tests {
         let entries = vec![SmallSieveEntry {
             p: 5,
             logp: 10,
+            projective_row_period: 0,
             root_i: 2,
         }];
         let mut sieve = vec![100u8; 30];
@@ -297,6 +324,7 @@ mod tests {
         let entries = vec![SmallSieveEntry {
             p: 5,
             logp: 10,
+            projective_row_period: 0,
             root_i: 0,
         }];
         let mut sieve = vec![100u8; 10];
@@ -318,6 +346,7 @@ mod tests {
         let entries = vec![SmallSieveEntry {
             p: 3,
             logp: 200,
+            projective_row_period: 0,
             root_i: 0,
         }];
         let mut sieve = vec![50u8; 10];
@@ -336,11 +365,13 @@ mod tests {
             SmallSieveEntry {
                 p: 3,
                 logp: 10,
+                projective_row_period: 0,
                 root_i: 0,
             },
             SmallSieveEntry {
                 p: 5,
                 logp: 15,
+                projective_row_period: 0,
                 root_i: 0,
             },
         ];
@@ -366,6 +397,7 @@ mod tests {
         let entries = vec![SmallSieveEntry {
             p: 7,
             logp: 10,
+            projective_row_period: 0,
             root_i: 3,
         }];
         let mut sieve = vec![100u8; 21];
@@ -381,19 +413,52 @@ mod tests {
 
     #[test]
     fn test_precompute_small_sieve_rat_projective() {
-        // When a0 - m*b0 === 0 (mod p), the root is projective and should be skipped.
-        // a0=5, b0=1, m=5: denom = 5 - 5*1 = 0 (mod 5)
+        // When a0 - m*b0 === 0 (mod p), the transformed root is projective.
+        // Here numer != 0, so hits occur on every p-th row.
+        let qlat = QLattice {
+            a0: 5,
+            b0: 1,
+            a1: 1,
+            b1: 0,
+        };
+        let primes = vec![5u64];
+        let log_p = vec![7u8];
+        let entries = precompute_small_sieve_rat(&primes, &log_p, 5, &qlat);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].p, 5);
+        assert_eq!(entries[0].projective_row_period, 5);
+    }
+
+    #[test]
+    fn test_precompute_small_sieve_rat_projective_all_rows() {
+        // Degenerate projective case with numer == 0: every row is hit.
         let qlat = QLattice {
             a0: 5,
             b0: 1,
             a1: 0,
             b1: 1,
         };
-        let primes = vec![5u64];
-        let log_p = vec![7u8];
-        let entries = precompute_small_sieve_rat(&primes, &log_p, 5, &qlat);
-        // p=5 should be skipped (projective root)
-        assert_eq!(entries.len(), 0);
+        let entries = precompute_small_sieve_rat(&[5u64], &[7u8], 5, &qlat);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].projective_row_period, 1);
+    }
+
+    #[test]
+    fn test_small_sieve_region_projective_hits_full_row() {
+        let entries = vec![SmallSieveEntry {
+            p: 5,
+            logp: 10,
+            projective_row_period: 5,
+            root_i: 0,
+        }];
+
+        let mut sieve = vec![100u8; 8];
+        small_sieve_region(&mut sieve, &entries, 10, 0, 8, 8);
+        assert!(sieve.iter().all(|&v| v == 90));
+
+        let mut other_row = vec![100u8; 8];
+        small_sieve_region(&mut other_row, &entries, 11, 0, 8, 8);
+        assert!(other_row.iter().all(|&v| v == 100));
     }
 
     #[test]

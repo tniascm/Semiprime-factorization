@@ -70,11 +70,16 @@ pub struct ViabilityStats {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HdResidualSample {
+    pub a: i64,
+    pub b: u64,
     pub prime: u64,
+    pub roots: Vec<u64>,
+    pub root_multiplicities: Vec<u8>,
     pub total_exp: u8,
     pub root_exp_sum: u8,
     pub residual: u8,
     pub hd_degree: usize,
+    pub has_repeated_root: bool,
     pub residual_divisible: bool,
 }
 
@@ -2673,12 +2678,21 @@ fn remap_hybrid(
                     // v_p(F(a,b)) can't be split into first-degree + HD ideals.
                     // Skip this relation.
                     if stats.hd_residual_samples.len() < hd_residual_sample_limit {
+                        let root_multiplicities: Vec<u8> = roots
+                            .iter()
+                            .map(|&r| root_multiplicity_mod_p(f_coeffs_big, r, prime) as u8)
+                            .collect();
                         stats.hd_residual_samples.push(HdResidualSample {
+                            a: rel.a,
+                            b: rel.b,
                             prime,
+                            roots: roots.clone(),
+                            root_multiplicities: root_multiplicities.clone(),
                             total_exp,
                             root_exp_sum,
                             residual,
                             hd_degree,
+                            has_repeated_root: root_multiplicities.iter().any(|&m| m > 1),
                             residual_divisible,
                         });
                     }
