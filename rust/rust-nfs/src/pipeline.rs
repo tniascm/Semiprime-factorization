@@ -55,8 +55,17 @@ pub struct ViabilityStats {
     pub active_dense_rat_cols: usize,
     pub active_dense_alg_cols: usize,
     pub active_special_q_cols: usize,
+    pub active_qc_cols: usize,
     pub matrix_rows_pre_compact: usize,
     pub matrix_cols_pre_compact: usize,
+    pub pre_prune_singleton_cols_total: usize,
+    pub pre_prune_singleton_special_q_cols: usize,
+    pub pre_prune_singleton_rat_lp_cols: usize,
+    pub pre_prune_singleton_alg_lp_cols: usize,
+    pub pre_prune_singleton_sign_cols: usize,
+    pub pre_prune_singleton_rat_fb_cols: usize,
+    pub pre_prune_singleton_alg_dense_cols: usize,
+    pub pre_prune_singleton_qc_cols: usize,
     pub zero_cols_dropped_initial: usize,
     pub singleton_rows_dropped: usize,
     pub zero_cols_dropped_post_singleton: usize,
@@ -111,7 +120,7 @@ impl RemapHybridStats {
 
 fn log_viability_summary(stats: &ViabilityStats) {
     eprintln!(
-        "  viability: filtered={} remap_valid={} set_rows(filtered={}, remapped={}, recomputed={}, matrix={}) dense_cols(rat={},alg={},sq={}) final={}x{} rows_minus_cols={} deps={} hd_residual={}",
+        "  viability: filtered={} remap_valid={} set_rows(filtered={}, remapped={}, recomputed={}, matrix={}) dense_cols(rat={},alg={},sq={},qc={}) final={}x{} rows_minus_cols={} deps={} hd_residual={}",
         stats.filtered_relations,
         stats.remap_valid_relations,
         stats.set_rows_filtered,
@@ -121,11 +130,23 @@ fn log_viability_summary(stats: &ViabilityStats) {
         stats.active_dense_rat_cols,
         stats.active_dense_alg_cols,
         stats.active_special_q_cols,
+        stats.active_qc_cols,
         stats.final_rows,
         stats.final_cols,
         stats.rows_minus_cols,
         stats.deps_found,
         stats.remap_invalid_hd_residual
+    );
+    eprintln!(
+        "  viability_singletons: total={} sq={} rat_lp={} alg_lp={} sign={} rat_fb={} alg_dense={} qc={}",
+        stats.pre_prune_singleton_cols_total,
+        stats.pre_prune_singleton_special_q_cols,
+        stats.pre_prune_singleton_rat_lp_cols,
+        stats.pre_prune_singleton_alg_lp_cols,
+        stats.pre_prune_singleton_sign_cols,
+        stats.pre_prune_singleton_rat_fb_cols,
+        stats.pre_prune_singleton_alg_dense_cols,
+        stats.pre_prune_singleton_qc_cols
     );
     eprintln!(
         "  viability_json: {}",
@@ -973,7 +994,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     // Use rat_fb.primes.len() as rational FB size (complete rational FB).
     let rat_fb_size = rat_fb.primes.len();
 
-    // Matrix density diagnostics: how many dense FB columns are actually used.
+    // Relation-level density diagnostics before set-row construction.
     let mut used_rat_cols: HashSet<usize> = HashSet::new();
     let mut used_alg_cols: HashSet<usize> = HashSet::new();
     for rel in &gnfs_rels {
@@ -985,19 +1006,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         }
     }
     eprintln!(
-        "  LA: active dense cols rat={}/{} alg={}/{}",
+        "  LA: relation-level dense refs rat={}/{} alg={}/{}",
         used_rat_cols.len(),
         rat_fb_size,
         used_alg_cols.len(),
         alg_pairs + alg_hd + alg_bad
     );
-    result.viability.active_dense_rat_cols = used_rat_cols.len();
-    result.viability.active_dense_alg_cols = used_alg_cols.len();
-    result.viability.active_special_q_cols = gnfs_rels
-        .iter()
-        .filter_map(|r| r.special_q)
-        .collect::<HashSet<_>>()
-        .len();
 
     let sparse_premerge = std::env::var("RUST_NFS_SPARSE_PREMERGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -1083,12 +1097,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         );
     }
 
-    let (matrix_raw, ncols_raw, mut row_sources, matrix_mode, matrix_set_rows): (
+    let (matrix_raw, ncols_raw, mut row_sources, matrix_mode, matrix_set_rows, matrix_layout): (
         Vec<gnfs::types::BitRow>,
         usize,
         Vec<Vec<usize>>,
         &'static str,
         usize,
+        MatrixColumnLayout,
     ) = if partial_merge_active {
         let (matrix, nc, set_rows) = build_matrix_from_sets_lp_resolved(
             &gnfs_rels,
@@ -1111,7 +1126,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                 .len()
         );
         let set_count = set_rows.len();
-        (matrix, nc, set_rows, "partial_merge_2lp", set_count)
+        let layout = build_lp_resolved_matrix_layout(
+            &gnfs_rels,
+            rat_fb_size,
+            alg_pairs + alg_hd + alg_bad,
+            quad_chars.primes.len(),
+        );
+        (matrix, nc, set_rows, "partial_merge_2lp", set_count, layout)
     } else if sparse_premerge {
         let sparse_zero_sets = build_sparse_zero_sets(&gnfs_rels, premerge_max_sets);
         let set_count = sparse_zero_sets.len();
@@ -1135,7 +1156,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             &sparse_zero_sets,
             rat_fb_size,
             alg_pairs,
-            alg_hd,
+            alg_hd + alg_bad,
             &quad_chars,
         );
         eprintln!(
@@ -1145,12 +1166,18 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             quad_chars.primes.len()
         );
         let set_count = dense_set_rows.len();
+        let layout = build_dense_only_matrix_layout(
+            rat_fb_size,
+            alg_pairs + alg_hd + alg_bad,
+            quad_chars.primes.len(),
+        );
         (
             dense_matrix,
             dense_ncols,
             dense_set_rows,
             "sparse_premerge",
             set_count,
+            layout,
         )
     } else {
         let (m, nc) = gnfs::linalg::build_matrix(
@@ -1167,12 +1194,44 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             quad_chars.primes.len()
         );
         let row_sources = (0..m.len()).map(|i| vec![i]).collect();
-        (m, nc, row_sources, "direct", 0usize)
+        let layout = build_direct_matrix_layout(
+            &gnfs_rels,
+            rat_fb_size,
+            alg_pairs + alg_hd + alg_bad,
+            quad_chars.primes.len(),
+        );
+        (m, nc, row_sources, "direct", 0usize, layout)
     };
     result.viability.matrix_mode = matrix_mode.to_string();
     result.viability.set_rows_matrix = matrix_set_rows;
     result.viability.matrix_rows_pre_compact = matrix_raw.len();
     result.viability.matrix_cols_pre_compact = ncols_raw;
+    let matrix_col_stats =
+        collect_matrix_column_weight_stats(&matrix_raw, ncols_raw, &matrix_layout);
+    eprintln!(
+        "  LA: active matrix cols sq={} rat_fb={} alg_dense={} qc={} singleton total={} sq={} rat_fb={} alg_dense={} qc={}",
+        matrix_col_stats.active_special_q_cols,
+        matrix_col_stats.active_rat_fb_cols,
+        matrix_col_stats.active_alg_dense_cols,
+        matrix_col_stats.active_qc_cols,
+        matrix_col_stats.singleton_cols_total,
+        matrix_col_stats.singleton_special_q_cols,
+        matrix_col_stats.singleton_rat_fb_cols,
+        matrix_col_stats.singleton_alg_dense_cols,
+        matrix_col_stats.singleton_qc_cols
+    );
+    result.viability.active_dense_rat_cols = matrix_col_stats.active_rat_fb_cols;
+    result.viability.active_dense_alg_cols = matrix_col_stats.active_alg_dense_cols;
+    result.viability.active_special_q_cols = matrix_col_stats.active_special_q_cols;
+    result.viability.active_qc_cols = matrix_col_stats.active_qc_cols;
+    result.viability.pre_prune_singleton_cols_total = matrix_col_stats.singleton_cols_total;
+    result.viability.pre_prune_singleton_special_q_cols = matrix_col_stats.singleton_special_q_cols;
+    result.viability.pre_prune_singleton_rat_lp_cols = matrix_col_stats.singleton_rat_lp_cols;
+    result.viability.pre_prune_singleton_alg_lp_cols = matrix_col_stats.singleton_alg_lp_cols;
+    result.viability.pre_prune_singleton_sign_cols = matrix_col_stats.singleton_sign_cols;
+    result.viability.pre_prune_singleton_rat_fb_cols = matrix_col_stats.singleton_rat_fb_cols;
+    result.viability.pre_prune_singleton_alg_dense_cols = matrix_col_stats.singleton_alg_dense_cols;
+    result.viability.pre_prune_singleton_qc_cols = matrix_col_stats.singleton_qc_cols;
     let (mut matrix, mut ncols, dropped_cols) = if compact_zero_cols {
         compact_zero_columns(matrix_raw, ncols_raw)
     } else {
@@ -2346,6 +2405,220 @@ struct MatrixShapeSummary {
     final_rows: usize,
     final_cols: usize,
     rows_minus_cols: isize,
+}
+
+#[derive(Debug, Clone)]
+struct MatrixColumnLayout {
+    sq: std::ops::Range<usize>,
+    rat_lp: std::ops::Range<usize>,
+    alg_lp: std::ops::Range<usize>,
+    sign_rat: Option<usize>,
+    rat_fb: std::ops::Range<usize>,
+    sign_alg: Option<usize>,
+    alg_dense: std::ops::Range<usize>,
+    qc: std::ops::Range<usize>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct MatrixColumnWeightStats {
+    active_special_q_cols: usize,
+    active_rat_lp_cols: usize,
+    active_alg_lp_cols: usize,
+    active_sign_cols: usize,
+    active_rat_fb_cols: usize,
+    active_alg_dense_cols: usize,
+    active_qc_cols: usize,
+    singleton_cols_total: usize,
+    singleton_special_q_cols: usize,
+    singleton_rat_lp_cols: usize,
+    singleton_alg_lp_cols: usize,
+    singleton_sign_cols: usize,
+    singleton_rat_fb_cols: usize,
+    singleton_alg_dense_cols: usize,
+    singleton_qc_cols: usize,
+}
+
+fn build_direct_matrix_layout(
+    rels: &[gnfs::types::Relation],
+    rat_fb_size: usize,
+    alg_dense_count: usize,
+    n_qc: usize,
+) -> MatrixColumnLayout {
+    let n_sq = rels
+        .iter()
+        .filter_map(|r| r.special_q)
+        .collect::<HashSet<_>>()
+        .len();
+    let n_rat_lp = rels
+        .iter()
+        .filter_map(|r| r.rat_lp)
+        .collect::<HashSet<_>>()
+        .len();
+    let n_alg_lp = rels
+        .iter()
+        .filter_map(|r| r.alg_lp)
+        .collect::<HashSet<_>>()
+        .len();
+    let sq = 0..n_sq;
+    let rat_lp = sq.end..(sq.end + n_rat_lp);
+    let alg_lp = rat_lp.end..(rat_lp.end + n_alg_lp);
+    let sign_rat = Some(alg_lp.end);
+    let rat_fb = (alg_lp.end + 1)..(alg_lp.end + 1 + rat_fb_size);
+    let sign_alg = Some(rat_fb.end);
+    let alg_dense = (rat_fb.end + 1)..(rat_fb.end + 1 + alg_dense_count);
+    let qc = alg_dense.end..(alg_dense.end + n_qc);
+    MatrixColumnLayout {
+        sq,
+        rat_lp,
+        alg_lp,
+        sign_rat,
+        rat_fb,
+        sign_alg,
+        alg_dense,
+        qc,
+    }
+}
+
+fn build_lp_resolved_matrix_layout(
+    rels: &[gnfs::types::Relation],
+    rat_fb_size: usize,
+    alg_dense_count: usize,
+    n_qc: usize,
+) -> MatrixColumnLayout {
+    let n_sq = rels
+        .iter()
+        .filter_map(|r| r.special_q)
+        .collect::<HashSet<_>>()
+        .len();
+    let sq = 0..n_sq;
+    let rat_lp = sq.end..sq.end;
+    let alg_lp = sq.end..sq.end;
+    let sign_rat = Some(sq.end);
+    let rat_fb = (sq.end + 1)..(sq.end + 1 + rat_fb_size);
+    let sign_alg = Some(rat_fb.end);
+    let alg_dense = (rat_fb.end + 1)..(rat_fb.end + 1 + alg_dense_count);
+    let qc = alg_dense.end..(alg_dense.end + n_qc);
+    MatrixColumnLayout {
+        sq,
+        rat_lp,
+        alg_lp,
+        sign_rat,
+        rat_fb,
+        sign_alg,
+        alg_dense,
+        qc,
+    }
+}
+
+fn build_dense_only_matrix_layout(
+    rat_fb_size: usize,
+    alg_dense_count: usize,
+    n_qc: usize,
+) -> MatrixColumnLayout {
+    let sq = 0..0;
+    let rat_lp = 0..0;
+    let alg_lp = 0..0;
+    let sign_rat = Some(0);
+    let rat_fb = 1..(1 + rat_fb_size);
+    let sign_alg = Some(rat_fb.end);
+    let alg_dense = (rat_fb.end + 1)..(rat_fb.end + 1 + alg_dense_count);
+    let qc = alg_dense.end..(alg_dense.end + n_qc);
+    MatrixColumnLayout {
+        sq,
+        rat_lp,
+        alg_lp,
+        sign_rat,
+        rat_fb,
+        sign_alg,
+        alg_dense,
+        qc,
+    }
+}
+
+fn collect_matrix_column_weight_stats(
+    rows: &[gnfs::types::BitRow],
+    ncols: usize,
+    layout: &MatrixColumnLayout,
+) -> MatrixColumnWeightStats {
+    let mut col_counts = vec![0usize; ncols];
+    for row in rows {
+        for (wi, &word_mask) in row.bits.iter().enumerate() {
+            let mut w = word_mask;
+            while w != 0 {
+                let bit = w.trailing_zeros() as usize;
+                let col = wi * 64 + bit;
+                if col < ncols {
+                    col_counts[col] += 1;
+                }
+                w &= w - 1;
+            }
+        }
+    }
+
+    let mut stats = MatrixColumnWeightStats::default();
+    for (col, &count) in col_counts.iter().enumerate() {
+        if count == 0 {
+            continue;
+        }
+        let is_singleton = count == 1;
+        if layout.sq.contains(&col) {
+            stats.active_special_q_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_special_q_cols += 1;
+            }
+            continue;
+        }
+        if layout.rat_lp.contains(&col) {
+            stats.active_rat_lp_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_rat_lp_cols += 1;
+            }
+            continue;
+        }
+        if layout.alg_lp.contains(&col) {
+            stats.active_alg_lp_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_alg_lp_cols += 1;
+            }
+            continue;
+        }
+        if layout.sign_rat == Some(col) || layout.sign_alg == Some(col) {
+            stats.active_sign_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_sign_cols += 1;
+            }
+            continue;
+        }
+        if layout.rat_fb.contains(&col) {
+            stats.active_rat_fb_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_rat_fb_cols += 1;
+            }
+            continue;
+        }
+        if layout.alg_dense.contains(&col) {
+            stats.active_alg_dense_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_alg_dense_cols += 1;
+            }
+            continue;
+        }
+        if layout.qc.contains(&col) {
+            stats.active_qc_cols += 1;
+            if is_singleton {
+                stats.singleton_cols_total += 1;
+                stats.singleton_qc_cols += 1;
+            }
+        }
+    }
+
+    stats
 }
 
 fn summarize_matrix_shape(
