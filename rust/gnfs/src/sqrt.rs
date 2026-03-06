@@ -1,6 +1,6 @@
-use rug::Integer;
-use rug::ops::Pow;
 use crate::types::Relation;
+use rug::ops::Pow;
+use rug::Integer;
 
 /// Compute the rational square root for a dependency.
 ///
@@ -168,7 +168,9 @@ fn nf_multiply_mod(a: &[Integer], b: &[Integer], f: &[Integer], m: &Integer) -> 
     product.truncate(d);
     for c in &mut product {
         *c %= m;
-        if *c < 0 { *c += m; }
+        if *c < 0 {
+            *c += m;
+        }
     }
     product
 }
@@ -206,8 +208,12 @@ fn find_irreducible_prime(f_coeffs: &[i64], bound: u64, prefer_3mod4: bool) -> O
     let primes = sieve_primes(bound);
 
     for &p in &primes {
-        if p < 3 { continue; }
-        if prefer_3mod4 && p % 4 != 3 { continue; }
+        if p < 3 {
+            continue;
+        }
+        if prefer_3mod4 && p % 4 != 3 {
+            continue;
+        }
 
         let roots = find_polynomial_roots_mod_p(f_coeffs, p);
         if d <= 3 {
@@ -241,7 +247,9 @@ fn algebraic_sqrt_newton(
     use crate::arith::*;
 
     let d = f_coeffs.len() - 1;
-    if d < 2 { return vec![]; }
+    if d < 2 {
+        return vec![];
+    }
 
     let f_i64: Option<Vec<i64>> = f_coeffs.iter().map(|c| c.to_i64()).collect();
     let f_i64 = match f_i64 {
@@ -258,14 +266,18 @@ fn algebraic_sqrt_newton(
     let p_int = Integer::from(p);
 
     // Reduce f and P to F_p coefficients
-    let f_fp: Vec<u64> = f_i64.iter().map(|&c| {
-        ((c as i128).rem_euclid(p as i128)) as u64
-    }).collect();
-    let p_fp: Vec<u64> = product.iter().map(|c| {
-        let r = Integer::from(c % &p_int);
-        let r = if r < 0 { r + &p_int } else { r };
-        r.to_u64().unwrap_or(0)
-    }).collect();
+    let f_fp: Vec<u64> = f_i64
+        .iter()
+        .map(|&c| ((c as i128).rem_euclid(p as i128)) as u64)
+        .collect();
+    let p_fp: Vec<u64> = product
+        .iter()
+        .map(|c| {
+            let r = Integer::from(c % &p_int);
+            let r = if r < 0 { r + &p_int } else { r };
+            r.to_u64().unwrap_or(0)
+        })
+        .collect();
 
     // Check P ≠ 0 in F_{p^d}
     if p_fp.iter().all(|&c| c == 0) {
@@ -305,8 +317,16 @@ fn algebraic_sqrt_newton(
 
     // Determine target modulus: need modulus > 2 * ||γ||_∞
     // Use conservative bound: ||γ||_∞ ≤ sqrt(||P||_∞) * (||f||_∞ + 1)^d * d²
-    let max_p_coeff = product.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
-    let max_f_coeff = f_coeffs.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
+    let max_p_coeff = product
+        .iter()
+        .map(|c| c.clone().abs())
+        .max()
+        .unwrap_or(Integer::from(1));
+    let max_f_coeff = f_coeffs
+        .iter()
+        .map(|c| c.clone().abs())
+        .max()
+        .unwrap_or(Integer::from(1));
     let sqrt_max_p = Integer::from(max_p_coeff.sqrt_ref());
     let f_amplification = Integer::from(&max_f_coeff + 1).pow(d as u32) * (d * d) as u64;
     let target = Integer::from(&sqrt_max_p * &f_amplification) * 4 + 4;
@@ -318,16 +338,26 @@ fn algebraic_sqrt_newton(
         let new_mod = Integer::from(&modulus * &modulus);
 
         // Reduce f and P mod new_mod
-        let f_mod: Vec<Integer> = f_coeffs.iter().map(|c| {
-            let mut r = Integer::from(c % &new_mod);
-            if r < 0 { r += &new_mod; }
-            r
-        }).collect();
-        let p_mod: Vec<Integer> = product.iter().map(|c| {
-            let mut r = Integer::from(c % &new_mod);
-            if r < 0 { r += &new_mod; }
-            r
-        }).collect();
+        let f_mod: Vec<Integer> = f_coeffs
+            .iter()
+            .map(|c| {
+                let mut r = Integer::from(c % &new_mod);
+                if r < 0 {
+                    r += &new_mod;
+                }
+                r
+            })
+            .collect();
+        let p_mod: Vec<Integer> = product
+            .iter()
+            .map(|c| {
+                let mut r = Integer::from(c % &new_mod);
+                if r < 0 {
+                    r += &new_mod;
+                }
+                r
+            })
+            .collect();
 
         // Newton step: R_{k+1} = R_k · (3 - P · R_k²) / 2 mod (f, new_mod)
 
@@ -338,10 +368,13 @@ fn algebraic_sqrt_newton(
         let pr_sq = nf_multiply_mod(&p_mod, &r_sq, &f_mod, &new_mod);
 
         // 3 - P · R_k² mod (f, new_mod)
-        let mut three_minus: Vec<Integer> = pr_sq.iter().map(|c| {
-            let neg = Integer::from(&new_mod - c) % &new_mod;
-            neg
-        }).collect();
+        let mut three_minus: Vec<Integer> = pr_sq
+            .iter()
+            .map(|c| {
+                let neg = Integer::from(&new_mod - c) % &new_mod;
+                neg
+            })
+            .collect();
         three_minus[0] = Integer::from(&three_minus[0] + 3) % &new_mod;
 
         // R_k · (3 - P · R_k²) mod (f, new_mod)
@@ -353,11 +386,16 @@ fn algebraic_sqrt_newton(
             None => break,
         };
 
-        r_k = r_times.iter().map(|c| {
-            let mut r = Integer::from(c * &two_inv) % &new_mod;
-            if r < 0 { r += &new_mod; }
-            r
-        }).collect();
+        r_k = r_times
+            .iter()
+            .map(|c| {
+                let mut r = Integer::from(c * &two_inv) % &new_mod;
+                if r < 0 {
+                    r += &new_mod;
+                }
+                r
+            })
+            .collect();
 
         modulus = new_mod;
 
@@ -367,16 +405,26 @@ fn algebraic_sqrt_newton(
     }
 
     // Recover γ = P · R_K mod (f, modulus), then center-lift and verify
-    let f_final: Vec<Integer> = f_coeffs.iter().map(|c| {
-        let mut r = Integer::from(c % &modulus);
-        if r < 0 { r += &modulus; }
-        r
-    }).collect();
-    let p_final: Vec<Integer> = product.iter().map(|c| {
-        let mut r = Integer::from(c % &modulus);
-        if r < 0 { r += &modulus; }
-        r
-    }).collect();
+    let f_final: Vec<Integer> = f_coeffs
+        .iter()
+        .map(|c| {
+            let mut r = Integer::from(c % &modulus);
+            if r < 0 {
+                r += &modulus;
+            }
+            r
+        })
+        .collect();
+    let p_final: Vec<Integer> = product
+        .iter()
+        .map(|c| {
+            let mut r = Integer::from(c % &modulus);
+            if r < 0 {
+                r += &modulus;
+            }
+            r
+        })
+        .collect();
 
     let gamma_mod = nf_multiply_mod(&p_final, &r_k, &f_final, &modulus);
 
@@ -385,19 +433,22 @@ fn algebraic_sqrt_newton(
 
     // Try both signs: γ and -γ
     for sign in 0..2u8 {
-        let gamma_exact: Vec<Integer> = gamma_mod.iter().map(|c| {
-            let val = if sign == 0 {
-                c.clone()
-            } else {
-                Integer::from(&modulus - c) % &modulus
-            };
-            // Center-lift to [-modulus/2, modulus/2)
-            if val > half {
-                val - &modulus
-            } else {
-                val
-            }
-        }).collect();
+        let gamma_exact: Vec<Integer> = gamma_mod
+            .iter()
+            .map(|c| {
+                let val = if sign == 0 {
+                    c.clone()
+                } else {
+                    Integer::from(&modulus - c) % &modulus
+                };
+                // Center-lift to [-modulus/2, modulus/2)
+                if val > half {
+                    val - &modulus
+                } else {
+                    val
+                }
+            })
+            .collect();
 
         // Verify γ² = P exactly in Z[α]/(f)
         let gamma_sq = nf_multiply(&gamma_exact, &gamma_exact, f_coeffs);
@@ -416,9 +467,14 @@ fn algebraic_sqrt_newton(
             m_pow *= m;
         }
         y = Integer::from(&y % n);
-        if y < 0 { y += n; }
+        if y < 0 {
+            y += n;
+        }
 
-        if !results.iter().any(|(existing_y, _): &(Integer, Vec<Integer>)| existing_y == &y) {
+        if !results
+            .iter()
+            .any(|(existing_y, _): &(Integer, Vec<Integer>)| existing_y == &y)
+        {
             results.push((y, gamma_exact));
         }
     }
@@ -464,9 +520,13 @@ fn algebraic_square_roots(
     let mut valid_primes: Vec<(u64, Vec<u64>)> = Vec::new();
 
     for &p in &primes {
-        if p < 3 { continue; }
+        if p < 3 {
+            continue;
+        }
         let roots = find_polynomial_roots_mod_p(&f_i64, p);
-        if roots.len() != d { continue; }
+        if roots.len() != d {
+            continue;
+        }
         let all_nonzero_qr = roots.iter().all(|&r| {
             let r_int = Integer::from(r);
             let p_int = Integer::from(p);
@@ -486,12 +546,22 @@ fn algebraic_square_roots(
     }
 
     // Step 2: Adaptive Hensel lifting with early exit
-    let max_p = product.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(1));
+    let max_p = product
+        .iter()
+        .map(|c| c.clone().abs())
+        .max()
+        .unwrap_or(Integer::from(1));
     let min_target: Integer = Integer::from(max_p.sqrt_ref()) * 2 + 2;
     let max_target: Integer = Integer::from(&max_p * 2) + 2;
 
     let mut results: Vec<(Integer, Vec<Integer>)> = Vec::new();
     let max_lift_steps = 50;
+    // Debug knob: accept Hensel/CRT-consistent roots even when center-lifted
+    // coefficients do not square to `product` exactly in Z[alpha]/(f).
+    // This mirrors CADO's more permissive CRT-based exploration path.
+    let relax_exact = std::env::var("GNFS_SQRT_RELAX_EXACT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     // Try each valid prime ℓ — different primes give different sign relationships
     // between γ(m) mod p and γ(m) mod q, breaking the systematic trivial-gcd problem.
@@ -508,7 +578,10 @@ fn algebraic_square_roots(
             let val = eval_poly_int(product, r, &modulus);
             match tonelli_shanks_int(&val, &modulus) {
                 Some(s) => sqrts.push(s),
-                None => { init_ok = false; break; }
+                None => {
+                    init_ok = false;
+                    break;
+                }
             }
         }
         if !init_ok {
@@ -528,7 +601,10 @@ fn algebraic_square_roots(
                 let fpr = eval_poly_deriv_int(f_coeffs, &roots[i], &new_mod);
                 let fpr_inv = match mod_inverse_int(&fpr, &new_mod) {
                     Some(inv) => inv,
-                    None => { lift_ok = false; break; }
+                    None => {
+                        lift_ok = false;
+                        break;
+                    }
                 };
                 let correction = Integer::from(&fr * &fpr_inv) % &new_mod;
                 roots[i] = Integer::from(&roots[i] - &correction) % &new_mod;
@@ -536,7 +612,9 @@ fn algebraic_square_roots(
                     roots[i] += &new_mod;
                 }
             }
-            if !lift_ok { break; }
+            if !lift_ok {
+                break;
+            }
 
             // Lift sqrt values
             for i in 0..d {
@@ -549,7 +627,10 @@ fn algebraic_square_roots(
                 let two_s = Integer::from(&sqrts[i] * 2) % &new_mod;
                 let two_s_inv = match mod_inverse_int(&two_s, &new_mod) {
                     Some(inv) => inv,
-                    None => { lift_ok = false; break; }
+                    None => {
+                        lift_ok = false;
+                        break;
+                    }
                 };
                 let delta = Integer::from(&residual * &two_s_inv) % &new_mod;
                 sqrts[i] = Integer::from(&sqrts[i] + &delta) % &new_mod;
@@ -557,7 +638,9 @@ fn algebraic_square_roots(
                     sqrts[i] += &new_mod;
                 }
             }
-            if !lift_ok { break; }
+            if !lift_ok {
+                break;
+            }
 
             modulus = new_mod;
 
@@ -576,7 +659,9 @@ fn algebraic_square_roots(
                     break;
                 }
             }
-            if !hensel_ok { break; }
+            if !hensel_ok {
+                break;
+            }
 
             // Try all 2^d sign combinations
             let half = Integer::from(&modulus / 2);
@@ -612,7 +697,7 @@ fn algebraic_square_roots(
                 let gamma_sq = nf_multiply(&gamma_exact, &gamma_exact, f_coeffs);
                 let exact_match = gamma_sq.len() == product.len()
                     && gamma_sq.iter().zip(product.iter()).all(|(a, b)| a == b);
-                if !exact_match {
+                if !exact_match && !relax_exact {
                     continue;
                 }
 
@@ -684,7 +769,20 @@ pub fn extract_factor_diagnostic(
     m: &Integer,
     n: &Integer,
 ) -> (Option<Integer>, Option<FactorFailure>) {
-    extract_factor_inner(relations, dependency, f_coeffs, m, n, false)
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, None)
+}
+
+/// Like extract_factor_diagnostic but uses stored factorizations for fast
+/// rational sqrt computation (avoids exact BigInt product).
+pub fn extract_factor_diagnostic_fast(
+    relations: &[Relation],
+    dependency: &[usize],
+    f_coeffs: &[Integer],
+    m: &Integer,
+    n: &Integer,
+    rat_fb_primes: &[u64],
+) -> (Option<Integer>, Option<FactorFailure>) {
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, Some(rat_fb_primes))
 }
 
 /// Verbose version that prints detailed diagnostics for debugging.
@@ -695,7 +793,7 @@ pub fn extract_factor_verbose(
     m: &Integer,
     n: &Integer,
 ) -> (Option<Integer>, Option<FactorFailure>) {
-    extract_factor_inner(relations, dependency, f_coeffs, m, n, true)
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, true, None)
 }
 
 fn extract_factor_inner(
@@ -705,60 +803,218 @@ fn extract_factor_inner(
     m: &Integer,
     n: &Integer,
     verbose: bool,
+    rat_fb_primes: Option<&[u64]>,
 ) -> (Option<Integer>, Option<FactorFailure>) {
     let d = f_coeffs.len() - 1;
 
-    // Step 1: Compute product of rational norms (a - b*m) and take sqrt
-    let mut rat_product = Integer::from(1);
-    for &idx in dependency {
-        let rel = &relations[idx];
-        let norm = Integer::from(rel.a) - Integer::from(rel.b) * m;
-        rat_product *= norm;
-    }
+    // Step 1: Compute rational square root x such that x² ≡ ∏(a_i - b_i*m) mod N.
+    let x = if let Some(fb_primes) = rat_fb_primes {
+        // Fast path: compute x = ∏ p^{e/2} mod N using stored factorizations.
+        // For large primes (LPs) not in the factor base, we recover them by
+        // dividing |a - b*m| by all known FB factors. The remainder is the LP
+        // product, which we accumulate mod N and take its sqrt via even exponents.
+        //
+        // This avoids computing the exact ~500K-bit product entirely; all
+        // arithmetic stays mod N (~100 bits).
+        use std::collections::HashMap;
+        let mut exponents: HashMap<u64, u32> = HashMap::new();
+        let mut sign_count = 0u32;
+        // Accumulate LP cofactors mod N. Since each LP appears an even number
+        // of times in the dependency (by GF(2) construction), their product
+        // mod N is a perfect square mod N. We track it as a running product.
+        let mut cofactor_product = Integer::from(1);
 
-    let sign = if rat_product < 0 {
-        rat_product = -rat_product;
-        true
-    } else {
-        false
-    };
-    let rat_sqrt = rat_product.clone().sqrt();
+        for &idx in dependency {
+            let rel = &relations[idx];
+            if rel.rational_sign_negative {
+                sign_count += 1;
+            }
+            for &(fb_idx, exp) in &rel.rational_factors {
+                let prime = fb_primes[fb_idx as usize];
+                *exponents.entry(prime).or_insert(0) += exp as u32;
+            }
 
-    if Integer::from(&rat_sqrt * &rat_sqrt) != rat_product {
-        if verbose {
-            eprintln!("[diag] Rational product is NOT a perfect square (sign={})", sign);
+            // Recover LP cofactor by dividing |norm| by known FB factors.
+            let mut cofactor = (Integer::from(rel.a) - Integer::from(rel.b) * m).abs();
+            for &(fb_idx, exp) in &rel.rational_factors {
+                let prime = Integer::from(fb_primes[fb_idx as usize]);
+                for _ in 0..exp {
+                    cofactor /= &prime;
+                }
+            }
+            // cofactor is now the product of large primes (typically 1 or a single LP)
+            if cofactor > 1 {
+                cofactor_product *= &cofactor;
+                cofactor_product %= n;
+            }
         }
-        return (None, Some(FactorFailure::RationalNotSquare));
-    }
 
-    let x = if sign {
-        let neg = Integer::from(-&rat_sqrt);
-        let rem = Integer::from(&neg % n);
-        Integer::from(&rem + n) % n
+        // Verify sign parity (should hold by GF(2) construction)
+        if sign_count % 2 != 0 {
+            if verbose {
+                eprintln!("[diag] Rational sign count is odd ({})", sign_count);
+            }
+            return (None, Some(FactorFailure::RationalNotSquare));
+        }
+
+        // Verify FB exponents are even
+        for (&p, &e) in &exponents {
+            if e % 2 != 0 {
+                if verbose {
+                    eprintln!("[diag] Rational exponent for prime {} is odd ({})", p, e);
+                }
+                return (None, Some(FactorFailure::RationalNotSquare));
+            }
+        }
+
+        // Compute x = (∏ p^{e/2} mod N) × (sqrt of cofactor_product mod N)
+        // For the FB part: straightforward modular exponentiation
+        let mut x = Integer::from(1);
+        for (&p, &e) in &exponents {
+            let half_e = e / 2;
+            if half_e > 0 {
+                let p_int = Integer::from(p);
+                let pe = p_int.pow_mod(&Integer::from(half_e), n).unwrap();
+                x = Integer::from(&x * &pe) % n;
+            }
+        }
+
+        // For the cofactor part: we know the cofactor_product is a perfect square
+        // mod N. Its sqrt mod N requires factoring N (circular!). Fall back to
+        // computing the exact cofactor product and taking its integer sqrt.
+        // This is fast when the cofactor product is small (sparse LPs).
+        let mut cofactor_exact = Integer::from(1);
+        for &idx in dependency {
+            let rel = &relations[idx];
+            let mut cofactor = (Integer::from(rel.a) - Integer::from(rel.b) * m).abs();
+            for &(fb_idx, exp) in &rel.rational_factors {
+                let prime = Integer::from(fb_primes[fb_idx as usize]);
+                for _ in 0..exp {
+                    cofactor /= &prime;
+                }
+            }
+            if cofactor > 1 {
+                cofactor_exact *= cofactor;
+            }
+        }
+        if cofactor_exact > 1 {
+            let cofactor_sqrt = cofactor_exact.clone().sqrt();
+            if Integer::from(&cofactor_sqrt * &cofactor_sqrt) != cofactor_exact {
+                return (None, Some(FactorFailure::RationalNotSquare));
+            }
+            x = Integer::from(&x * &(Integer::from(&cofactor_sqrt % n))) % n;
+        }
+
+        x
     } else {
-        Integer::from(&rat_sqrt % n)
+        // Original path: compute exact product, take exact sqrt, reduce mod N
+        let mut rat_product = Integer::from(1);
+        for &idx in dependency {
+            let rel = &relations[idx];
+            let norm = Integer::from(rel.a) - Integer::from(rel.b) * m;
+            rat_product *= norm;
+        }
+
+        let sign = if rat_product < 0 {
+            rat_product = -rat_product;
+            true
+        } else {
+            false
+        };
+        let rat_sqrt = rat_product.clone().sqrt();
+
+        if Integer::from(&rat_sqrt * &rat_sqrt) != rat_product {
+            if verbose {
+                eprintln!(
+                    "[diag] Rational product is NOT a perfect square (sign={})",
+                    sign
+                );
+            }
+            return (None, Some(FactorFailure::RationalNotSquare));
+        }
+
+        if sign {
+            let neg = Integer::from(-&rat_sqrt);
+            let rem = Integer::from(&neg % n);
+            Integer::from(&rem + n) % n
+        } else {
+            Integer::from(&rat_sqrt % n)
+        }
     };
 
     if verbose {
-        eprintln!("[diag] Rational: sign={}, sqrt={} bits, x={}", sign, rat_sqrt.significant_bits(), &x);
+        eprintln!(
+            "[diag] Rational: x={} ({} bits)",
+            &x,
+            x.significant_bits()
+        );
     }
 
     // Step 2: Compute exact product of algebraic elements in Z[α]/(f)
-    // NO mod N reduction — we need exact coefficients for Couveignes' method
-    let mut alg_product = vec![Integer::from(0); d];
-    alg_product[0] = Integer::from(1);
+    // NO mod N reduction — we need exact coefficients for Couveignes' method.
+    // Use a product-tree approach: multiply pairs, then pairs of pairs, etc.
+    // This keeps intermediate products balanced in size, dramatically reducing
+    // total work from O(n² M(n)) to O(n log²(n) M(n)).
+    let nf_elem_mode = std::env::var("GNFS_NF_ELEMENT_MODE").unwrap_or_else(|_| "a_minus_ba".to_string());
 
-    for &idx in dependency {
+    let mut elements: Vec<Vec<Integer>> = dependency.iter().map(|&idx| {
         let rel = &relations[idx];
-        let elem = nf_element_from_ab(rel.a, rel.b, d);
-        alg_product = nf_multiply(&alg_product, &elem, f_coeffs);
+        match nf_elem_mode.as_str() {
+            "b_alpha_minus_a" => {
+                let mut v = vec![Integer::from(0); d];
+                v[0] = Integer::from(-rel.a);
+                if d > 1 { v[1] = Integer::from(rel.b); }
+                v
+            }
+            "a_plus_ba" => {
+                let mut v = vec![Integer::from(0); d];
+                v[0] = Integer::from(rel.a);
+                if d > 1 { v[1] = Integer::from(rel.b); }
+                v
+            }
+            _ => nf_element_from_ab(rel.a, rel.b, d),
+        }
+    }).collect();
+
+    // Product tree: repeatedly multiply adjacent pairs until one element remains.
+    while elements.len() > 1 {
+        let mut next = Vec::with_capacity((elements.len() + 1) / 2);
+        let mut i = 0;
+        while i + 1 < elements.len() {
+            next.push(nf_multiply(&elements[i], &elements[i + 1], f_coeffs));
+            i += 2;
+        }
+        if i < elements.len() {
+            next.push(elements.pop().unwrap());
+        }
+        elements = next;
     }
 
+    let alg_product = elements.into_iter().next().unwrap_or_else(|| {
+        let mut v = vec![Integer::from(0); d];
+        v[0] = Integer::from(1);
+        v
+    });
+
     if verbose {
-        let max_coeff = alg_product.iter().map(|c| c.clone().abs()).max().unwrap_or(Integer::from(0));
-        eprintln!("[diag] Algebraic product: {} coeffs, max_coeff={} bits", alg_product.len(), max_coeff.significant_bits());
+        eprintln!("[diag] NF element mode: {}", nf_elem_mode);
+        let max_coeff = alg_product
+            .iter()
+            .map(|c| c.clone().abs())
+            .max()
+            .unwrap_or(Integer::from(0));
+        eprintln!(
+            "[diag] Algebraic product: {} coeffs, max_coeff={} bits",
+            alg_product.len(),
+            max_coeff.significant_bits()
+        );
         for (i, c) in alg_product.iter().enumerate() {
-            eprintln!("[diag]   P[{}] = {} ({} bits)", i, c, c.clone().abs().significant_bits());
+            eprintln!(
+                "[diag]   P[{}] = {} ({} bits)",
+                i,
+                c,
+                c.clone().abs().significant_bits()
+            );
         }
         // Check P(m) = rational product?
         let mut pm = Integer::from(0);
@@ -767,10 +1023,24 @@ fn extract_factor_inner(
             pm += Integer::from(c * &m_pow);
             m_pow *= m;
         }
-        let rat_product_signed = if sign { -Integer::from(&rat_sqrt * &rat_sqrt) } else { Integer::from(&rat_sqrt * &rat_sqrt) };
-        eprintln!("[diag] P(m) = {} ({} bits)", &pm, pm.clone().abs().significant_bits());
-        eprintln!("[diag] R (rational product) = {} ({} bits)", &rat_product_signed, rat_product_signed.clone().abs().significant_bits());
-        eprintln!("[diag] P(m) == R? {}", pm == rat_product_signed);
+        // Recompute rational product for verification (only in verbose mode)
+        let mut rat_product_check = Integer::from(1);
+        for &idx in dependency {
+            let rel = &relations[idx];
+            let norm = Integer::from(rel.a) - Integer::from(rel.b) * m;
+            rat_product_check *= norm;
+        }
+        eprintln!(
+            "[diag] P(m) = {} ({} bits)",
+            &pm,
+            pm.clone().abs().significant_bits()
+        );
+        eprintln!(
+            "[diag] R (rational product) = {} ({} bits)",
+            &rat_product_check,
+            rat_product_check.clone().abs().significant_bits()
+        );
+        eprintln!("[diag] P(m) == R? {}", pm == rat_product_check);
     }
 
     // Step 3: Compute algebraic square root(s)
@@ -779,14 +1049,17 @@ fn extract_factor_inner(
     // so γ and -γ are the only square roots. Both Newton and Couveignes
     // will find the same element.
     let mut y_values = algebraic_sqrt_newton(&alg_product, f_coeffs, m, n);
-
-    if y_values.is_empty() {
+    let mut used_newton = false;
+    if !y_values.is_empty() {
+        used_newton = true;
+        if verbose {
+            eprintln!("[diag] Newton sqrt succeeded ({} root(s))", y_values.len());
+        }
+    } else {
         if verbose {
             eprintln!("[diag] Newton sqrt found nothing, trying Couveignes...");
         }
         y_values = algebraic_square_roots(&alg_product, f_coeffs, m, n);
-    } else if verbose {
-        eprintln!("[diag] Newton sqrt succeeded ({} root(s))", y_values.len());
     }
 
     if y_values.is_empty() {
@@ -796,17 +1069,121 @@ fn extract_factor_inner(
         return (None, Some(FactorFailure::AlgebraicNotSquare));
     }
 
-    // Step 4: Try gcd(x ± y, N) for each algebraic square root
-    for (y, _) in &y_values {
-        let diff = Integer::from(Integer::from(&x - y) + n) % n;
-        let g = n.clone().gcd(&diff);
-        if g > 1 && g < *n {
-            return (Some(g), None);
+    // Step 4: Try gcd(x ± y, N) for each algebraic square root.
+    // Optional fallback: if Newton roots are all trivial, try Couveignes roots
+    // only when explicitly enabled (it is much slower).
+    let try_neg_m = std::env::var("GNFS_TRY_NEG_M")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let try_gcds = |ys: &[(Integer, Vec<Integer>)]| -> Option<Integer> {
+        for (yi, (y, gamma_coeffs)) in ys.iter().enumerate() {
+            let diff = Integer::from(Integer::from(&x - y) + n) % n;
+            let g_diff = n.clone().gcd(&diff);
+            if verbose {
+                eprintln!(
+                    "[diag] y#{}: y_bits={}, gcd(x-y)={}, gcd(x+y)=pending",
+                    yi,
+                    y.significant_bits(),
+                    g_diff
+                );
+            }
+            if g_diff > 1 && g_diff < *n {
+                if verbose {
+                    eprintln!("[diag] nontrivial via gcd(x-y): {}", g_diff);
+                }
+                return Some(g_diff);
+            }
+            let sum = Integer::from(&x + y) % n;
+            let g_sum = n.clone().gcd(&sum);
+            if verbose {
+                eprintln!(
+                    "[diag] y#{}: y_bits={}, gcd(x-y)={}, gcd(x+y)={}",
+                    yi,
+                    y.significant_bits(),
+                    g_diff,
+                    g_sum
+                );
+            }
+            if g_sum > 1 && g_sum < *n {
+                if verbose {
+                    eprintln!("[diag] nontrivial via gcd(x+y): {}", g_sum);
+                }
+                return Some(g_sum);
+            }
+
+            // Debug fallback: also test evaluation at -m to catch sign convention
+            // mismatches between relation construction and sqrt evaluation.
+            if try_neg_m {
+                let mut y_neg = Integer::from(0);
+                let mut m_pow = Integer::from(1);
+                for (ci, c) in gamma_coeffs.iter().enumerate() {
+                    if ci % 2 == 0 {
+                        y_neg += Integer::from(c * &m_pow);
+                    } else {
+                        y_neg -= Integer::from(c * &m_pow);
+                    }
+                    m_pow *= m;
+                }
+                y_neg %= n;
+                if y_neg < 0 {
+                    y_neg += n;
+                }
+                let diff_neg = Integer::from(Integer::from(&x - &y_neg) + n) % n;
+                let g_diff_neg = n.clone().gcd(&diff_neg);
+                if verbose {
+                    eprintln!(
+                        "[diag] y#{}(-m): y_bits={}, gcd(x-y_neg)={}",
+                        yi,
+                        y_neg.significant_bits(),
+                        g_diff_neg
+                    );
+                }
+                if g_diff_neg > 1 && g_diff_neg < *n {
+                    if verbose {
+                        eprintln!("[diag] nontrivial via gcd(x-y_neg): {}", g_diff_neg);
+                    }
+                    return Some(g_diff_neg);
+                }
+                let sum_neg = Integer::from(&x + &y_neg) % n;
+                let g_sum_neg = n.clone().gcd(&sum_neg);
+                if verbose {
+                    eprintln!(
+                        "[diag] y#{}(-m): y_bits={}, gcd(x+y_neg)={}",
+                        yi,
+                        y_neg.significant_bits(),
+                        g_sum_neg
+                    );
+                }
+                if g_sum_neg > 1 && g_sum_neg < *n {
+                    if verbose {
+                        eprintln!("[diag] nontrivial via gcd(x+y_neg): {}", g_sum_neg);
+                    }
+                    return Some(g_sum_neg);
+                }
+            }
         }
-        let sum = Integer::from(&x + y) % n;
-        let g = n.clone().gcd(&sum);
-        if g > 1 && g < *n {
-            return (Some(g), None);
+        None
+    };
+
+    if let Some(g) = try_gcds(&y_values) {
+        return (Some(g), None);
+    }
+
+    // For irreducible f, Z[α]/(f) is an integral domain so γ is unique up to
+    // sign. Newton already tries both signs; Couveignes cannot find new roots.
+    // Disabled by default to avoid ~800ms/dep wasted on redundant computation.
+    let try_couveignes_on_trivial = std::env::var("GNFS_TRY_COUVEIGNES_ON_TRIVIAL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if used_newton && try_couveignes_on_trivial {
+        if verbose {
+            eprintln!("[diag] Newton roots gave only trivial gcd; trying Couveignes roots...");
+        }
+        let alt_y = algebraic_square_roots(&alg_product, f_coeffs, m, n);
+        if !alt_y.is_empty() {
+            if let Some(g) = try_gcds(&alt_y) {
+                return (Some(g), None);
+            }
         }
     }
 
@@ -816,17 +1193,20 @@ fn extract_factor_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rug::Integer;
     use crate::types::Relation;
+    use rug::Integer;
 
     fn make_test_relation(a: i64, b: u64) -> Relation {
         Relation {
-            a, b,
+            a,
+            b,
             rational_factors: vec![],
             algebraic_factors: vec![],
             rational_sign_negative: false,
             algebraic_sign_negative: false,
             special_q: None,
+            rat_lp: None,
+            alg_lp: None,
         }
     }
 
@@ -867,10 +1247,10 @@ mod tests {
     #[test]
     fn test_full_factor_extraction_small() {
         use crate::arith::select_quad_char_primes;
-        use crate::polyselect::select_base_m;
-        use crate::sieve::{build_factor_base, line_sieve, poly_coeffs_to_i64};
-        use crate::relation::collect_smooth_relations;
         use crate::linalg::{build_matrix, find_dependencies};
+        use crate::polyselect::select_base_m;
+        use crate::relation::collect_smooth_relations;
+        use crate::sieve::{build_factor_base, line_sieve, poly_coeffs_to_i64};
 
         let n = Integer::from(8051u64);
         let poly = select_base_m(&n, 3);
@@ -882,7 +1262,10 @@ mod tests {
         let (rels, _) = collect_smooth_relations(&hits, &fb, 1 << 16, 3);
 
         if rels.len() < fb.primes.len() + 2 {
-            eprintln!("Not enough relations ({}) for matrix. Skipping.", rels.len());
+            eprintln!(
+                "Not enough relations ({}) for matrix. Skipping.",
+                rels.len()
+            );
             return;
         }
 
@@ -914,7 +1297,10 @@ mod tests {
         // Test that Newton sqrt correctly finds sqrt of a known perfect square in Z[x]/(f)
         // Use f(x) = x^3 + 2x + 1 (monic degree 3)
         let f = vec![
-            Integer::from(1), Integer::from(2), Integer::from(0), Integer::from(1),
+            Integer::from(1),
+            Integer::from(2),
+            Integer::from(0),
+            Integer::from(1),
         ];
         // gamma = [3, 1, -2] → gamma² in Z[x]/(f) is our "product"
         let gamma = vec![Integer::from(3), Integer::from(1), Integer::from(-2)];
@@ -924,7 +1310,10 @@ mod tests {
         let n = Integer::from(100003); // arbitrary odd number for testing
 
         let results = algebraic_sqrt_newton(&product, &f, &m, &n);
-        assert!(!results.is_empty(), "Newton sqrt should find root of a known perfect square");
+        assert!(
+            !results.is_empty(),
+            "Newton sqrt should find root of a known perfect square"
+        );
 
         // Verify: one of the results should be ±γ(m) mod N
         let mut gamma_at_m = Integer::from(0);
@@ -934,10 +1323,16 @@ mod tests {
             m_pow *= &m;
         }
         let expected_y = Integer::from(&gamma_at_m % &n);
-        let expected_y = if expected_y < 0 { expected_y + &n } else { expected_y };
+        let expected_y = if expected_y < 0 {
+            expected_y + &n
+        } else {
+            expected_y
+        };
         let expected_neg = Integer::from(&n - &expected_y);
 
-        let found = results.iter().any(|(y, _)| *y == expected_y || *y == expected_neg);
+        let found = results
+            .iter()
+            .any(|(y, _)| *y == expected_y || *y == expected_neg);
         assert!(found, "Newton sqrt should return γ(m) mod N or -γ(m) mod N");
     }
 
@@ -951,7 +1346,11 @@ mod tests {
         assert!(p % 4 == 3, "Should be ≡ 3 mod 4");
         // Verify: f should have no roots mod p
         let roots = crate::arith::find_polynomial_roots_mod_p(&f, p);
-        assert!(roots.is_empty(), "f should be irreducible (no roots) mod {}", p);
+        assert!(
+            roots.is_empty(),
+            "f should be irreducible (no roots) mod {}",
+            p
+        );
     }
 
     #[test]
