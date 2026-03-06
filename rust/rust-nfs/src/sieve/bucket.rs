@@ -92,10 +92,6 @@ impl BucketArray {
     ///
     /// # Panics
     ///
-    /// Panics if `bucket >= n_buckets` or if the bucket's pre-allocated capacity
-    /// is exhausted. In a production NFS implementation the capacity would be
-    /// grown dynamically; for now a clear panic message aids tuning.
-    #[inline(always)]
     /// Push a bucket update. Hot path — inlined with unchecked indexing in release.
     ///
     /// # Safety invariant
