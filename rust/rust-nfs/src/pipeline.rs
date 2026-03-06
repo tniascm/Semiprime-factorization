@@ -326,8 +326,10 @@ impl RunLogger {
             "RUST_NFS_ADAPTIVE_RAW_STEP": std::env::var("RUST_NFS_ADAPTIVE_RAW_STEP").ok(),
             "RUST_NFS_ADAPTIVE_USE_MATRIX": std::env::var("RUST_NFS_ADAPTIVE_USE_MATRIX").ok(),
             "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": std::env::var("RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO").ok(),
+            "RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP": std::env::var("RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP").ok(),
             "RUST_NFS_MAX_RAW_RELS": std::env::var("RUST_NFS_MAX_RAW_RELS").ok(),
             "RUST_NFS_SQ_BATCH_SIZE": std::env::var("RUST_NFS_SQ_BATCH_SIZE").ok(),
+            "RUST_NFS_SQ_ROOT_CACHE_WINDOWS": std::env::var("RUST_NFS_SQ_ROOT_CACHE_WINDOWS").ok(),
             "RUST_NFS_NORM_BLOCK": std::env::var("RUST_NFS_NORM_BLOCK").ok(),
             "RUST_NFS_MAX_Q_WINDOWS": std::env::var("RUST_NFS_MAX_Q_WINDOWS").ok(),
             "RUST_NFS_OVR_LIM0": std::env::var("RUST_NFS_OVR_LIM0").ok(),
@@ -574,14 +576,23 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let rat_coeffs = vec![-(m as i64), 1i64];
     let rat_fb = crate::factorbase::FactorBase::new(&rat_coeffs, params.lim0, 1.442);
     let alg_fb = crate::factorbase::FactorBase::new_roots_only(&f_coeffs_i64, params.lim1, 1.442);
-    // Build a separate root lookup table for special-q primes above lim1
-    // so we get fast root lookups without inflating the sieve FB.
-    let max_q_windows_est = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
+    let max_q_windows = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0);
+    // Build an optional root lookup table for special-q primes above lim1.
+    // By default this is only prebuilt when the q-window horizon is explicit,
+    // which avoids doing large startup work for runs that stop much earlier.
+    let sq_root_cache_windows = std::env::var("RUST_NFS_SQ_ROOT_CACHE_WINDOWS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(200);
-    let sq_upper = params.qmin + max_q_windows_est * params.qrange + params.qrange;
-    let sq_root_cache: HashMap<u64, Vec<u64>> = if sq_upper > params.lim1 {
+        .filter(|&v| v > 0)
+        .or_else(|| max_q_windows.map(|v| v as u64));
+    let sq_root_cache_upper =
+        sq_root_cache_windows.map(|windows| params.qmin + windows * params.qrange + params.qrange);
+    let sq_root_cache: HashMap<u64, Vec<u64>> = if let Some(sq_upper) =
+        sq_root_cache_upper.filter(|&upper| upper > params.lim1)
+    {
         let sq_fb = crate::factorbase::FactorBase::new_roots_only(&f_coeffs_i64, sq_upper, 1.442);
         sq_fb
             .primes
@@ -593,6 +604,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     } else {
         HashMap::new()
     };
+    if !sq_root_cache.is_empty() {
+        if let Some(upper) = sq_root_cache_upper {
+            eprintln!(
+                "  sieve: prebuilt special-q root cache for {} primes up to {}",
+                sq_root_cache.len(),
+                upper
+            );
+        }
+    }
     let mut all_sieve_relations = Vec::new();
     let mut total_sieve_ms = 0.0;
     let mut total_survivors = 0;
@@ -603,11 +623,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     let mut total_bucket_setup_ms = 0.0;
     let mut total_region_scan_ms = 0.0;
     let mut total_cofactor_ms = 0.0;
-
-    let max_q_windows = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v > 0);
 
     let require_coprime_ab = std::env::var("RUST_NFS_REQUIRE_COPRIME_AB")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -620,6 +635,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(200_000usize);
+    let special_q_premerge = std::env::var("RUST_NFS_SPECIAL_Q_PREMERGE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     let mut window = 0usize;
     let mut final_filtered = Vec::new();
@@ -660,6 +678,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     } else {
         0
     };
+    let adaptive_matrix_probe_step = std::env::var("RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or_else(|| (est_dense_cols / 20).max(250usize));
     let rel_target_mult = std::env::var("RUST_NFS_REL_TARGET_MULT")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
@@ -710,6 +733,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0);
+    let mut last_matrix_probe_rows: Option<usize> = None;
 
     loop {
         let total_rels = all_sieve_relations.len();
@@ -748,27 +772,38 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             filter_time_ms += filter_start.elapsed().as_secs_f64() * 1000.0;
 
             if partial_merge_2lp {
-                let active_rows = full_count + sets_count;
+                let active_rows = sets_count;
                 let needed_rows_base =
                     ((est_dense_cols as f64) * adaptive_rows_ratio).ceil() as usize;
                 let needed_rows_base = needed_rows_base.max(adaptive_rows_min);
                 let needed_rows = ((needed_rows_base as f64) * (1.0 + adaptive_margin_pct / 100.0))
                     .ceil() as usize;
                 eprintln!(
-                    "  adaptive: window {} raw {} -> filtered {} -> active_rows {} (full {}, sets {}) target_rows {} target_raw {} check_min_raw {} est_dense_cols {}",
+                    "  adaptive: window {} raw {} -> filtered {} -> active_rows {} (set_rows {}, full {}) target_rows {} target_raw {} check_min_raw {} est_dense_cols {}",
                     window,
                     total_rels,
                     filtered.len(),
                     active_rows,
-                    full_count,
                     sets_count,
+                    full_count,
                     needed_rows,
                     target_raw_rels,
                     adaptive_check_min_raw,
                     est_dense_cols
                 );
 
-                if adaptive_use_matrix && active_rows >= est_dense_cols {
+                let matrix_probe_due = adaptive_use_matrix
+                    && active_rows >= est_dense_cols
+                    && (force_stop
+                        || near_q_window_cap
+                        || at_q_window_cap
+                        || last_matrix_probe_rows
+                            .map(|prev| {
+                                active_rows >= prev.saturating_add(adaptive_matrix_probe_step)
+                            })
+                            .unwrap_or(true));
+                if matrix_probe_due {
+                    last_matrix_probe_rows = Some(active_rows);
                     let (probe_rels, probe_source_indices, probe_stats) = remap_hybrid(
                         &filtered,
                         &rat_fb,
@@ -791,9 +826,37 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     } else {
                         probe_sets_remapped.len()
                     };
+                    let probe_sq_premerged_sets =
+                        if special_q_premerge && !probe_sets_remapped.is_empty() {
+                            build_special_q_zero_sets_from_partial_sets(
+                                &probe_rels,
+                                &probe_sets_remapped,
+                                partial_merge_max_sets,
+                            )
+                        } else {
+                            Vec::new()
+                        };
                     let probe_partial_merge_active =
                         partial_merge_2lp && !probe_sets_remapped.is_empty();
-                    let probe_summary = if probe_partial_merge_active {
+                    let probe_summary = if !probe_sq_premerged_sets.is_empty() {
+                        let (probe_matrix, probe_cols, probe_sources) =
+                            build_dense_matrix_from_sets(
+                                &probe_rels,
+                                &probe_sq_premerged_sets,
+                                rat_fb.primes.len(),
+                                gnfs_fb.algebraic_pair_count(),
+                                gnfs_fb.higher_degree_ideal_count(degree) + alg_bad,
+                                &quad_chars,
+                            );
+                        summarize_matrix_shape(
+                            probe_matrix,
+                            probe_cols,
+                            probe_sources,
+                            compact_zero_cols,
+                            singleton_prune,
+                            singleton_min_weight,
+                        )
+                    } else if probe_partial_merge_active {
                         let (probe_matrix, probe_cols, probe_sources) =
                             build_matrix_from_sets_lp_resolved(
                                 &probe_rels,
@@ -845,6 +908,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                         probe_summary.rows_minus_cols,
                         adaptive_matrix_rows_ratio
                     );
+                    if !probe_sq_premerged_sets.is_empty() {
+                        eprintln!(
+                            "  adaptive-matrix: sq-premerge collapsed set_rows {} -> {}",
+                            probe_set_count,
+                            probe_sq_premerged_sets.len()
+                        );
+                    }
                     if probe_summary.final_cols > 0
                         && (probe_summary.final_rows as f64)
                             >= (probe_summary.final_cols as f64) * adaptive_matrix_rows_ratio
@@ -1110,6 +1180,23 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .unwrap_or(false);
 
     let partial_merge_active = partial_merge_2lp && !partial_sets_remapped.is_empty();
+    let sq_premerged_sets = if partial_merge_active && special_q_premerge {
+        let sets = build_special_q_zero_sets_from_partial_sets(
+            &gnfs_rels,
+            &partial_sets_remapped,
+            partial_merge_max_sets,
+        );
+        if !sets.is_empty() {
+            eprintln!(
+                "  sq-premerge: collapsed set-rows {} -> {}",
+                partial_sets_remapped.len(),
+                sets.len()
+            );
+        }
+        Some(sets)
+    } else {
+        None
+    };
     if compare_matrix_modes && partial_merge_active {
         let (merged_matrix_cmp, merged_cols_cmp, merged_sources_cmp) =
             build_matrix_from_sets_lp_resolved(
@@ -1168,6 +1255,35 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
             direct_summary.singleton_rows_dropped,
             direct_summary.zero_cols_dropped_post_singleton
         );
+        if let Some(sets) = sq_premerged_sets.as_ref().filter(|sets| !sets.is_empty()) {
+            let (sq_matrix_cmp, sq_cols_cmp, sq_sources_cmp) = build_dense_matrix_from_sets(
+                &gnfs_rels,
+                sets,
+                rat_fb_size,
+                alg_pairs,
+                alg_hd + alg_bad,
+                &quad_chars,
+            );
+            let sq_summary = summarize_matrix_shape(
+                sq_matrix_cmp,
+                sq_cols_cmp,
+                sq_sources_cmp,
+                compact_zero_cols,
+                singleton_prune,
+                singleton_min_weight,
+            );
+            eprintln!(
+                "  matrix-compare: sq-premerge raw={}x{} final={}x{} rows_minus_cols={} zero_drop={} singleton_drop={} zero_drop_post={}",
+                sq_summary.raw_rows,
+                sq_summary.raw_cols,
+                sq_summary.final_rows,
+                sq_summary.final_cols,
+                sq_summary.rows_minus_cols,
+                sq_summary.zero_cols_dropped_initial,
+                sq_summary.singleton_rows_dropped,
+                sq_summary.zero_cols_dropped_post_singleton
+            );
+        }
     }
 
     let (matrix_raw, ncols_raw, mut row_sources, matrix_mode, matrix_set_rows, matrix_layout): (
@@ -1177,7 +1293,37 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         &'static str,
         usize,
         MatrixColumnLayout,
-    ) = if partial_merge_active {
+    ) = if let Some(sets) = sq_premerged_sets.as_ref().filter(|sets| !sets.is_empty()) {
+        let (matrix, nc, set_rows) = build_dense_matrix_from_sets(
+            &gnfs_rels,
+            sets,
+            rat_fb_size,
+            alg_pairs,
+            alg_hd + alg_bad,
+            &quad_chars,
+        );
+        eprintln!(
+            "  LA: sq-premerged dense matrix {} x {} from {} set-rows (qc={})",
+            matrix.len(),
+            nc,
+            set_rows.len(),
+            quad_chars.primes.len()
+        );
+        let set_count = set_rows.len();
+        let layout = build_dense_only_matrix_layout(
+            rat_fb_size,
+            alg_pairs + alg_hd + alg_bad,
+            quad_chars.primes.len(),
+        );
+        (
+            matrix,
+            nc,
+            set_rows,
+            "partial_merge_2lp_sq_premerge",
+            set_count,
+            layout,
+        )
+    } else if partial_merge_active {
         let (matrix, nc, set_rows) = build_matrix_from_sets_lp_resolved(
             &gnfs_rels,
             &partial_sets_remapped,
@@ -1846,12 +1992,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                     n,
                 )
             } else {
-                gnfs::sqrt::extract_factor_diagnostic(
+                gnfs::sqrt::extract_factor_diagnostic_fast(
                     &gnfs_rels,
                     &dep_expanded,
                     &f_coeffs_big,
                     &m_big,
                     n,
+                    &rat_fb.primes,
                 )
             };
 
@@ -2228,6 +2375,75 @@ fn build_sparse_zero_sets(rels: &[gnfs::types::Relation], max_sets: usize) -> Ve
                 if sets.len() >= max_sets {
                     break;
                 }
+            }
+        }
+    }
+
+    sets
+}
+
+fn build_special_q_zero_sets_from_partial_sets(
+    rels: &[gnfs::types::Relation],
+    set_rows: &[Vec<usize>],
+    max_sets: usize,
+) -> Vec<Vec<usize>> {
+    use std::collections::HashMap;
+
+    let mut pivots: HashMap<SparseKey, SparseElimRow> = HashMap::new();
+    let mut sets: Vec<Vec<usize>> = Vec::new();
+    let mut seen: HashSet<Vec<usize>> = HashSet::new();
+
+    for set in set_rows {
+        if sets.len() >= max_sets {
+            break;
+        }
+        if set.is_empty() {
+            continue;
+        }
+
+        let mut sq_keys: Vec<SparseKey> = set
+            .iter()
+            .filter_map(|&ri| {
+                rels.get(ri)
+                    .and_then(|rel| rel.special_q)
+                    .map(|(q, r)| SparseKey::SpecialQ(q, r))
+            })
+            .collect();
+        sq_keys.sort_unstable();
+        let mut collapsed_keys = Vec::with_capacity(sq_keys.len());
+        let mut i = 0usize;
+        while i < sq_keys.len() {
+            let mut j = i + 1;
+            while j < sq_keys.len() && sq_keys[j] == sq_keys[i] {
+                j += 1;
+            }
+            if (j - i) % 2 == 1 {
+                collapsed_keys.push(sq_keys[i].clone());
+            }
+            i = j;
+        }
+
+        let mut row = SparseElimRow {
+            keys: collapsed_keys,
+            rels: set.clone(),
+        };
+
+        let mut registered_pivot = false;
+        while !row.keys.is_empty() {
+            let pivot_key = row.keys[0].clone();
+            if let Some(pivot_row) = pivots.get(&pivot_key) {
+                row.keys = sym_diff_sorted(&row.keys, &pivot_row.keys);
+                row.rels = sym_diff_sorted(&row.rels, &pivot_row.rels);
+            } else {
+                pivots.insert(pivot_key, row.clone());
+                registered_pivot = true;
+                break;
+            }
+        }
+
+        if !registered_pivot && row.keys.is_empty() && !row.rels.is_empty() {
+            if seen.insert(row.rels.clone()) {
+                sets.push(row.rels);
             }
         }
     }
@@ -3740,6 +3956,49 @@ mod tests {
         let bad = compute_bad_root_offsets(&fb, &coeffs);
         assert!(bad.contains_key(&(3, 1)));
         assert_eq!(bad.len(), 1);
+    }
+
+    #[test]
+    fn test_build_special_q_zero_sets_from_partial_sets_cancels_matching_pairs() {
+        let rels = vec![
+            gnfs::types::Relation {
+                a: 1,
+                b: 1,
+                rational_factors: vec![],
+                algebraic_factors: vec![],
+                rational_sign_negative: false,
+                algebraic_sign_negative: false,
+                special_q: Some((101, 3)),
+                rat_lp: None,
+                alg_lp: None,
+            },
+            gnfs::types::Relation {
+                a: 2,
+                b: 1,
+                rational_factors: vec![],
+                algebraic_factors: vec![],
+                rational_sign_negative: false,
+                algebraic_sign_negative: false,
+                special_q: Some((101, 3)),
+                rat_lp: None,
+                alg_lp: None,
+            },
+            gnfs::types::Relation {
+                a: 3,
+                b: 1,
+                rational_factors: vec![],
+                algebraic_factors: vec![],
+                rational_sign_negative: false,
+                algebraic_sign_negative: false,
+                special_q: Some((103, 5)),
+                rat_lp: None,
+                alg_lp: None,
+            },
+        ];
+        let sets = vec![vec![0], vec![1], vec![2]];
+        let sq_zero_sets = build_special_q_zero_sets_from_partial_sets(&rels, &sets, 100);
+        assert!(sq_zero_sets.contains(&vec![0, 1]));
+        assert!(!sq_zero_sets.contains(&vec![2]));
     }
 
     #[test]
