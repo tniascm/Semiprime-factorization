@@ -43,6 +43,23 @@ PROFILE_ENVS: dict[str, dict[str, str]] = {
     "direct_matrix": {
         "RUST_NFS_PARTIAL_MERGE_2LP": "0",
     },
+    "ignore_special_q_singleton_off": {
+        "RUST_NFS_IGNORE_SPECIAL_Q_COLUMN": "1",
+        "RUST_NFS_SINGLETON_PRUNE": "0",
+    },
+    "qc0_singleton_off": {
+        "RUST_NFS_QC_COUNT": "0",
+        "RUST_NFS_SINGLETON_PRUNE": "0",
+    },
+    "higher_rel_target_singleton_off": {
+        "RUST_NFS_REL_TARGET_MULT": "0.35",
+        "RUST_NFS_REL_TARGET_MIN": "3000",
+        "RUST_NFS_SINGLETON_PRUNE": "0",
+    },
+    "direct_matrix_singleton_off": {
+        "RUST_NFS_PARTIAL_MERGE_2LP": "0",
+        "RUST_NFS_SINGLETON_PRUNE": "0",
+    },
 }
 
 
@@ -172,7 +189,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default="/Users/andriipotapov/Semiprime")
     ap.add_argument("--output", default="")
-    ap.add_argument("--profiles", default="baseline,singleton_off,ignore_special_q,qc0,higher_rel_target,direct_matrix")
+    ap.add_argument(
+        "--profiles",
+        default="baseline,singleton_off,ignore_special_q,qc0,higher_rel_target,direct_matrix",
+    )
     ap.add_argument("--threads", type=int, default=0)
     ap.add_argument("--max-q-windows", type=int, default=1)
     ap.add_argument("--max-variants", type=int, default=1)
