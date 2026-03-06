@@ -1002,8 +1002,77 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(50_000);
+    let compare_matrix_modes = std::env::var("RUST_NFS_COMPARE_MATRIX_MODES")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let singleton_prune = std::env::var("RUST_NFS_SINGLETON_PRUNE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+    let singleton_min_weight = std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v >= 2)
+        .unwrap_or(2usize);
 
     let partial_merge_active = partial_merge_2lp && !partial_sets_remapped.is_empty();
+    if compare_matrix_modes && partial_merge_active {
+        let (merged_matrix_cmp, merged_cols_cmp, merged_sources_cmp) =
+            build_matrix_from_sets_lp_resolved(
+                &gnfs_rels,
+                &partial_sets_remapped,
+                rat_fb_size,
+                alg_pairs,
+                alg_hd,
+                &quad_chars,
+            );
+        let merged_summary = summarize_matrix_shape(
+            merged_matrix_cmp,
+            merged_cols_cmp,
+            merged_sources_cmp,
+            compact_zero_cols,
+            singleton_prune,
+            singleton_min_weight,
+        );
+
+        let (direct_matrix_cmp, direct_cols_cmp) =
+            gnfs::linalg::build_matrix(&gnfs_rels, rat_fb_size, alg_pairs, alg_hd, &quad_chars);
+        let direct_sources_cmp = (0..direct_matrix_cmp.len()).map(|i| vec![i]).collect();
+        let direct_summary = summarize_matrix_shape(
+            direct_matrix_cmp,
+            direct_cols_cmp,
+            direct_sources_cmp,
+            compact_zero_cols,
+            singleton_prune,
+            singleton_min_weight,
+        );
+
+        eprintln!(
+            "  matrix-compare: merged raw={}x{} final={}x{} rows_minus_cols={} zero_drop={} singleton_drop={} zero_drop_post={}",
+            merged_summary.raw_rows,
+            merged_summary.raw_cols,
+            merged_summary.final_rows,
+            merged_summary.final_cols,
+            merged_summary.rows_minus_cols,
+            merged_summary.zero_cols_dropped_initial,
+            merged_summary.singleton_rows_dropped,
+            merged_summary.zero_cols_dropped_post_singleton
+        );
+        eprintln!(
+            "  matrix-compare: direct raw={}x{} final={}x{} rows_minus_cols={} zero_drop={} singleton_drop={} zero_drop_post={}",
+            direct_summary.raw_rows,
+            direct_summary.raw_cols,
+            direct_summary.final_rows,
+            direct_summary.final_cols,
+            direct_summary.rows_minus_cols,
+            direct_summary.zero_cols_dropped_initial,
+            direct_summary.singleton_rows_dropped,
+            direct_summary.zero_cols_dropped_post_singleton
+        );
+    }
+
     let (matrix_raw, ncols_raw, mut row_sources, matrix_mode, matrix_set_rows): (
         Vec<gnfs::types::BitRow>,
         usize,
@@ -1089,10 +1158,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     result.viability.set_rows_matrix = matrix_set_rows;
     result.viability.matrix_rows_pre_compact = matrix_raw.len();
     result.viability.matrix_cols_pre_compact = ncols_raw;
-
-    let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(true);
     let (mut matrix, mut ncols, dropped_cols) = if compact_zero_cols {
         compact_zero_columns(matrix_raw, ncols_raw)
     } else {
@@ -1105,15 +1170,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         );
     }
     result.viability.zero_cols_dropped_initial = dropped_cols;
-
-    let singleton_prune = std::env::var("RUST_NFS_SINGLETON_PRUNE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(true);
-    let singleton_min_weight = std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v >= 2)
-        .unwrap_or(2usize);
     let mut singleton_rows_dropped = 0usize;
     let mut zero_cols_dropped_post_singleton = 0usize;
     if singleton_prune {
@@ -2263,6 +2319,62 @@ fn compact_zero_columns(
 
     let dropped = ncols.saturating_sub(used_cols.len());
     (compacted, used_cols.len(), dropped)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MatrixShapeSummary {
+    raw_rows: usize,
+    raw_cols: usize,
+    zero_cols_dropped_initial: usize,
+    singleton_rows_dropped: usize,
+    zero_cols_dropped_post_singleton: usize,
+    final_rows: usize,
+    final_cols: usize,
+    rows_minus_cols: isize,
+}
+
+fn summarize_matrix_shape(
+    rows: Vec<gnfs::types::BitRow>,
+    ncols: usize,
+    row_sources: Vec<Vec<usize>>,
+    compact_zero_cols: bool,
+    singleton_prune: bool,
+    singleton_min_weight: usize,
+) -> MatrixShapeSummary {
+    let raw_rows = rows.len();
+    let raw_cols = ncols;
+
+    let (mut rows, mut ncols, zero_cols_dropped_initial) = if compact_zero_cols {
+        compact_zero_columns(rows, ncols)
+    } else {
+        (rows, ncols, 0usize)
+    };
+
+    let mut singleton_rows_dropped = 0usize;
+    let mut zero_cols_dropped_post_singleton = 0usize;
+    if singleton_prune {
+        let (pruned_rows, _pruned_sources, removed_rows) =
+            prune_singleton_columns(rows, row_sources, ncols, singleton_min_weight);
+        rows = pruned_rows;
+        singleton_rows_dropped = removed_rows;
+        if compact_zero_cols {
+            let (m2, nc2, dropped2) = compact_zero_columns(rows, ncols);
+            rows = m2;
+            ncols = nc2;
+            zero_cols_dropped_post_singleton = dropped2;
+        }
+    }
+
+    MatrixShapeSummary {
+        raw_rows,
+        raw_cols,
+        zero_cols_dropped_initial,
+        singleton_rows_dropped,
+        zero_cols_dropped_post_singleton,
+        final_rows: rows.len(),
+        final_cols: ncols,
+        rows_minus_cols: rows.len() as isize - ncols as isize,
+    }
 }
 
 fn prune_singleton_columns(
