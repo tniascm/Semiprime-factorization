@@ -683,13 +683,8 @@ fn scatter_bucket_updates_for_prime(
     let step = r_prime % p;
 
     for j in 0..max_j {
-        // Congruences are in centered i-coordinates; convert to row index
-        // k=i+I by adding half_i before reducing modulo p.
-        let start_in_row = start_mod_p as usize;
-
-        // Walk through row at stride p, computing global 1D positions
         let row_base = j * sieve_width;
-        let mut i_pos = start_in_row;
+        let mut i_pos = start_mod_p as usize;
 
         while i_pos < sieve_width {
             let global_pos = row_base + i_pos;
@@ -703,10 +698,8 @@ fn scatter_bucket_updates_for_prime(
             i_pos += p_usize;
         }
 
-        start_mod_p = start_mod_p.wrapping_add(step);
-        if start_mod_p >= p {
-            start_mod_p -= p;
-        }
+        start_mod_p += step;
+        if start_mod_p >= p { start_mod_p -= p; }
     }
 }
 
