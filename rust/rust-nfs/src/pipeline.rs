@@ -928,12 +928,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
                         final_partial_sets = current_sets;
                         break;
                     }
-                    // Keep the warning path visible; this probe is only for stopping,
-                    // not for mutating the final result structure.
                     let _ = probe_stats;
                 }
 
-                if active_rows >= needed_rows || force_stop || at_q_window_cap {
+                if active_rows >= needed_rows
+                    || force_stop
+                    || at_q_window_cap
+                {
                     final_filtered = filtered;
                     final_partial_sets = current_sets;
                     break;
