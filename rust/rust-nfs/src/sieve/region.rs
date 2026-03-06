@@ -53,12 +53,15 @@ pub fn scan_survivors(
     rat_bound: u8,
     alg_bound: u8,
 ) -> Vec<u16> {
-    // ~1-2% of positions survive; pre-allocate for typical BUCKET_REGION size
     let len = rat_sieve.len().min(alg_sieve.len());
     let mut survivors = Vec::with_capacity(len / 64 + 16);
     for i in 0..len {
-        if rat_sieve[i] <= rat_bound && alg_sieve[i] <= alg_bound {
-            survivors.push(i as u16);
+        unsafe {
+            if *rat_sieve.get_unchecked(i) <= rat_bound
+                && *alg_sieve.get_unchecked(i) <= alg_bound
+            {
+                survivors.push(i as u16);
+            }
         }
     }
     survivors
