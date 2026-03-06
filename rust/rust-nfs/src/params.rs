@@ -29,7 +29,7 @@ impl NfsParams {
             lpb1: 17,
             mfb0: 18,
             mfb1: 18,
-            log_i: 9,
+            log_i: 7,
             qmin: 50_000,
             qrange: 1_000,
             rels_wanted: 30_000,
@@ -130,7 +130,7 @@ mod tests {
         let p = NfsParams::c30();
         assert_eq!(p.degree, 3);
         assert_eq!(p.large_prime_bound_0(), 131_072);
-        assert_eq!(p.sieve_half_width(), 512);
+        assert_eq!(p.sieve_half_width(), 128);
     }
 
     #[test]

@@ -136,6 +136,7 @@ pub fn sieve_specialq(
     let mut total_norm_ns = 0u64;
     let mut total_small_sieve_ns = 0u64;
     let mut total_bucket_apply_ns = 0u64;
+    let mut total_pushes = 0u64;
     let mut sq_count = 0usize;
     let norm_block = std::env::var("RUST_NFS_NORM_BLOCK")
         .ok()
@@ -201,7 +202,7 @@ pub fn sieve_specialq(
     let updates_per_bucket = (est_updates * 2).max(1024);
 
     for chunk in qr_pairs.chunks(batch_size.max(1)) {
-        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64)> = chunk
+        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64, u64)> = chunk
             .par_iter()
             .copied()
             .map_init(
@@ -313,6 +314,7 @@ pub fn sieve_specialq(
                     }
 
                     let bucket_setup_elapsed = sieve_start.elapsed().as_nanos() as u64;
+                    let local_pushes = rat_buckets.total_updates() + alg_buckets.total_updates();
 
                     // 4. Process each bucket region (sequentially)
                     let region_start_time = std::time::Instant::now();
@@ -535,12 +537,13 @@ pub fn sieve_specialq(
                         norm_ns,
                         small_sieve_ns,
                         bucket_apply_ns,
+                        local_pushes as u64,
                     )
                 },
             )
             .collect();
 
-        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, ss_ns, ba_ns) in chunk_results {
+        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, ss_ns, ba_ns, pushes) in chunk_results {
             all_relations.extend(rels);
             total_survivors += survivors;
             total_bucket_setup_ns += bucket_setup_ns;
@@ -549,6 +552,7 @@ pub fn sieve_specialq(
             total_norm_ns += n_ns;
             total_small_sieve_ns += ss_ns;
             total_bucket_apply_ns += ba_ns;
+            total_pushes += pushes;
         }
 
         if let Some(limit) = max_relations {
@@ -569,11 +573,12 @@ pub fn sieve_specialq(
         .unwrap_or(false);
     if sieve_profile {
         eprintln!(
-            "  sieve-profile: norm={:.0}ms small_sieve={:.0}ms bucket_apply+scan={:.0}ms (of region_scan={:.0}ms)",
+            "  sieve-profile: norm={:.0}ms small_sieve={:.0}ms bucket_apply+scan={:.0}ms (of region_scan={:.0}ms) pushes={}",
             total_norm_ns as f64 / 1_000_000.0,
             total_small_sieve_ns as f64 / 1_000_000.0,
             total_bucket_apply_ns as f64 / 1_000_000.0,
             total_region_scan_ns as f64 / 1_000_000.0,
+            total_pushes,
         );
     }
 

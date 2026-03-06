@@ -260,12 +260,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "overflowed")]
+    #[cfg(debug_assertions)]
+    #[should_panic]
     fn test_bucket_overflow_panics() {
         let mut ba = BucketArray::new(1, 2);
         ba.push(0, BucketUpdate { pos: 0, logp: 1 });
         ba.push(0, BucketUpdate { pos: 1, logp: 1 });
-        // Third push should panic: capacity is 2.
+        // Third push should panic via debug_assert: capacity is 2.
         ba.push(0, BucketUpdate { pos: 2, logp: 1 });
     }
 }
