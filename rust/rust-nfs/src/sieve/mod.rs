@@ -13,7 +13,7 @@ pub mod region;
 pub mod small;
 
 use crate::arith::sieve_primes;
-use crate::cofactor::{self, CofactResult};
+use crate::cofactor::{self, CofactResult, CofactorConfig};
 use crate::factorbase::{self, FactorBase};
 use crate::lp_key::LpKey;
 use crate::params::NfsParams;
@@ -191,6 +191,10 @@ pub fn sieve_specialq(
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(64usize);
+    // Pre-compute cofactoring prime lists once (avoids thousands of sieve_primes per-survivor).
+    let cofact_config_rat = CofactorConfig::new(params.lpb0);
+    let cofact_config_alg = CofactorConfig::new(params.lpb1);
+
     let est_updates = estimate_updates_per_bucket(
         &rat_fb.primes,
         &alg_fb.primes,
@@ -280,7 +284,7 @@ pub fn sieve_specialq(
                             continue;
                         }
                         for &root in &alg_fb.roots[fb_idx] {
-                            scatter_bucket_updates_for_prime(
+                            scatter_bucket_updates_fk(
                                 p,
                                 root,
                                 alg_fb.log_p[fb_idx],
@@ -299,7 +303,7 @@ pub fn sieve_specialq(
                         if p == q {
                             continue;
                         }
-                        scatter_bucket_updates_for_prime(
+                        scatter_bucket_updates_fk(
                             p,
                             rat_roots_by_index[fb_idx],
                             rat_fb.log_p[fb_idx],
@@ -497,12 +501,13 @@ pub fn sieve_specialq(
                         }
                         alg_norm_reduced /= q128;
 
-                        let rat_result = cofactor::cofactorize(
+                        let rat_result = cofactor::cofactorize_with_config(
                             rat_norm,
                             &rat_fb.trial_divisors,
                             params.lpb0,
                             params.mfb0,
                             params.lim0,
+                            &cofact_config_rat,
                         );
 
                         let alg_norm_to_factor = if alg_norm_reduced == 0 {
@@ -510,12 +515,13 @@ pub fn sieve_specialq(
                         } else {
                             alg_norm_reduced
                         };
-                        let alg_result = cofactor::cofactorize_u128(
+                        let alg_result = cofactor::cofactorize_u128_with_config(
                             alg_norm_to_factor,
                             &alg_fb.trial_divisors,
                             params.lpb1,
                             params.mfb1,
                             params.lim1,
+                            &cofact_config_alg,
                         );
 
                         if let Some(rel) =
@@ -630,6 +636,53 @@ fn estimate_updates_per_bucket(
 /// them into the bucket array. The transformed root in (i,j)-space is precomputed
 /// via `reduce_plattice`; for a prime p with transformed root R', hits in row j
 /// occur at i positions: start = (R' * j) mod p, then stride by p.
+/// Transform root R from (a,b)-space to (i,j)-space through the q-lattice.
+///
+/// Returns `Ok(r_prime)` for affine roots, `Err(is_projective)` for projective
+/// roots (denom == 0) where `is_projective` indicates whether numer is also 0.
+///
+/// Uses i64 arithmetic (fast) when products fit, i128 as fallback.
+#[inline(always)]
+fn transform_root(p: u64, root: u64, qlat: &QLattice) -> Result<u64, bool> {
+    // R' = (root*b1 - a1) * (a0 - root*b0)^{-1} mod p
+    //
+    // For typical NFS parameters (p < 100k, |qlat coeffs| < 1000),
+    // root * b0 and root * b1 fit in i64 (< 10^8). Use i64 when safe.
+    let r = root as i64;
+    let (denom_raw, numer_raw) = if root < (1u64 << 31)
+        && qlat.b0.unsigned_abs() < (1u64 << 31)
+        && qlat.b1.unsigned_abs() < (1u64 << 31)
+    {
+        // Fast path: all products fit in i64 (no overflow for 31+31 < 62 bits)
+        let d = qlat.a0 - r * qlat.b0;
+        let n = r * qlat.b1 - qlat.a1;
+        (d, n)
+    } else {
+        // Fallback: use i128 for large values
+        let p_i128 = p as i128;
+        let d = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128)
+            % p_i128;
+        let n = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128)
+            % p_i128;
+        (d as i64, n as i64)
+    };
+
+    let p_i64 = p as i64;
+    let denom = ((denom_raw % p_i64) + p_i64) % p_i64;
+    let numer = ((numer_raw % p_i64) + p_i64) % p_i64;
+
+    if denom == 0 {
+        return Err(numer == 0);
+    }
+
+    let inv = match crate::arith::mod_inverse(denom as u64, p) {
+        Some(v) => v,
+        None => return Ok(0), // treat as no-hit
+    };
+    let r_prime = ((numer as u64 as u128 * inv as u128) % p as u128) as u64;
+    Ok(r_prime)
+}
+
 fn scatter_bucket_updates_for_prime(
     p: u64,
     root: u64,
@@ -641,37 +694,27 @@ fn scatter_bucket_updates_for_prime(
     max_j: usize,
     half_i: i64,
 ) {
-    let p_i128 = p as i128;
-
-    // Recompute the transformed root R' = (root*b1 - a1) * (a0 - root*b0)^{-1} mod p
-    let denom = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
-    let numer = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
-    if denom == 0 {
-        // Projective in q-lattice coordinates: the prime hits every cell in
-        // each p-th row (or every row in the degenerate numer==0 case).
-        let row_period = if numer == 0 { 1usize } else { p as usize };
-        for j in (0..max_j).step_by(row_period) {
-            let row_base = j * sieve_width;
-            for i_pos in 0..sieve_width {
-                let global_pos = row_base + i_pos;
-                buckets.push(
-                    global_pos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                        logp,
-                    },
-                );
+    let r_prime = match transform_root(p, root, qlat) {
+        Err(both_zero) => {
+            // Projective root: hits every cell in each p-th row
+            let row_period = if both_zero { 1usize } else { p as usize };
+            for j in (0..max_j).step_by(row_period) {
+                let row_base = j * sieve_width;
+                for i_pos in 0..sieve_width {
+                    let global_pos = row_base + i_pos;
+                    buckets.push(
+                        global_pos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
             }
+            return;
         }
-        return;
-    }
-
-    // Compute transformed root R' = numer * denom^{-1} mod p
-    let inv = match crate::arith::mod_inverse(denom as u64, p) {
-        Some(v) => v,
-        None => return,
+        Ok(rp) => rp,
     };
-    let r_prime = ((numer as u128 * inv as u128) % p as u128) as u64;
 
     // Quick hit check: if r_prime == 0 and p >= half_width, no hits in sieve area.
     if r_prime == 0 && p >= half_i as u64 {
@@ -682,30 +725,44 @@ fn scatter_bucket_updates_for_prime(
     let mut start_mod_p = (half_i as u64) % p;
     let step = r_prime % p;
 
-    for j in 0..max_j {
-        let row_base = j * sieve_width;
-        let mut i_pos = start_mod_p as usize;
-
-        while i_pos < sieve_width {
-            let global_pos = row_base + i_pos;
-            buckets.push(
-                global_pos >> LOG_BUCKET_REGION,
-                BucketUpdate {
-                    pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                    logp,
-                },
-            );
-            i_pos += p_usize;
+    if p_usize > sieve_width {
+        // Fast path: at most one hit per row (since stride p > row width).
+        for j in 0..max_j {
+            if (start_mod_p as usize) < sieve_width {
+                let global_pos = j * sieve_width + start_mod_p as usize;
+                buckets.push(
+                    global_pos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+            }
+            start_mod_p += step;
+            if start_mod_p >= p { start_mod_p -= p; }
         }
+    } else {
+        for j in 0..max_j {
+            let row_base = j * sieve_width;
+            let mut i_pos = start_mod_p as usize;
 
-        start_mod_p += step;
-        if start_mod_p >= p { start_mod_p -= p; }
+            while i_pos < sieve_width {
+                let global_pos = row_base + i_pos;
+                buckets.push(
+                    global_pos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+                i_pos += p_usize;
+            }
+
+            start_mod_p += step;
+            if start_mod_p >= p { start_mod_p -= p; }
+        }
     }
 }
-
-/// Evaluate |F(a, b)| for the homogeneous algebraic polynomial using f64.
-///
-/// F(a, b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
 
 /// Scatter bucket updates using the Franke-Kleinjung lattice walk.
 ///
@@ -742,26 +799,19 @@ fn scatter_bucket_updates_fk(
     max_j: usize,
     half_i: i64,
 ) {
-    let p_i128 = p as i128;
-
-    // Check for projective root (same logic as the old function).
-    let denom = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
-    let numer = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
-    if denom == 0 {
-        scatter_bucket_updates_for_prime(
-            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-        );
-        return;
-    }
-
-    // Compute transformed root R' = numer * denom^{-1} mod p.
-    let inv = match crate::arith::mod_inverse(denom as u64, p) {
-        Some(v) => v,
-        None => return,
+    // Use shared root transform (i64 fast path when possible).
+    let r_prime = match transform_root(p, root, qlat) {
+        Err(_) => {
+            // Projective root: delegate to old function.
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            return;
+        }
+        Ok(rp) => rp,
     };
-    let r_prime = ((numer as u128 * inv as u128) % p as u128) as u64;
 
-    // Quick hit check (same as old function).
+    // Quick hit check.
     if r_prime == 0 && p >= half_i as u64 {
         return;
     }
@@ -945,6 +995,9 @@ fn scatter_bucket_updates_fk(
     }
 }
 
+/// Evaluate |F(a, b)| for the homogeneous algebraic polynomial using f64.
+///
+/// F(a, b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
 fn eval_homogeneous_norm_f64(f_coeffs: &[i64], a: f64, b: f64, d: usize) -> f64 {
     if f_coeffs.is_empty() {
         return 0.0;
@@ -1326,6 +1379,7 @@ mod tests {
             vec![LpKey::Rational(1009), LpKey::Rational(1013)]
         );
     }
+
     // -----------------------------------------------------------------------
     // FK scatter comparison tests
     // -----------------------------------------------------------------------
