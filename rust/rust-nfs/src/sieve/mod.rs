@@ -706,6 +706,245 @@ fn scatter_bucket_updates_for_prime(
 /// Evaluate |F(a, b)| for the homogeneous algebraic polynomial using f64.
 ///
 /// F(a, b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
+
+/// Scatter bucket updates using the Franke-Kleinjung lattice walk.
+///
+/// This is functionally equivalent to `scatter_bucket_updates_for_prime` but uses
+/// a reduced p-lattice walk with two short basis vectors instead of row-by-row
+/// modular arithmetic. The FK walk replaces per-row i128 modular arithmetic with
+/// integer additions and comparisons per step.
+///
+/// # Algorithm
+///
+/// 1. Transform the root R through the q-lattice to get R' in (i,j)-space.
+/// 2. Perform partial-GCD reduction on (p, 0) and (R', 1) to get two short
+///    basis vectors with opposite i-signs.
+/// 3. Encode the two vectors as 1D increments `inc = v * sieve_width + u` and
+///    a third "sum" increment for dead-zone handling.
+/// 4. Walk through the sieve region in increasing x order, emitting bucket
+///    updates at each lattice point.
+///
+/// When both basis vectors keep the i-coordinate in bounds, the walk emits both
+/// targets (smaller increment first, then the difference to the larger). When
+/// neither individual vector works, the sum vector (step + warp) is used.
+///
+/// Falls back to `scatter_bucket_updates_for_prime` for projective roots,
+/// degenerate partial-GCD outputs, and cases where the reduced vectors cannot
+/// cover the full i-range (dead-zone condition).
+fn scatter_bucket_updates_fk(
+    p: u64,
+    root: u64,
+    logp: u8,
+    qlat: &QLattice,
+    log_i: u32,
+    buckets: &mut BucketArray,
+    sieve_width: usize,
+    max_j: usize,
+    half_i: i64,
+) {
+    let p_i128 = p as i128;
+
+    // Check for projective root (same logic as the old function).
+    let denom = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
+    let numer = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
+    if denom == 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    // Compute transformed root R' = numer * denom^{-1} mod p.
+    let inv = match crate::arith::mod_inverse(denom as u64, p) {
+        Some(v) => v,
+        None => return,
+    };
+    let r_prime = ((numer as u128 * inv as u128) % p as u128) as u64;
+
+    // Quick hit check (same as old function).
+    if r_prime == 0 && p >= half_i as u64 {
+        return;
+    }
+
+    let half_width = half_i;
+    let p_i64 = p as i64;
+
+    // --- Partial-GCD reduction ---
+    //
+    // Basis: (u0, v0) = (p, 0), (u1, v1) = (r', 1)
+    // Reduce until |u1| < half_width (= I).
+    let mut u0 = p_i64;
+    let mut v0: i64 = 0;
+    let mut u1 = r_prime as i64;
+    let mut v1: i64 = 1;
+
+    // Center r' into [-p/2, p/2).
+    if u1 > p_i64 / 2 {
+        u1 -= p_i64;
+    }
+
+    // Run the partial-GCD (truncated extended Euclidean).
+    while u1 != 0 && u1.unsigned_abs() >= half_width as u64 {
+        let q_div = u0 / u1;
+        let new_u = u0 - q_div * u1;
+        let new_v = v0 - q_div * v1;
+        u0 = u1;
+        v0 = v1;
+        u1 = new_u;
+        v1 = new_v;
+    }
+
+    // The FK walk requires both vectors to have |v| >= 1 so that each step
+    // advances in j and x increases monotonically. This holds when the
+    // partial-GCD performs at least one iteration (centered |r'| >= I).
+    // Fall back for degenerate cases.
+    if u1 == 0 || v0 == 0 || v1 == 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    // Normalize: ensure v > 0 for both vectors (flip sign if needed).
+    if v1 < 0 {
+        u1 = -u1;
+        v1 = -v1;
+    }
+    if v0 < 0 {
+        u0 = -u0;
+        v0 = -v0;
+    }
+
+    // The partial-GCD with centered remainders naturally produces opposite
+    // u-signs. Verify this and fall back if violated.
+    if (u0 > 0) == (u1 > 0) || u0 == 0 || u1 == 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    // Identify step (short |u|, < I) and warp (long |u|) vectors.
+    let (u_step, v_step, u_warp, v_warp) = if u1.unsigned_abs() < u0.unsigned_abs() {
+        (u1, v1, u0, v0)
+    } else {
+        (u0, v0, u1, v1)
+    };
+
+    let sieve_w = sieve_width as i64;
+
+    // Encode as 1D increments: inc = v * sieve_width + u.
+    // Both must be positive (v * sieve_width >> |u|).
+    let inc_step = v_step * sieve_w + u_step;
+    let inc_warp = v_warp * sieve_w + u_warp;
+
+    if inc_step <= 0 || inc_warp <= 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    // --- Dead-zone check (O(1)) ---
+    //
+    // The walk uses three vectors: step, warp, and their sum (step + warp).
+    // At each position, the walk picks whichever keeps i in [-I, I).
+    // A "dead zone" exists if some i-coordinate has no valid vector.
+    //
+    // step covers i in [s_lo, I) where s_lo = max(-I, -I - u_step)
+    // warp covers i in [-I, w_hi) where w_hi = min(I, I - u_warp)
+    // (these ranges represent values where the respective vector keeps i in bounds)
+    //
+    // The gap between step and warp (if any) is [w_hi, s_lo).
+    // The sum vector fills this gap if its range covers [w_hi, s_lo).
+    let u_sum = u_step + u_warp;
+
+    let s_lo = (-half_width - u_step).max(-half_width);
+    let w_hi = (half_width - u_warp).min(half_width);
+
+    if w_hi < s_lo {
+        // There is a gap [w_hi, s_lo). Check if the sum vector fills it.
+        let m_lo = (-half_width - u_sum).max(-half_width);
+        let m_hi = (half_width - u_sum).min(half_width);
+
+        if m_lo > w_hi || m_hi < s_lo {
+            // Sum does not fully cover the gap. Fall back.
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            return;
+        }
+    }
+
+    // --- FK walk ---
+    //
+    // Sort increments: inc_a < inc_b so that when both vectors are valid,
+    // inc_a's target comes first in x-order.
+    let (inc_a, u_a, inc_b, u_b) = if inc_step < inc_warp {
+        (inc_step, u_step, inc_warp, u_warp)
+    } else {
+        (inc_warp, u_warp, inc_step, u_step)
+    };
+
+    let inc_diff = inc_b - inc_a;
+    let u_diff = u_b - u_a;
+    let inc_sum = inc_a + inc_b;
+
+    let total_area = (sieve_width * max_j) as i64;
+    let start_i_pos = (half_i as u64 % p) as i64;
+    let start_ic = start_i_pos - half_width;
+
+    let mut x = start_i_pos;
+    let mut ic = start_ic;
+
+    while x < total_area {
+        // Emit bucket update if position is valid.
+        if x >= 0 && ic >= -half_width && ic < half_width {
+            let gpos = x as usize;
+            buckets.push(
+                gpos >> LOG_BUCKET_REGION,
+                BucketUpdate {
+                    pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                    logp,
+                },
+            );
+        }
+
+        let a_ok = (ic + u_a) >= -half_width && (ic + u_a) < half_width;
+        let b_ok = (ic + u_b) >= -half_width && (ic + u_b) < half_width;
+
+        if a_ok && b_ok {
+            // Both valid: advance by inc_a (smaller), emit that position,
+            // then advance by inc_diff to reach inc_b's target.
+            x += inc_a;
+            ic += u_a;
+            if x < total_area && x >= 0 && ic >= -half_width && ic < half_width {
+                let gpos = x as usize;
+                buckets.push(
+                    gpos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+            }
+            x += inc_diff;
+            ic += u_diff;
+        } else if a_ok {
+            x += inc_a;
+            ic += u_a;
+        } else if b_ok {
+            x += inc_b;
+            ic += u_b;
+        } else {
+            // Dead zone: use sum vector (step + warp).
+            // The dead-zone check above guarantees this keeps ic in bounds.
+            x += inc_sum;
+            ic += u_sum;
+        }
+    }
+}
+
 fn eval_homogeneous_norm_f64(f_coeffs: &[i64], a: f64, b: f64, d: usize) -> f64 {
     if f_coeffs.is_empty() {
         return 0.0;
@@ -1086,5 +1325,279 @@ mod tests {
             rel.lp_keys,
             vec![LpKey::Rational(1009), LpKey::Rational(1013)]
         );
+    }
+    // -----------------------------------------------------------------------
+    // FK scatter comparison tests
+    // -----------------------------------------------------------------------
+
+    /// Extract the set of global positions from a BucketArray (across all buckets).
+    fn extract_positions(buckets: &BucketArray) -> Vec<usize> {
+        let mut positions = Vec::new();
+        for b in 0..buckets.n_buckets() {
+            let updates = buckets.updates_for_bucket(b);
+            for u in updates {
+                let global = (b << LOG_BUCKET_REGION) | (u.position() as usize);
+                positions.push(global);
+            }
+        }
+        positions.sort();
+        positions
+    }
+
+    /// Run both scatter functions on the same inputs and compare output positions.
+    fn compare_scatter(
+        p: u64,
+        root: u64,
+        logp: u8,
+        qlat: &QLattice,
+        log_i: u32,
+        sieve_width: usize,
+        max_j: usize,
+        half_i: i64,
+    ) -> (Vec<usize>, Vec<usize>) {
+        let total_area = sieve_width * max_j;
+        let n_buckets = (total_area + BUCKET_REGION - 1) / BUCKET_REGION;
+        let n_buckets = n_buckets.max(1);
+        // Generous capacity
+        let cap = (total_area / (p as usize).max(1) + 1) * 2 + 256;
+
+        let mut buckets_old = BucketArray::new(n_buckets, cap.max(16));
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, &mut buckets_old, sieve_width, max_j, half_i,
+        );
+
+        let mut buckets_fk = BucketArray::new(n_buckets, cap.max(16));
+        scatter_bucket_updates_fk(
+            p, root, logp, qlat, log_i, &mut buckets_fk, sieve_width, max_j, half_i,
+        );
+
+        let old_pos = extract_positions(&buckets_old);
+        let fk_pos = extract_positions(&buckets_fk);
+        (old_pos, fk_pos)
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_small_prime_fallback() {
+        // Small primes (p < sieve_width) should fall back to old function
+        // and produce identical results.
+        let qlat = reduce_qlattice(97, 30, 1.0);
+        let log_i = 4; // half_i = 16, sieve_width = 32
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        for root in [0u64, 1, 2, 3, 4] {
+            let (old, fk) = compare_scatter(5, root, 7, &qlat, log_i, sieve_width, max_j, half_i);
+            assert_eq!(
+                old, fk,
+                "FK mismatch for p=5, root={}, qlat={:?}",
+                root, qlat
+            );
+        }
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_projective_root() {
+        // Projective root case (denom == 0): FK should delegate to old function.
+        let qlat = QLattice {
+            a0: 5,
+            b0: 1,
+            a1: 1,
+            b1: 0,
+        };
+        let log_i = 4;
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = 10;
+
+        // p=5, root=0: denom = (5 - 0*1) mod 5 = 0
+        let (old, fk) = compare_scatter(5, 0, 7, &qlat, log_i, sieve_width, max_j, half_i);
+        assert_eq!(old, fk, "FK mismatch for projective root case");
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_prime_above_sieve_width() {
+        // Primes above sieve_width: this is where FK walk should activate.
+        // log_i = 4 => half_i = 16, sieve_width = 32
+        // Primes >= 32 trigger FK walk (if partial-GCD produces valid vectors).
+        let qlat = reduce_qlattice(97, 30, 1.0);
+        let log_i = 4;
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        // Test primes above sieve_width = 32
+        let test_cases: Vec<(u64, Vec<u64>)> = vec![
+            (37, vec![0, 1, 10, 20, 36]),
+            (41, vec![0, 1, 15, 30, 40]),
+            (43, vec![0, 1, 20, 42]),
+            (53, vec![0, 1, 25, 52]),
+            (61, vec![0, 1, 30, 50, 60]),
+            (67, vec![0, 1, 33, 66]),
+            (71, vec![0, 1, 35, 70]),
+            (79, vec![0, 1, 40, 78]),
+            (83, vec![0, 1, 41, 82]),
+            (89, vec![0, 1, 44, 88]),
+        ];
+
+        for (p, roots) in &test_cases {
+            for &root in roots {
+                let (old, fk) =
+                    compare_scatter(*p, root, 7, &qlat, log_i, sieve_width, max_j, half_i);
+                assert_eq!(
+                    old, fk,
+                    "FK mismatch for p={}, root={}, qlat={:?}",
+                    p, root, qlat
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_larger_sieve_large_primes() {
+        // Larger sieve with primes above sieve_width
+        // log_i = 8 => half_i = 256, sieve_width = 512
+        let qlat = reduce_qlattice(65537, 12345, 1.0);
+        let log_i = 8;
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        // Primes above sieve_width = 512
+        let test_cases: Vec<(u64, Vec<u64>)> = vec![
+            (521, vec![0, 1, 100, 300, 520]),
+            (541, vec![0, 1, 200, 540]),
+            (547, vec![0, 1, 273, 546]),
+            (557, vec![0, 1, 278, 556]),
+            (563, vec![0, 1, 281, 562]),
+            (569, vec![0, 1, 284, 568]),
+            (1009, vec![0, 1, 500, 1008]),
+            (1021, vec![0, 1, 510, 1020]),
+            (2003, vec![0, 1, 1001, 2002]),
+            (4099, vec![0, 1, 2049, 4098]),
+        ];
+
+        for (p, roots) in &test_cases {
+            for &root in roots {
+                let (old, fk) =
+                    compare_scatter(*p, root, 7, &qlat, log_i, sieve_width, max_j, half_i);
+                assert_eq!(
+                    old, fk,
+                    "FK mismatch for p={}, root={} with log_i={}",
+                    p, root, log_i
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_various_qlattices() {
+        // Test with various q-lattice configurations, primes above sieve_width
+        let test_qlats = vec![
+            reduce_qlattice(97, 30, 1.0),
+            reduce_qlattice(101, 42, 1.0),
+            reduce_qlattice(65537, 12345, 1.0),
+            reduce_qlattice(1009, 500, 2.0),
+        ];
+
+        // log_i = 4 => sieve_width = 32
+        let log_i = 4;
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        let primes_and_roots: Vec<(u64, u64)> = vec![
+            (37, 10),
+            (41, 20),
+            (43, 15),
+            (53, 25),
+            (61, 30),
+            (67, 33),
+            (71, 35),
+            (79, 40),
+            (83, 41),
+            (89, 44),
+        ];
+
+        for qlat in &test_qlats {
+            for &(p, root) in &primes_and_roots {
+                let (old, fk) =
+                    compare_scatter(p, root, 7, qlat, log_i, sieve_width, max_j, half_i);
+                assert_eq!(
+                    old, fk,
+                    "FK mismatch for p={}, root={}, qlat={:?}",
+                    p, root, qlat
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_medium_primes_fallback() {
+        // Medium primes (between half_i and sieve_width) should fall back
+        // correctly since the partial-GCD won't iterate.
+        let qlat = reduce_qlattice(97, 30, 1.0);
+        let log_i = 5; // half_i = 32, sieve_width = 64
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        // Primes in [32, 64) range
+        for root in [0u64, 1, 10, 15, 20, 30, 36] {
+            let (old, fk) = compare_scatter(37, root, 7, &qlat, log_i, sieve_width, max_j, half_i);
+            assert_eq!(
+                old, fk,
+                "FK mismatch for p=37, root={}, qlat={:?}",
+                root, qlat
+            );
+        }
+    }
+
+    #[test]
+    fn test_fk_scatter_matches_old_p_greater_than_total_area() {
+        // Prime larger than total sieve area (at most 1 hit total)
+        let qlat = reduce_qlattice(97, 30, 1.0);
+        let log_i = 4; // half_i = 16, sieve_width = 32, max_j = 16, total = 512
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        for root in [0u64, 1, 100, 500, 1000] {
+            let (old, fk) =
+                compare_scatter(1009, root, 7, &qlat, log_i, sieve_width, max_j, half_i);
+            assert_eq!(
+                old, fk,
+                "FK mismatch for p=1009 (> total area), root={}",
+                root
+            );
+        }
+    }
+
+    #[test]
+    fn test_fk_scatter_exhaustive_small_sieve() {
+        // Exhaustive test: try ALL valid (p, root) combinations for a small sieve
+        // log_i = 3 => half_i = 8, sieve_width = 16, primes above 16
+        let qlat = reduce_qlattice(97, 30, 1.0);
+        let log_i = 3;
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+
+        // All primes from 17 to 100
+        let primes: Vec<u64> = vec![
+            17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+        ];
+
+        for &p in &primes {
+            for root in 0..p {
+                let (old, fk) =
+                    compare_scatter(p, root, 7, &qlat, log_i, sieve_width, max_j, half_i);
+                assert_eq!(
+                    old, fk,
+                    "FK mismatch for p={}, root={} (exhaustive, log_i=3)",
+                    p, root
+                );
+            }
+        }
     }
 }
