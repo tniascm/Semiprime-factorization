@@ -360,19 +360,24 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         // contain each alive column. We only need up to 3 entries per column
         // (we care about weight 0, 1, or 2; anything >= 3 we skip).
         // col_rows[c] stores up to 3 row indices where column c is set.
+        //
+        // Use word-level bit traversal (trailing_zeros + w &= w-1) instead
+        // of per-bit checking, reducing cost from O(nrows*ncols) to
+        // O(nrows*nwords + total_set_bits).
         let mut col_rows: Vec<Vec<usize>> = vec![Vec::new(); ncols];
         for r in 0..nrows {
             if !row_alive[r] {
                 continue;
             }
-            for c in 0..ncols {
-                if !col_alive[c] {
-                    continue;
-                }
-                if matrix[r].get(c) {
-                    if col_rows[c].len() < 3 {
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c = wi * 64 + bit;
+                    if c < ncols && col_alive[c] && col_rows[c].len() < 3 {
                         col_rows[c].push(r);
                     }
+                    w &= w - 1; // clear lowest set bit
                 }
             }
         }
@@ -404,16 +409,30 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
             if !col_alive[c] {
                 continue;
             }
-            // Compute actual weight from scratch (pass 1 may have killed rows,
-            // and col_rows[] may be stale from previous merges).
-            let mut alive_in_col = Vec::new();
-            for r in 0..nrows {
-                if row_alive[r] && matrix[r].get(c) {
-                    alive_in_col.push(r);
-                    if alive_in_col.len() > 2 {
-                        break;
+            // Recompute actual weight using col_rows (which may be stale
+            // after pass 1 killed some rows). Filter to still-alive rows.
+            // For columns where col_rows recorded < 3 entries, this is exact.
+            // For columns that had 3+ entries (truncated), we must re-scan.
+            let alive_in_col: Vec<usize>;
+            if col_rows[c].len() < 3 {
+                // Exact: just filter out killed rows
+                alive_in_col = col_rows[c]
+                    .iter()
+                    .copied()
+                    .filter(|&r| row_alive[r])
+                    .collect();
+            } else {
+                // Truncated at 3: need full re-scan to get accurate count
+                let mut v = Vec::new();
+                for r in 0..nrows {
+                    if row_alive[r] && matrix[r].get(c) {
+                        v.push(r);
+                        if v.len() > 2 {
+                            break;
+                        }
                     }
                 }
+                alive_in_col = v;
             }
             if alive_in_col.len() == 2 {
                 let r1 = alive_in_col[0];
@@ -454,27 +473,34 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
     let surviving_rows: Vec<usize> = (0..nrows).filter(|&r| row_alive[r]).collect();
     let surviving_cols: Vec<usize> = (0..ncols).filter(|&c| col_alive[c]).collect();
 
-    // Check for dependencies among rows that became all-zero after pre-elimination.
-    // These are valid dependencies found purely by the pre-elimination pass.
+    // Check for dependencies among rows that became all-zero after pre-elimination,
+    // and partition surviving rows into zero-rows (dependencies) and non-zero (for GE).
+    // Build a column-alive bitmask for fast zero-check via word-level AND.
+    let nwords = (ncols + 63) / 64;
+    let mut col_alive_mask = vec![0u64; nwords];
+    for &c in &surviving_cols {
+        col_alive_mask[c / 64] |= 1u64 << (c % 64);
+    }
+
     let mut deps = Vec::new();
+    let mut ge_rows = Vec::new();
     for &r in &surviving_rows {
-        // Check if this row is now entirely zero across all surviving columns.
-        let all_zero = surviving_cols.iter().all(|&c| !matrix[r].get(c));
+        // Check if this row is zero across all surviving columns using word-level AND.
+        let all_zero = matrix[r]
+            .bits
+            .iter()
+            .zip(col_alive_mask.iter())
+            .all(|(&row_word, &mask_word)| row_word & mask_word == 0);
         if all_zero {
             let mut dep = history[r].clone();
             dep.sort_unstable();
             if dep.len() >= 2 {
                 deps.push(dep);
             }
+        } else {
+            ge_rows.push(r);
         }
     }
-
-    // Filter out zero-rows from the set we send to GE.
-    let ge_rows: Vec<usize> = surviving_rows
-        .iter()
-        .copied()
-        .filter(|&r| !surviving_cols.iter().all(|&c| !matrix[r].get(c)))
-        .collect();
 
     if ge_rows.is_empty() || surviving_cols.is_empty() {
         return deps;
@@ -483,12 +509,28 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
     let compact_nrows = ge_rows.len();
     let compact_ncols = surviving_cols.len();
 
+    // Build old-to-new column index map for fast lookup during compaction.
+    let mut old_to_new_col = vec![usize::MAX; ncols];
+    for (new_c, &old_c) in surviving_cols.iter().enumerate() {
+        old_to_new_col[old_c] = new_c;
+    }
+
     let mut compact_matrix: Vec<BitRow> = Vec::with_capacity(compact_nrows);
     for &r in &ge_rows {
         let mut compact_row = BitRow::new(compact_ncols);
-        for (new_c, &old_c) in surviving_cols.iter().enumerate() {
-            if matrix[r].get(old_c) {
-                compact_row.set(new_c);
+        // Use word-level bit traversal to find set bits efficiently
+        for (wi, &word) in matrix[r].bits.iter().enumerate() {
+            let mut w = word;
+            while w != 0 {
+                let bit = w.trailing_zeros() as usize;
+                let old_c = wi * 64 + bit;
+                if old_c < ncols {
+                    let new_c = old_to_new_col[old_c];
+                    if new_c != usize::MAX {
+                        compact_row.set(new_c);
+                    }
+                }
+                w &= w - 1; // clear lowest set bit
             }
         }
         compact_matrix.push(compact_row);
