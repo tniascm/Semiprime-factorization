@@ -296,6 +296,29 @@ pub fn sieve_primes(bound: u64) -> Vec<u64> {
 /// Uses the signed-integer extended Euclidean algorithm on i128 to avoid
 /// overflow.
 pub fn extended_gcd(a: u64, m: u64) -> (u64, i64) {
+    // Fast path: when both values fit in i64 (< 2^63), avoid i128 entirely.
+    // This covers all NFS factor base primes (p < 10^6).
+    if a < (1u64 << 62) && m < (1u64 << 62) {
+        let (mut old_r, mut r) = (a as i64, m as i64);
+        let (mut old_s, mut s) = (1i64, 0i64);
+
+        while r != 0 {
+            let q = old_r / r;
+            let tmp = r;
+            r = old_r - q * r;
+            old_r = tmp;
+
+            let tmp = s;
+            s = old_s - q * s;
+            old_s = tmp;
+        }
+
+        let gcd = old_r as u64;
+        let x = ((old_s % m as i64) + m as i64) % m as i64;
+        return (gcd, x);
+    }
+
+    // Fallback for large values
     let (mut old_r, mut r) = (a as i128, m as i128);
     let (mut old_s, mut s) = (1i128, 0i128);
 
