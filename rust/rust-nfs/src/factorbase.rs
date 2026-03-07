@@ -359,8 +359,6 @@ fn split_roots(g: &Poly, p: u64, roots: &mut Vec<u64>, seed: u64) {
         if h_deg > 0 && h_deg < deg {
             // Successful split
             split_roots(&h, p, roots, rng.wrapping_add(attempt));
-            let other = poly_rem(g, &h, p);
-            // other = g / h (quotient, since h divides g)
             let q = poly_exact_div(g, &h, p);
             split_roots(&q, p, roots, rng.wrapping_add(attempt + 1000));
             return;

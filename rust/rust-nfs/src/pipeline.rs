@@ -1692,30 +1692,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
 
     let duplicate_expanded = 0usize; // dedup deferred to expansion time
 
-    // Lazy expansion helper: expands a dep and computes support/hash on demand
-    let expand_dep = |cand: &mut DepCandidate, dep_sets_ref: &[Vec<usize>], deps: &[Vec<usize>]| -> bool {
-        if cand.expanded.is_some() {
-            return true; // already expanded
-        }
-        let dep = &deps[cand.dep_idx];
-        let expanded = expand_dependency_over_sets(dep, dep_sets_ref);
-        if expanded.is_empty() {
-            return false;
-        }
-        let mut support: Vec<u32> = expanded.iter().map(|&x| x as u32).collect();
-        support.sort_unstable();
-        support.dedup();
-
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        support.hash(&mut hasher);
-        cand.support_hash = hasher.finish();
-        cand.support = Some(support);
-        cand.expanded = Some(expanded);
-        true
-    };
-
     let sqrt_prep_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("  sqrt: dep prep in {:.0}ms ({} candidates, lazy expansion)", sqrt_prep_ms, useful_deps.len());
 
@@ -2313,12 +2289,12 @@ fn pollard_rho_brent(n: &Integer, seed: u64, iter_limit: usize) -> Option<Intege
     let mut g = Integer::from(1);
     let mut r = 1usize;
     let mut q = Integer::from(1);
-    let mut x = Integer::from(0);
+    let x = Integer::from(0);
     let mut ys = Integer::from(0);
     let mut iters = 0usize;
 
     while g == one && iters < iter_limit {
-        let mut x = y.clone();
+        let x = y.clone();
         for _ in 0..r {
             y = (Integer::from(&y * &y) + &c) % n;
             iters += 1;
@@ -2364,10 +2340,6 @@ fn pollard_rho_brent(n: &Integer, seed: u64, iter_limit: usize) -> Option<Intege
     } else {
         None
     }
-}
-
-fn full_count(relations: &[crate::relation::Relation]) -> usize {
-    relations.iter().filter(|r| r.is_full()).count()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -3200,10 +3172,6 @@ fn prune_singleton_columns(
     (rows, row_sources, removed_rows_total)
 }
 
-fn dependency_expanded_len(dep: &[usize], set_rows: &[Vec<usize>]) -> usize {
-    expand_dependency_over_sets(dep, set_rows).len()
-}
-
 fn dependency_length_stats(lengths: &[usize]) -> Option<(usize, usize, usize, usize, usize)> {
     if lengths.is_empty() {
         return None;
@@ -3266,158 +3234,6 @@ fn format_dep_len_tiers(tiers: &[Option<usize>]) -> String {
         })
         .collect::<Vec<_>>()
         .join(",")
-}
-
-/// Remap algebraic factor indices to gnfs-compatible format.
-///
-/// Rational factors keep their rat_fb indices (the matrix uses rat_fb.primes.len()
-/// columns for the rational side, covering ALL primes including those without
-/// algebraic roots).
-///
-/// Algebraic factors are remapped from `alg_fb` indices to flat `(prime, root)`
-/// pair indices expected by gnfs's matrix. Each algebraic factor prime p is
-/// identified with a specific root r via `v_p(a - b*r)`, and mapped to
-/// `pair_offset(p_idx) + root_idx`. Higher-degree ideal exponents are computed
-/// by dividing the remaining norm exponent by the HD ideal's residue degree.
-///
-/// Signs are recomputed from actual norm values.
-fn remap_to_gnfs(
-    relations: &[crate::relation::Relation],
-    _rat_fb: &crate::factorbase::FactorBase,
-    alg_fb: &crate::factorbase::FactorBase,
-    gnfs_fb: &gnfs::types::FactorBase,
-    f_coeffs: &[i64],
-    m: u64,
-    degree: usize,
-) -> Vec<gnfs::types::Relation> {
-    // Map: prime value → index in gnfs_fb.primes (for algebraic root lookup)
-    let prime_to_gnfs: HashMap<u64, usize> = gnfs_fb
-        .primes
-        .iter()
-        .enumerate()
-        .map(|(i, &p)| (p, i))
-        .collect();
-
-    // Pair offsets: running sum of root counts per gnfs_fb prime
-    let mut pair_offsets = Vec::with_capacity(gnfs_fb.primes.len());
-    let mut running = 0usize;
-    for roots in &gnfs_fb.algebraic_roots {
-        pair_offsets.push(running);
-        running += roots.len();
-    }
-    let alg_pair_count = running;
-
-    // HD ideal offsets for primes with fewer roots than degree
-    let mut hd_offsets: HashMap<usize, usize> = HashMap::new();
-    let mut hd_off = 0usize;
-    for (pi, roots) in gnfs_fb.algebraic_roots.iter().enumerate() {
-        if !roots.is_empty() && roots.len() < degree {
-            hd_offsets.insert(pi, alg_pair_count + hd_off);
-            hd_off += 1;
-        }
-    }
-
-    let mut result = Vec::new();
-    let mut skipped = 0usize;
-
-    'outer: for rel in relations {
-        // --- Rational factors: keep as-is ---
-        // rat_fb indices map directly to matrix columns 1..1+rat_fb_size
-        // since we pass rat_fb.primes.len() as rat_fb_size to build_matrix.
-        let new_rat_factors = rel.rational_factors.clone();
-
-        // --- Algebraic factors: remap to gnfs flat indices ---
-        let mut new_alg_factors: Vec<(u32, u8)> = Vec::new();
-        for &(idx, total_exp) in &rel.algebraic_factors {
-            let prime = alg_fb.primes[idx as usize];
-            let gnfs_pi = match prime_to_gnfs.get(&prime) {
-                Some(&i) => i,
-                None => {
-                    // Algebraic prime not in gnfs_fb (no root) → skip relation
-                    skipped += 1;
-                    continue 'outer;
-                }
-            };
-
-            // Determine ideal valuations via v_p(a - b*r) for each root
-            let roots = &gnfs_fb.algebraic_roots[gnfs_pi];
-            let mut accounted = 0u8;
-
-            for (ri, &r) in roots.iter().enumerate() {
-                let v = p_valuation_a_minus_br(rel.a, rel.b, r, prime);
-                if v > 0 {
-                    let flat_idx = pair_offsets[gnfs_pi] + ri;
-                    new_alg_factors.push((flat_idx as u32, v));
-                    accounted = accounted.saturating_add(v);
-                }
-            }
-
-            // Higher-degree ideal: the remaining exponent from the norm
-            // equals f_hd * v_HD where f_hd = degree - #roots is the
-            // residue degree of the HD ideal.
-            if accounted < total_exp {
-                let remaining = total_exp - accounted;
-                let n_roots = roots.len();
-                let f_hd = degree - n_roots;
-                if f_hd > 0 {
-                    let f_hd_u8 = f_hd as u8;
-                    if remaining % f_hd_u8 == 0 {
-                        let hd_val = remaining / f_hd_u8;
-                        if let Some(&hd_idx) = hd_offsets.get(&gnfs_pi) {
-                            new_alg_factors.push((hd_idx as u32, hd_val));
-                        }
-                    } else {
-                        // Ramified prime or complex splitting — skip
-                        skipped += 1;
-                        continue 'outer;
-                    }
-                }
-            }
-        }
-
-        // --- Signs (recomputed from actual norms) ---
-        let rat_norm_val = rel.a as i128 - (rel.b as i128) * (m as i128);
-        let rational_sign_negative = rat_norm_val < 0;
-        let algebraic_sign_negative = compute_alg_sign(rel.a, rel.b, f_coeffs);
-
-        result.push(gnfs::types::Relation {
-            a: rel.a,
-            b: rel.b,
-            rational_factors: new_rat_factors,
-            algebraic_factors: new_alg_factors,
-            rational_sign_negative,
-            algebraic_sign_negative,
-            special_q: None,
-            rat_lp: None,
-            alg_lp: None,
-        });
-    }
-
-    if skipped > 0 {
-        eprintln!(
-            "  remap: skipped {} relations (unmapped algebraic primes)",
-            skipped
-        );
-    }
-
-    result
-}
-
-/// Compute v_p(a - b*r) — the p-adic valuation of the integer (a - b*r).
-fn p_valuation_a_minus_br(a: i64, b: u64, r: u64, p: u64) -> u8 {
-    let val = a as i128 - (b as i128) * (r as i128);
-    if val == 0 {
-        // v_p(0) = infinity; cap at a large value
-        return 64;
-    }
-    let p128 = p as i128;
-    let mut n = val.abs();
-    let mut v = 0u8;
-    while n % p128 == 0 && v < 64 {
-        n /= p128;
-        v += 1;
-    }
-    v
 }
 
 fn eval_univariate_bigint(coeffs: &[Integer], x: &Integer) -> Integer {
@@ -3580,37 +3396,6 @@ fn estimate_avg_log_norm(f_coeffs: &[i64], sieve_half_width: u64) -> f64 {
         return f64::MAX;
     }
     total_log / count as f64
-}
-
-/// F(a,b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
-/// Returns true if F(a,b) < 0.
-fn compute_alg_sign(a: i64, b: u64, f_coeffs: &[i64]) -> bool {
-    if f_coeffs.is_empty() || b == 0 {
-        return false;
-    }
-    let d = f_coeffs.len() - 1;
-    let a128 = a as i128;
-    let b128 = b as i128;
-
-    let mut result: i128 = 0;
-    let mut a_pow: i128 = 1;
-    let mut b_pow: i128 = {
-        let mut bp: i128 = 1;
-        for _ in 0..d {
-            bp *= b128;
-        }
-        bp
-    };
-
-    for k in 0..=d {
-        result += (f_coeffs[k] as i128) * a_pow * b_pow;
-        a_pow *= a128;
-        if k < d {
-            b_pow /= b128;
-        }
-    }
-
-    result < 0
 }
 
 /// Hybrid remap: keep rational factors from our sieve (complete FB), recompute
