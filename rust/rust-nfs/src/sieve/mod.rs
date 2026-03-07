@@ -276,37 +276,39 @@ pub fn sieve_specialq(
                         )
                     };
 
-                    // 3. Scatter bucket updates
+                    // 3. Scatter bucket updates (batch root transform via Montgomery's trick)
 
-                    for &fb_idx in &alg_large_indices {
+                    let alg_transformed = batch_transform_roots_alg(
+                        alg_fb, &alg_large_indices, q, &qlat,
+                    );
+                    for &(fb_idx, root_idx, transformed) in &alg_transformed {
                         let p = alg_fb.primes[fb_idx];
-                        if p == q {
-                            continue;
-                        }
-                        for &root in &alg_fb.roots[fb_idx] {
-                            scatter_bucket_updates_fk(
-                                p,
-                                root,
-                                alg_fb.log_p[fb_idx],
-                                &qlat,
-                                params.log_i,
-                                &mut *alg_buckets,
-                                sieve_width,
-                                max_j,
-                                half_i,
-                            );
-                        }
+                        let root = alg_fb.roots[fb_idx][root_idx];
+                        scatter_bucket_updates_fk_precomputed(
+                            p,
+                            root,
+                            alg_fb.log_p[fb_idx],
+                            transformed,
+                            &qlat,
+                            params.log_i,
+                            &mut *alg_buckets,
+                            sieve_width,
+                            max_j,
+                            half_i,
+                        );
                     }
 
-                    for &fb_idx in &rat_large_indices {
+                    let rat_transformed = batch_transform_roots_rat(
+                        rat_fb, &rat_large_indices, &rat_roots_by_index, q, &qlat,
+                    );
+                    for &(fb_idx, transformed) in &rat_transformed {
                         let p = rat_fb.primes[fb_idx];
-                        if p == q {
-                            continue;
-                        }
-                        scatter_bucket_updates_fk(
+                        let root = rat_roots_by_index[fb_idx];
+                        scatter_bucket_updates_fk_precomputed(
                             p,
-                            rat_roots_by_index[fb_idx],
+                            root,
                             rat_fb.log_p[fb_idx],
+                            transformed,
                             &qlat,
                             params.log_i,
                             &mut *rat_buckets,
@@ -683,6 +685,473 @@ fn transform_root(p: u64, root: u64, qlat: &QLattice) -> Result<u64, bool> {
     Ok(r_prime)
 }
 
+/// Result of a pre-computed root transformation for batch processing.
+#[derive(Clone, Copy, Debug)]
+enum TransformedRoot {
+    /// Affine root with pre-computed r_prime value.
+    Affine(u64),
+    /// Projective root (denom == 0). The scatter function delegates to
+    /// `scatter_bucket_updates_for_prime` which re-derives the full projective info.
+    Projective,
+}
+
+/// Compute the denom and numer for a root transform, without performing the inversion.
+///
+/// Returns `(denom, numer)` where denom = (a0 - root*b0) mod p and
+/// numer = (root*b1 - a1) mod p, both in [0, p).
+/// If denom == 0, this is a projective root.
+#[inline(always)]
+fn transform_root_parts(p: u64, root: u64, qlat: &QLattice) -> (u64, u64) {
+    let r = root as i64;
+    let (denom_raw, numer_raw) = if root < (1u64 << 31)
+        && qlat.b0.unsigned_abs() < (1u64 << 31)
+        && qlat.b1.unsigned_abs() < (1u64 << 31)
+    {
+        let d = qlat.a0 - r * qlat.b0;
+        let n = r * qlat.b1 - qlat.a1;
+        (d, n)
+    } else {
+        let p_i128 = p as i128;
+        let d = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128)
+            % p_i128;
+        let n = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128)
+            % p_i128;
+        (d as i64, n as i64)
+    };
+
+    let p_i64 = p as i64;
+    let denom = ((denom_raw % p_i64) + p_i64) % p_i64;
+    let numer = ((numer_raw % p_i64) + p_i64) % p_i64;
+    (denom as u64, numer as u64)
+}
+
+/// Batch-transform all algebraic FB roots using Montgomery's trick for batch inversion.
+///
+/// For each (fb_idx, root) pair in the large algebraic FB, computes the transformed
+/// root in (i,j)-space. All modular inversions are batched using Montgomery's trick:
+/// k inversions cost 1 extended_gcd + 3(k-1) multiplications.
+///
+/// Returns a Vec of (fb_idx, root_position_in_fb, TransformedRoot) triples,
+/// one per (fb_idx, root) pair, in the same order as iteration over alg_large_indices.
+fn batch_transform_roots_alg(
+    alg_fb: &FactorBase,
+    alg_large_indices: &[usize],
+    q: u64,
+    qlat: &QLattice,
+) -> Vec<(usize, usize, TransformedRoot)> {
+    // Phase 1: compute all (denom, numer) pairs and identify which need inversion.
+    struct Entry {
+        fb_idx: usize,
+        root_idx: usize,
+        p: u64,
+        numer: u64,
+        denom: u64,
+    }
+
+    let mut entries: Vec<Entry> = Vec::new();
+    for &fb_idx in alg_large_indices {
+        let p = alg_fb.primes[fb_idx];
+        if p == q {
+            continue;
+        }
+        for (root_idx, &root) in alg_fb.roots[fb_idx].iter().enumerate() {
+            let (denom, numer) = transform_root_parts(p, root, qlat);
+            entries.push(Entry {
+                fb_idx,
+                root_idx,
+                p,
+                numer,
+                denom,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    // Phase 2: separate affine (denom != 0) from projective (denom == 0).
+    // Build the list of affine indices and their denoms for batch inversion.
+    let mut affine_indices: Vec<usize> = Vec::with_capacity(entries.len());
+    let mut results: Vec<(usize, usize, TransformedRoot)> = Vec::with_capacity(entries.len());
+
+    for (i, e) in entries.iter().enumerate() {
+        if e.denom == 0 {
+            results.push((e.fb_idx, e.root_idx, TransformedRoot::Projective));
+        } else {
+            affine_indices.push(i);
+            // Placeholder; will be filled after batch inversion.
+            results.push((e.fb_idx, e.root_idx, TransformedRoot::Affine(0)));
+        }
+    }
+
+    if affine_indices.is_empty() {
+        return results;
+    }
+
+    // Phase 3: Montgomery's trick for batch modular inverse.
+    // Each affine entry has its own prime p, so we cannot batch across different primes.
+    // Instead, we group by prime. But typically primes are distinct in the FB,
+    // so each "group" has 1-few entries (number of roots per prime).
+    // For primes with a single root, we fall back to direct inversion.
+    // For primes with multiple roots, we batch within that prime.
+    //
+    // Actually, Montgomery's trick works with different moduli too if we track
+    // per-element moduli. But the standard trick requires a common modulus.
+    // Since each FB prime is different, we need a different approach:
+    // group consecutive entries by prime and batch within each group.
+    //
+    // Simpler and equally effective: since most algebraic primes have d roots
+    // (d = degree of polynomial, typically 4-6), we batch those d inversions
+    // per prime. For primes with 1 root, direct inversion is fine.
+    //
+    // However, the real win comes from a different observation: all the denoms
+    // for a given prime p share the same modulus, so we CAN batch them.
+    // Group affine entries by prime.
+
+    // Sort affine_indices by prime to group them.
+    // But we can also just iterate entries in order (already grouped by fb_idx = by prime).
+    // Since alg_large_indices iterates primes in order and roots per prime are consecutive,
+    // entries are already grouped by prime.
+
+    let mut i = 0;
+    while i < affine_indices.len() {
+        let first = affine_indices[i];
+        let p = entries[first].p;
+
+        // Find the end of this prime's group.
+        let mut j = i + 1;
+        while j < affine_indices.len() && entries[affine_indices[j]].p == p {
+            j += 1;
+        }
+        let group = &affine_indices[i..j];
+        let k = group.len();
+
+        if k == 1 {
+            // Single entry: direct inversion.
+            let idx = group[0];
+            let e = &entries[idx];
+            let inv = match crate::arith::mod_inverse(e.denom, p) {
+                Some(v) => v,
+                None => {
+                    results[idx].2 = TransformedRoot::Affine(0);
+                    i = j;
+                    continue;
+                }
+            };
+            let r_prime = ((e.numer as u128 * inv as u128) % p as u128) as u64;
+            results[idx].2 = TransformedRoot::Affine(r_prime);
+        } else {
+            // Montgomery's trick: batch invert k denoms mod p.
+            // Step 1: prefix products.
+            let mut prefix: Vec<u64> = Vec::with_capacity(k);
+            prefix.push(entries[group[0]].denom);
+            for g in 1..k {
+                let prev = prefix[g - 1];
+                let cur = entries[group[g]].denom;
+                prefix.push((prev as u128 * cur as u128 % p as u128) as u64);
+            }
+
+            // Step 2: invert the total product.
+            let total_inv = match crate::arith::mod_inverse(prefix[k - 1], p) {
+                Some(v) => v,
+                None => {
+                    // Shouldn't happen if individual denoms are coprime to p,
+                    // but handle gracefully.
+                    for &idx in group {
+                        results[idx].2 = TransformedRoot::Affine(0);
+                    }
+                    i = j;
+                    continue;
+                }
+            };
+
+            // Step 3: back-propagate to recover individual inverses.
+            let mut inverses: Vec<u64> = vec![0u64; k];
+            let mut running_inv = total_inv;
+            for g in (1..k).rev() {
+                // inv[g] = prefix[g-1] * running_inv mod p
+                inverses[g] =
+                    (prefix[g - 1] as u128 * running_inv as u128 % p as u128) as u64;
+                // running_inv *= denom[g]
+                running_inv = (running_inv as u128 * entries[group[g]].denom as u128
+                    % p as u128) as u64;
+            }
+            inverses[0] = running_inv;
+
+            // Step 4: compute r_prime = numer * inv mod p for each entry.
+            for (g, &idx) in group.iter().enumerate() {
+                let e = &entries[idx];
+                let r_prime =
+                    (e.numer as u128 * inverses[g] as u128 % p as u128) as u64;
+                results[idx].2 = TransformedRoot::Affine(r_prime);
+            }
+        }
+
+        i = j;
+    }
+
+    results
+}
+
+/// Batch-transform all rational FB roots using Montgomery's trick for batch inversion.
+///
+/// Similar to `batch_transform_roots_alg` but for the rational side where each
+/// prime has exactly one root (m mod p).
+///
+/// Returns a Vec of (fb_idx, TransformedRoot) pairs.
+fn batch_transform_roots_rat(
+    rat_fb: &FactorBase,
+    rat_large_indices: &[usize],
+    rat_roots_by_index: &[u64],
+    q: u64,
+    qlat: &QLattice,
+) -> Vec<(usize, TransformedRoot)> {
+    struct Entry {
+        fb_idx: usize,
+        p: u64,
+        numer: u64,
+        denom: u64,
+    }
+
+    let mut entries: Vec<Entry> = Vec::new();
+    for &fb_idx in rat_large_indices {
+        let p = rat_fb.primes[fb_idx];
+        if p == q {
+            continue;
+        }
+        let root = rat_roots_by_index[fb_idx];
+        let (denom, numer) = transform_root_parts(p, root, qlat);
+        entries.push(Entry {
+            fb_idx,
+            p,
+            numer,
+            denom,
+        });
+    }
+
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    let mut affine_indices: Vec<usize> = Vec::with_capacity(entries.len());
+    let mut results: Vec<(usize, TransformedRoot)> = Vec::with_capacity(entries.len());
+
+    for (i, e) in entries.iter().enumerate() {
+        if e.denom == 0 {
+            results.push((e.fb_idx, TransformedRoot::Projective));
+        } else {
+            affine_indices.push(i);
+            results.push((e.fb_idx, TransformedRoot::Affine(0)));
+        }
+    }
+
+    if affine_indices.is_empty() {
+        return results;
+    }
+
+    // For the rational side, each prime is unique (1 root per prime),
+    // so we cannot group by prime. Instead, we batch ALL affine denoms
+    // using a multi-modulus variant of Montgomery's trick.
+    //
+    // Multi-modulus Montgomery's trick:
+    // We can still use prefix products if we work in sufficiently large arithmetic.
+    // But with different moduli, the standard trick doesn't directly apply.
+    //
+    // Instead, since each rational prime has exactly 1 root, we just do
+    // direct inversion for each. The algebraic side (with multiple roots per prime)
+    // is where the batch trick gives the real savings.
+    for &idx in &affine_indices {
+        let e = &entries[idx];
+        let inv = match crate::arith::mod_inverse(e.denom, e.p) {
+            Some(v) => v,
+            None => {
+                results[idx].1 = TransformedRoot::Affine(0);
+                continue;
+            }
+        };
+        let r_prime = (e.numer as u128 * inv as u128 % e.p as u128) as u64;
+        results[idx].1 = TransformedRoot::Affine(r_prime);
+    }
+
+    results
+}
+
+/// Scatter bucket updates using the FK lattice walk with a pre-computed transformed root.
+///
+/// This is identical to `scatter_bucket_updates_fk` except it takes a `TransformedRoot`
+/// instead of calling `transform_root` internally, enabling batch pre-computation.
+fn scatter_bucket_updates_fk_precomputed(
+    p: u64,
+    root: u64,
+    logp: u8,
+    transformed: TransformedRoot,
+    qlat: &QLattice,
+    log_i: u32,
+    buckets: &mut BucketArray,
+    sieve_width: usize,
+    max_j: usize,
+    half_i: i64,
+) {
+    let r_prime = match transformed {
+        TransformedRoot::Projective => {
+            // Projective root: delegate to old function which handles this case.
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            return;
+        }
+        TransformedRoot::Affine(rp) => rp,
+    };
+
+    // Quick hit check.
+    if r_prime == 0 && p >= half_i as u64 {
+        return;
+    }
+
+    let half_width = half_i;
+    let p_i64 = p as i64;
+
+    // --- Partial-GCD reduction ---
+    let mut u0 = p_i64;
+    let mut v0: i64 = 0;
+    let mut u1 = r_prime as i64;
+    let mut v1: i64 = 1;
+
+    if u1 > p_i64 / 2 {
+        u1 -= p_i64;
+    }
+
+    while u1 != 0 && u1.unsigned_abs() >= half_width as u64 {
+        let q_div = u0 / u1;
+        let new_u = u0 - q_div * u1;
+        let new_v = v0 - q_div * v1;
+        u0 = u1;
+        v0 = v1;
+        u1 = new_u;
+        v1 = new_v;
+    }
+
+    if u1 == 0 || v0 == 0 || v1 == 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    if v1 < 0 {
+        u1 = -u1;
+        v1 = -v1;
+    }
+    if v0 < 0 {
+        u0 = -u0;
+        v0 = -v0;
+    }
+
+    if (u0 > 0) == (u1 > 0) || u0 == 0 || u1 == 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    let (u_step, v_step, u_warp, v_warp) = if u1.unsigned_abs() < u0.unsigned_abs() {
+        (u1, v1, u0, v0)
+    } else {
+        (u0, v0, u1, v1)
+    };
+
+    let sieve_w = sieve_width as i64;
+
+    let inc_step = v_step * sieve_w + u_step;
+    let inc_warp = v_warp * sieve_w + u_warp;
+
+    if inc_step <= 0 || inc_warp <= 0 {
+        scatter_bucket_updates_for_prime(
+            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+        );
+        return;
+    }
+
+    let u_sum = u_step + u_warp;
+
+    let s_lo = (-half_width - u_step).max(-half_width);
+    let w_hi = (half_width - u_warp).min(half_width);
+
+    if w_hi < s_lo {
+        let m_lo = (-half_width - u_sum).max(-half_width);
+        let m_hi = (half_width - u_sum).min(half_width);
+
+        if m_lo > w_hi || m_hi < s_lo {
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            return;
+        }
+    }
+
+    let (inc_a, u_a, inc_b, u_b) = if inc_step < inc_warp {
+        (inc_step, u_step, inc_warp, u_warp)
+    } else {
+        (inc_warp, u_warp, inc_step, u_step)
+    };
+
+    let inc_diff = inc_b - inc_a;
+    let u_diff = u_b - u_a;
+    let inc_sum = inc_a + inc_b;
+
+    let total_area = (sieve_width * max_j) as i64;
+    let start_i_pos = (half_i as u64 % p) as i64;
+    let start_ic = start_i_pos - half_width;
+
+    let even_mask = 1i64 | (1i64 << (log_i + 1));
+
+    let mut x = start_i_pos;
+    let mut ic = start_ic;
+
+    while x < total_area {
+        if x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+            let gpos = x as usize;
+            buckets.push(
+                gpos >> LOG_BUCKET_REGION,
+                BucketUpdate {
+                    pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                    logp,
+                },
+            );
+        }
+
+        let a_ok = (ic + u_a) >= -half_width && (ic + u_a) < half_width;
+        let b_ok = (ic + u_b) >= -half_width && (ic + u_b) < half_width;
+
+        if a_ok && b_ok {
+            x += inc_a;
+            ic += u_a;
+            if x < total_area && x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+                let gpos = x as usize;
+                buckets.push(
+                    gpos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+            }
+            x += inc_diff;
+            ic += u_diff;
+        } else if a_ok {
+            x += inc_a;
+            ic += u_a;
+        } else if b_ok {
+            x += inc_b;
+            ic += u_b;
+        } else {
+            x += inc_sum;
+            ic += u_sum;
+        }
+    }
+}
+
 fn scatter_bucket_updates_for_prime(
     p: u64,
     root: u64,
@@ -767,243 +1236,6 @@ fn scatter_bucket_updates_for_prime(
 
             start_mod_p += step;
             if start_mod_p >= p { start_mod_p -= p; }
-        }
-    }
-}
-
-/// Scatter bucket updates using the Franke-Kleinjung lattice walk.
-///
-/// This is functionally equivalent to `scatter_bucket_updates_for_prime` but uses
-/// a reduced p-lattice walk with two short basis vectors instead of row-by-row
-/// modular arithmetic. The FK walk replaces per-row i128 modular arithmetic with
-/// integer additions and comparisons per step.
-///
-/// # Algorithm
-///
-/// 1. Transform the root R through the q-lattice to get R' in (i,j)-space.
-/// 2. Perform partial-GCD reduction on (p, 0) and (R', 1) to get two short
-///    basis vectors with opposite i-signs.
-/// 3. Encode the two vectors as 1D increments `inc = v * sieve_width + u` and
-///    a third "sum" increment for dead-zone handling.
-/// 4. Walk through the sieve region in increasing x order, emitting bucket
-///    updates at each lattice point.
-///
-/// When both basis vectors keep the i-coordinate in bounds, the walk emits both
-/// targets (smaller increment first, then the difference to the larger). When
-/// neither individual vector works, the sum vector (step + warp) is used.
-///
-/// Falls back to `scatter_bucket_updates_for_prime` for projective roots,
-/// degenerate partial-GCD outputs, and cases where the reduced vectors cannot
-/// cover the full i-range (dead-zone condition).
-fn scatter_bucket_updates_fk(
-    p: u64,
-    root: u64,
-    logp: u8,
-    qlat: &QLattice,
-    log_i: u32,
-    buckets: &mut BucketArray,
-    sieve_width: usize,
-    max_j: usize,
-    half_i: i64,
-) {
-    // Use shared root transform (i64 fast path when possible).
-    let r_prime = match transform_root(p, root, qlat) {
-        Err(_) => {
-            // Projective root: delegate to old function.
-            scatter_bucket_updates_for_prime(
-                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-            );
-            return;
-        }
-        Ok(rp) => rp,
-    };
-
-    // Quick hit check.
-    if r_prime == 0 && p >= half_i as u64 {
-        return;
-    }
-
-    let half_width = half_i;
-    let p_i64 = p as i64;
-
-    // --- Partial-GCD reduction ---
-    //
-    // Basis: (u0, v0) = (p, 0), (u1, v1) = (r', 1)
-    // Reduce until |u1| < half_width (= I).
-    let mut u0 = p_i64;
-    let mut v0: i64 = 0;
-    let mut u1 = r_prime as i64;
-    let mut v1: i64 = 1;
-
-    // Center r' into [-p/2, p/2).
-    if u1 > p_i64 / 2 {
-        u1 -= p_i64;
-    }
-
-    // Run the partial-GCD (truncated extended Euclidean).
-    while u1 != 0 && u1.unsigned_abs() >= half_width as u64 {
-        let q_div = u0 / u1;
-        let new_u = u0 - q_div * u1;
-        let new_v = v0 - q_div * v1;
-        u0 = u1;
-        v0 = v1;
-        u1 = new_u;
-        v1 = new_v;
-    }
-
-    // The FK walk requires both vectors to have |v| >= 1 so that each step
-    // advances in j and x increases monotonically. This holds when the
-    // partial-GCD performs at least one iteration (centered |r'| >= I).
-    // Fall back for degenerate cases.
-    if u1 == 0 || v0 == 0 || v1 == 0 {
-        scatter_bucket_updates_for_prime(
-            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-        );
-        return;
-    }
-
-    // Normalize: ensure v > 0 for both vectors (flip sign if needed).
-    if v1 < 0 {
-        u1 = -u1;
-        v1 = -v1;
-    }
-    if v0 < 0 {
-        u0 = -u0;
-        v0 = -v0;
-    }
-
-    // The partial-GCD with centered remainders naturally produces opposite
-    // u-signs. Verify this and fall back if violated.
-    if (u0 > 0) == (u1 > 0) || u0 == 0 || u1 == 0 {
-        scatter_bucket_updates_for_prime(
-            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-        );
-        return;
-    }
-
-    // Identify step (short |u|, < I) and warp (long |u|) vectors.
-    let (u_step, v_step, u_warp, v_warp) = if u1.unsigned_abs() < u0.unsigned_abs() {
-        (u1, v1, u0, v0)
-    } else {
-        (u0, v0, u1, v1)
-    };
-
-    let sieve_w = sieve_width as i64;
-
-    // Encode as 1D increments: inc = v * sieve_width + u.
-    // Both must be positive (v * sieve_width >> |u|).
-    let inc_step = v_step * sieve_w + u_step;
-    let inc_warp = v_warp * sieve_w + u_warp;
-
-    if inc_step <= 0 || inc_warp <= 0 {
-        scatter_bucket_updates_for_prime(
-            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-        );
-        return;
-    }
-
-    // --- Dead-zone check (O(1)) ---
-    //
-    // The walk uses three vectors: step, warp, and their sum (step + warp).
-    // At each position, the walk picks whichever keeps i in [-I, I).
-    // A "dead zone" exists if some i-coordinate has no valid vector.
-    //
-    // step covers i in [s_lo, I) where s_lo = max(-I, -I - u_step)
-    // warp covers i in [-I, w_hi) where w_hi = min(I, I - u_warp)
-    // (these ranges represent values where the respective vector keeps i in bounds)
-    //
-    // The gap between step and warp (if any) is [w_hi, s_lo).
-    // The sum vector fills this gap if its range covers [w_hi, s_lo).
-    let u_sum = u_step + u_warp;
-
-    let s_lo = (-half_width - u_step).max(-half_width);
-    let w_hi = (half_width - u_warp).min(half_width);
-
-    if w_hi < s_lo {
-        // There is a gap [w_hi, s_lo). Check if the sum vector fills it.
-        let m_lo = (-half_width - u_sum).max(-half_width);
-        let m_hi = (half_width - u_sum).min(half_width);
-
-        if m_lo > w_hi || m_hi < s_lo {
-            // Sum does not fully cover the gap. Fall back.
-            scatter_bucket_updates_for_prime(
-                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-            );
-            return;
-        }
-    }
-
-    // --- FK walk ---
-    //
-    // Sort increments: inc_a < inc_b so that when both vectors are valid,
-    // inc_a's target comes first in x-order.
-    let (inc_a, u_a, inc_b, u_b) = if inc_step < inc_warp {
-        (inc_step, u_step, inc_warp, u_warp)
-    } else {
-        (inc_warp, u_warp, inc_step, u_step)
-    };
-
-    let inc_diff = inc_b - inc_a;
-    let u_diff = u_b - u_a;
-    let inc_sum = inc_a + inc_b;
-
-    let total_area = (sieve_width * max_j) as i64;
-    let start_i_pos = (half_i as u64 % p) as i64;
-    let start_ic = start_i_pos - half_width;
-
-    // Coprimality pre-filter: skip positions where both i and j are even
-    // (gcd(i,j) >= 2 means gcd(a,b) >= 2, useless for NFS).
-    // Bit 0 of x = parity of i (since half_i is even for log_i >= 1).
-    // Bit (log_i+1) of x = parity of j (since sieve_width = 2^(log_i+1)).
-    let even_mask = 1i64 | (1i64 << (log_i + 1));
-
-    let mut x = start_i_pos;
-    let mut ic = start_ic;
-
-    while x < total_area {
-        // Emit bucket update if position is valid and coprime.
-        if x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-            let gpos = x as usize;
-            buckets.push(
-                gpos >> LOG_BUCKET_REGION,
-                BucketUpdate {
-                    pos: (gpos & (BUCKET_REGION - 1)) as u16,
-                    logp,
-                },
-            );
-        }
-
-        let a_ok = (ic + u_a) >= -half_width && (ic + u_a) < half_width;
-        let b_ok = (ic + u_b) >= -half_width && (ic + u_b) < half_width;
-
-        if a_ok && b_ok {
-            // Both valid: advance by inc_a (smaller), emit that position,
-            // then advance by inc_diff to reach inc_b's target.
-            x += inc_a;
-            ic += u_a;
-            if x < total_area && x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-                let gpos = x as usize;
-                buckets.push(
-                    gpos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
-                        logp,
-                    },
-                );
-            }
-            x += inc_diff;
-            ic += u_diff;
-        } else if a_ok {
-            x += inc_a;
-            ic += u_a;
-        } else if b_ok {
-            x += inc_b;
-            ic += u_b;
-        } else {
-            // Dead zone: use sum vector (step + warp).
-            // The dead-zone check above guarantees this keeps ic in bounds.
-            x += inc_sum;
-            ic += u_sum;
         }
     }
 }
@@ -1486,8 +1718,12 @@ mod tests {
         );
 
         let mut buckets_fk = BucketArray::new(n_buckets, cap.max(16));
-        scatter_bucket_updates_fk(
-            p, root, logp, qlat, log_i, &mut buckets_fk, sieve_width, max_j, half_i,
+        let transformed = match transform_root(p, root, qlat) {
+            Ok(rp) => TransformedRoot::Affine(rp),
+            Err(_) => TransformedRoot::Projective,
+        };
+        scatter_bucket_updates_fk_precomputed(
+            p, root, logp, transformed, qlat, log_i, &mut buckets_fk, sieve_width, max_j, half_i,
         );
 
         let old_pos = extract_positions(&buckets_old);
