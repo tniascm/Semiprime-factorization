@@ -1567,7 +1567,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         return result;
     }
 
-    let mut ge_deps = gnfs::linalg::find_dependencies(&matrix, ncols);
+    let mut ge_deps = gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols);
     let ge_deps_total = ge_deps.len();
     let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")
         .ok()
