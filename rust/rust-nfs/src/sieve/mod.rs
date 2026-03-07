@@ -688,12 +688,15 @@ fn scatter_bucket_updates_for_prime(
     root: u64,
     logp: u8,
     qlat: &QLattice,
-    _log_i: u32,
+    log_i: u32,
     buckets: &mut BucketArray,
     sieve_width: usize,
     max_j: usize,
     half_i: i64,
 ) {
+    // Coprimality pre-filter mask (same as FK function).
+    let even_mask = 1usize | (1usize << (log_i + 1));
+
     let r_prime = match transform_root(p, root, qlat) {
         Err(both_zero) => {
             // Projective root: hits every cell in each p-th row
@@ -730,13 +733,15 @@ fn scatter_bucket_updates_for_prime(
         for j in 0..max_j {
             if (start_mod_p as usize) < sieve_width {
                 let global_pos = j * sieve_width + start_mod_p as usize;
-                buckets.push(
-                    global_pos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                        logp,
-                    },
-                );
+                if (global_pos & even_mask) != 0 {
+                    buckets.push(
+                        global_pos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
             }
             start_mod_p += step;
             if start_mod_p >= p { start_mod_p -= p; }
@@ -748,13 +753,15 @@ fn scatter_bucket_updates_for_prime(
 
             while i_pos < sieve_width {
                 let global_pos = row_base + i_pos;
-                buckets.push(
-                    global_pos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                        logp,
-                    },
-                );
+                if (global_pos & even_mask) != 0 {
+                    buckets.push(
+                        global_pos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
                 i_pos += p_usize;
             }
 
@@ -944,12 +951,18 @@ fn scatter_bucket_updates_fk(
     let start_i_pos = (half_i as u64 % p) as i64;
     let start_ic = start_i_pos - half_width;
 
+    // Coprimality pre-filter: skip positions where both i and j are even
+    // (gcd(i,j) >= 2 means gcd(a,b) >= 2, useless for NFS).
+    // Bit 0 of x = parity of i (since half_i is even for log_i >= 1).
+    // Bit (log_i+1) of x = parity of j (since sieve_width = 2^(log_i+1)).
+    let even_mask = 1i64 | (1i64 << (log_i + 1));
+
     let mut x = start_i_pos;
     let mut ic = start_ic;
 
     while x < total_area {
-        // Emit bucket update if position is valid.
-        if x >= 0 && ic >= -half_width && ic < half_width {
+        // Emit bucket update if position is valid and coprime.
+        if x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
             let gpos = x as usize;
             buckets.push(
                 gpos >> LOG_BUCKET_REGION,
@@ -968,7 +981,7 @@ fn scatter_bucket_updates_fk(
             // then advance by inc_diff to reach inc_b's target.
             x += inc_a;
             ic += u_a;
-            if x < total_area && x >= 0 && ic >= -half_width && ic < half_width {
+            if x < total_area && x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
                 let gpos = x as usize;
                 buckets.push(
                     gpos >> LOG_BUCKET_REGION,
@@ -1378,6 +1391,58 @@ mod tests {
             rel.lp_keys,
             vec![LpKey::Rational(1009), LpKey::Rational(1013)]
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Coprimality pre-filter tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_coprime_filter_removes_even_pairs() {
+        // Verify that even_mask correctly identifies positions where both i and j are even.
+        let log_i = 8u32; // half_i = 256, sieve_width = 512
+        let sieve_width = 1usize << (log_i + 1);
+        let half_i = 1i64 << log_i;
+        let even_mask = 1u64 | (1u64 << (log_i + 1));
+
+        for x in 0..2048u64 {
+            let i_offset = (x as usize) % sieve_width;
+            let j = (x as usize) / sieve_width;
+            let i = i_offset as i64 - half_i;
+
+            let both_even = i % 2 == 0 && j as i64 % 2 == 0;
+            let mask_says_coprime = (x & even_mask) != 0;
+
+            // When both i and j are even, the mask should say non-coprime (filter it out).
+            assert_eq!(
+                !both_even, mask_says_coprime,
+                "coprime mismatch at x={} (i={}, j={})", x, i, j
+            );
+        }
+    }
+
+    #[test]
+    fn test_coprime_filter_various_log_i() {
+        // Test the mask for several log_i values used in practice.
+        for log_i in [4u32, 7, 8, 9, 10] {
+            let sieve_width = 1usize << (log_i + 1);
+            let half_i = 1i64 << log_i;
+            let even_mask = 1u64 | (1u64 << (log_i + 1));
+
+            for x in 0..(sieve_width as u64 * 4).min(4096) {
+                let i_offset = (x as usize) % sieve_width;
+                let j = (x as usize) / sieve_width;
+                let i = i_offset as i64 - half_i;
+
+                let both_even = i % 2 == 0 && j as i64 % 2 == 0;
+                let mask_says_coprime = (x & even_mask) != 0;
+
+                assert_eq!(
+                    !both_even, mask_says_coprime,
+                    "coprime mismatch at x={} (i={}, j={}, log_i={})", x, i, j, log_i
+                );
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
