@@ -31,6 +31,12 @@ struct CurveParams {
 ///
 /// Returns `Some(factor)` if a non-trivial factor of `n` is found.
 pub fn ecm_one_curve(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
+    let primes = sieve_primes(b2);
+    ecm_one_curve_with_primes(n, b1, b2, sigma, &primes)
+}
+
+/// ECM with pre-computed prime list (avoids redundant sieve_primes calls).
+pub fn ecm_one_curve_with_primes(n: u64, b1: u64, b2: u64, sigma: u64, primes: &[u64]) -> Option<u64> {
     if n <= 1 || n % 2 == 0 {
         return None;
     }
@@ -87,11 +93,10 @@ pub fn ecm_one_curve(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
     // We accumulate a product of Z-coordinates and check gcd periodically
     // to detect factors early and avoid the "overshot" case (gcd == n)
     // that happens when B1 is large relative to the factors.
-    let primes = sieve_primes(b2);
     let mut accum = mp.r_mod_n; // 1 in Montgomery form
     let mut step_count = 0u32;
 
-    for &p in &primes {
+    for &p in primes {
         if p > b1 {
             break;
         }
@@ -116,7 +121,7 @@ pub fn ecm_one_curve(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
                 // Overshot in this batch — retry per-prime gcd for the
                 // last 16 primes.  Restart from the beginning with per-prime
                 // checks (acceptable cost for u64 n).
-                return ecm_one_curve_careful(n, b1, b2, sigma);
+                return ecm_one_curve_careful(n, b1, b2, sigma, primes);
             }
         }
     }
@@ -128,7 +133,7 @@ pub fn ecm_one_curve(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
         return Some(g);
     }
     if g == n {
-        return ecm_one_curve_careful(n, b1, b2, sigma);
+        return ecm_one_curve_careful(n, b1, b2, sigma, primes);
     }
 
     // --- Stage 2 (simple sequential) ---
@@ -182,7 +187,7 @@ pub fn ecm_one_curve(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
 /// Called when the batched Stage 1 overshoots (gcd == n), meaning both
 /// factors' group orders are multiples of M.  By checking per-prime we
 /// can catch the factor before the other one also becomes zero.
-fn ecm_one_curve_careful(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
+fn ecm_one_curve_careful(n: u64, b1: u64, b2: u64, sigma: u64, primes: &[u64]) -> Option<u64> {
     if n <= 1 || n % 2 == 0 {
         return None;
     }
@@ -224,10 +229,8 @@ fn ecm_one_curve_careful(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
         z: mp.to_mont(v3),
     };
 
-    let primes = sieve_primes(b2);
-
     // Stage 1 with per-prime gcd checks.
-    for &p in &primes {
+    for &p in primes {
         if p > b1 {
             break;
         }
@@ -247,7 +250,7 @@ fn ecm_one_curve_careful(n: u64, b1: u64, b2: u64, sigma: u64) -> Option<u64> {
     }
 
     // Stage 2 with per-prime checks.
-    for &p in &primes {
+    for &p in primes {
         if p <= b1 {
             continue;
         }

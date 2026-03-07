@@ -18,7 +18,39 @@ pub mod pm1;
 pub mod pp1;
 pub mod trialdiv;
 
-use crate::arith::{is_probable_prime, TrialDivisor};
+use crate::arith::{is_probable_prime, sieve_primes, TrialDivisor};
+
+/// Pre-computed prime lists for cofactoring, avoiding redundant sieve_primes calls.
+#[derive(Clone)]
+pub struct CofactorConfig {
+    /// Primes for P-1 (up to B2=2205).
+    pub pm1_primes: Vec<u64>,
+    /// Primes for P+1 (up to B2=3255).
+    pub pp1_primes: Vec<u64>,
+    /// Primes for ECM, one list per (B1,B2) bound pair.
+    pub ecm_primes: Vec<Vec<u64>>,
+    /// ECM bound pairs.
+    pub ecm_bounds: Vec<(u64, u64)>,
+}
+
+impl CofactorConfig {
+    /// Build a CofactorConfig for the given large-prime bound exponent.
+    pub fn new(lpb: u32) -> Self {
+        let pm1_primes = sieve_primes(2205);
+        let pp1_primes = sieve_primes(3255);
+        let ecm_bound_list = ecm::ecm_bounds(lpb);
+        let ecm_primes = ecm_bound_list
+            .iter()
+            .map(|&(_, b2)| sieve_primes(b2))
+            .collect();
+        Self {
+            pm1_primes,
+            pp1_primes,
+            ecm_primes,
+            ecm_bounds: ecm_bound_list,
+        }
+    }
+}
 
 /// Result of cofactorizing a norm.
 #[derive(Debug, Clone)]
@@ -100,6 +132,58 @@ pub fn cofactorize(
     CofactResult::NotSmooth
 }
 
+/// Cofactorize using pre-computed prime lists (fast path).
+pub fn cofactorize_with_config(
+    norm: u64,
+    divisors: &[TrialDivisor],
+    lpb: u32,
+    mfb: u32,
+    _lim: u64,
+    config: &CofactorConfig,
+) -> CofactResult {
+    let (factors, cofactor) = trialdiv::trial_divide(norm, divisors);
+
+    if cofactor <= 1 {
+        return CofactResult::Smooth(factors);
+    }
+
+    let lp_bound = 1u64 << lpb;
+
+    if cofactor <= lp_bound && is_probable_prime(cofactor) {
+        return CofactResult::OneLargePrime(factors, cofactor);
+    }
+
+    let cofactor_bits = 64 - cofactor.leading_zeros();
+    if cofactor_bits > mfb {
+        return CofactResult::NotSmooth;
+    }
+
+    if is_probable_prime(cofactor) {
+        return CofactResult::NotSmooth;
+    }
+
+    if let Some(f) = pm1::pm1_with_primes(cofactor, 315, 2205, &config.pm1_primes) {
+        let other = cofactor / f;
+        return check_split(factors, f, other, lp_bound);
+    }
+
+    if let Some(f) = pp1::pp1_with_primes(cofactor, 525, 3255, &config.pp1_primes) {
+        let other = cofactor / f;
+        return check_split(factors, f, other, lp_bound);
+    }
+
+    for (i, &(b1, b2)) in config.ecm_bounds.iter().enumerate() {
+        let sigma = b1.wrapping_add(i as u64).max(6);
+        let primes = &config.ecm_primes[i];
+        if let Some(f) = ecm::ecm_one_curve_with_primes(cofactor, b1, b2, sigma, primes) {
+            let other = cofactor / f;
+            return check_split(factors, f, other, lp_bound);
+        }
+    }
+
+    CofactResult::NotSmooth
+}
+
 /// u128 variant of cofactorization.
 ///
 /// We trial-divide in u128 space, then fall back to the u64 pipeline once the
@@ -151,6 +235,63 @@ pub fn cofactorize_u128(
     for (i, (b1, b2)) in ecm::ecm_bounds(lpb).into_iter().enumerate() {
         let sigma = b1.wrapping_add(i as u64).max(6);
         if let Some(f) = ecm::ecm_one_curve(c, b1, b2, sigma) {
+            let other = c / f;
+            return check_split(factors, f, other, lp_bound as u64);
+        }
+    }
+
+    CofactResult::NotSmooth
+}
+
+/// u128 variant with pre-computed prime lists (fast path).
+pub fn cofactorize_u128_with_config(
+    norm: u128,
+    divisors: &[TrialDivisor],
+    lpb: u32,
+    mfb: u32,
+    _lim: u64,
+    config: &CofactorConfig,
+) -> CofactResult {
+    let (factors, cofactor) = trialdiv::trial_divide_u128(norm, divisors);
+
+    if cofactor <= 1 {
+        return CofactResult::Smooth(factors);
+    }
+
+    let lp_bound = 1u128 << lpb;
+
+    if cofactor <= lp_bound && is_probable_prime(cofactor as u64) {
+        return CofactResult::OneLargePrime(factors, cofactor as u64);
+    }
+
+    let cofactor_bits = 128 - cofactor.leading_zeros();
+    if cofactor_bits > mfb {
+        return CofactResult::NotSmooth;
+    }
+
+    if cofactor > u64::MAX as u128 {
+        return CofactResult::NotSmooth;
+    }
+    let c = cofactor as u64;
+
+    if is_probable_prime(c) {
+        return CofactResult::NotSmooth;
+    }
+
+    if let Some(f) = pm1::pm1_with_primes(c, 315, 2205, &config.pm1_primes) {
+        let other = c / f;
+        return check_split(factors, f, other, lp_bound as u64);
+    }
+
+    if let Some(f) = pp1::pp1_with_primes(c, 525, 3255, &config.pp1_primes) {
+        let other = c / f;
+        return check_split(factors, f, other, lp_bound as u64);
+    }
+
+    for (i, &(b1, b2)) in config.ecm_bounds.iter().enumerate() {
+        let sigma = b1.wrapping_add(i as u64).max(6);
+        let primes = &config.ecm_primes[i];
+        if let Some(f) = ecm::ecm_one_curve_with_primes(c, b1, b2, sigma, primes) {
             let other = c / f;
             return check_split(factors, f, other, lp_bound as u64);
         }

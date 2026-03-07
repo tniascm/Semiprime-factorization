@@ -15,15 +15,18 @@ use crate::arith::sieve_primes;
 /// Tries several starting values (as CADO-NFS does).  Returns
 /// `Some(factor)` on success, `None` otherwise.
 pub fn pp1(n: u64, b1: u64, b2: u64) -> Option<u64> {
+    let primes = sieve_primes(b2);
+    pp1_with_primes(n, b1, b2, &primes)
+}
+
+/// P+1 with pre-computed prime list (avoids redundant sieve_primes calls).
+pub fn pp1_with_primes(n: u64, b1: u64, b2: u64, primes: &[u64]) -> Option<u64> {
     if n <= 1 || n % 2 == 0 {
         return None;
     }
 
-    // Try a few starting values.  The method works when the Jacobi symbol
-    // (P^2 - 4 | p) = -1 for a factor p.  Different starting values cover
-    // different residue classes.
     for &start_p in &[5u64, 9, 14, 20, 27] {
-        if let Some(f) = pp1_one_start(n, b1, b2, start_p) {
+        if let Some(f) = pp1_one_start(n, b1, b2, start_p, primes) {
             return Some(f);
         }
     }
@@ -31,13 +34,12 @@ pub fn pp1(n: u64, b1: u64, b2: u64) -> Option<u64> {
 }
 
 /// Run P+1 with a single starting value `p_val`.
-fn pp1_one_start(n: u64, b1: u64, b2: u64, p_val: u64) -> Option<u64> {
-    let primes = sieve_primes(b2);
+fn pp1_one_start(n: u64, b1: u64, b2: u64, p_val: u64, primes: &[u64]) -> Option<u64> {
 
     let mut v = p_val % n;
 
     // Stage 1: compute V_M  where  M = lcm{ p^k : p^k <= B1 }.
-    for &p in &primes {
+    for &p in primes {
         if p > b1 {
             break;
         }
@@ -61,7 +63,7 @@ fn pp1_one_start(n: u64, b1: u64, b2: u64, p_val: u64) -> Option<u64> {
 
     // Stage 2: check each prime q in (B1, B2].
     let stage1_v = v;
-    for &q in &primes {
+    for &q in primes {
         if q <= b1 {
             continue;
         }

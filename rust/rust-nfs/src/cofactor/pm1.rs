@@ -11,12 +11,17 @@ use crate::arith::{sieve_primes, MontgomeryParams};
 ///
 /// Returns `Some(factor)` on success, `None` if no factor is found.
 pub fn pm1(n: u64, b1: u64, b2: u64) -> Option<u64> {
+    let primes = sieve_primes(b2);
+    pm1_with_primes(n, b1, b2, &primes)
+}
+
+/// P-1 with pre-computed prime list (avoids redundant sieve_primes calls).
+pub fn pm1_with_primes(n: u64, b1: u64, b2: u64, primes: &[u64]) -> Option<u64> {
     if n <= 1 || n % 2 == 0 {
         return None;
     }
 
     let mp = MontgomeryParams::new(n);
-    let primes = sieve_primes(b2);
 
     // Stage 1: compute 2^M mod n  where  M = lcm{ p^k : p^k <= B1 }.
     // We stay in Montgomery form throughout.
@@ -26,7 +31,7 @@ pub fn pm1(n: u64, b1: u64, b2: u64) -> Option<u64> {
     let mut base = mp.to_mont(2);
     let mut step_count = 0u32;
 
-    for &p in &primes {
+    for &p in primes {
         if p > b1 {
             break;
         }
@@ -47,7 +52,7 @@ pub fn pm1(n: u64, b1: u64, b2: u64) -> Option<u64> {
             }
             if g == n {
                 // Overshot — retry with per-prime gcd checks.
-                return pm1_careful(n, b1, b2);
+                return pm1_careful(n, b1, b2, primes);
             }
         }
     }
@@ -60,7 +65,7 @@ pub fn pm1(n: u64, b1: u64, b2: u64) -> Option<u64> {
         return Some(g);
     }
     if g == n {
-        return pm1_careful(n, b1, b2);
+        return pm1_careful(n, b1, b2, primes);
     }
 
     // Stage 2: for each prime q in (B1, B2], check gcd(base^q - 1, n).
@@ -124,13 +129,12 @@ pub fn pm1(n: u64, b1: u64, b2: u64) -> Option<u64> {
 /// Called when the batched version overshoots (both factors' (p-1) are
 /// B1-smooth so 2^M = 1 mod n).  By checking after each p^k step we
 /// catch the factor of one before the other also reaches 1.
-fn pm1_careful(n: u64, b1: u64, b2: u64) -> Option<u64> {
+fn pm1_careful(n: u64, b1: u64, b2: u64, primes: &[u64]) -> Option<u64> {
     let mp = MontgomeryParams::new(n);
-    let primes = sieve_primes(b2);
 
     let mut base = mp.to_mont(2);
 
-    for &p in &primes {
+    for &p in primes {
         if p > b1 {
             break;
         }
@@ -154,7 +158,7 @@ fn pm1_careful(n: u64, b1: u64, b2: u64) -> Option<u64> {
     }
 
     // Stage 2 with per-prime checks.
-    for &q in &primes {
+    for &q in primes {
         if q <= b1 {
             continue;
         }
