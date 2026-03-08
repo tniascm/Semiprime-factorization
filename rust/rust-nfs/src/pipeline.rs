@@ -791,7 +791,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
 
         if should_check {
             let filter_start = std::time::Instant::now();
-            let mut filtered = crate::filter::filter_relations(all_sieve_relations.clone());
+            let mut filtered = crate::filter::filter_relations_ref(&all_sieve_relations);
             if require_coprime_ab {
                 filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
             }
@@ -1037,7 +1037,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     if final_filtered.is_empty() {
         // Did not hit adaptive stop condition or q-window cap before final check.
         let filter_start = std::time::Instant::now();
-        final_filtered = crate::filter::filter_relations(all_sieve_relations.clone());
+        final_filtered = crate::filter::filter_relations_ref(&all_sieve_relations);
         if require_coprime_ab {
             final_filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
         }
@@ -1586,10 +1586,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .unwrap_or(20_000);
     let mut ge_deps = if matrix.len() > bw_threshold {
         gnfs::linalg::find_dependencies_with_preelim_bw(&matrix, ncols)
-    } else if matrix.len() > 20_000 {
-        gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols)
     } else {
-        gnfs::linalg::find_dependencies(&matrix, ncols)
+        gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols)
     };
     let ge_deps_total = ge_deps.len();
     let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")

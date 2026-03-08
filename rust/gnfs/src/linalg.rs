@@ -1,5 +1,6 @@
 use crate::arith::QuadCharSet;
 use crate::types::BitRow;
+use rayon::prelude::*;
 
 pub use crate::linalg_bw::{find_dependencies_bw, find_dependencies_with_preelim_bw};
 
@@ -180,10 +181,26 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
         // dependencies appear as zero rows below the final pivot position.
         let pivot_data = matrix[pivot_row].clone();
         let pivot_hist = history[pivot_row].clone();
-        for r in (pivot_row + 1)..nrows {
-            if matrix[r].get(col) {
-                matrix[r].xor_with(&pivot_data);
-                history[r].xor_with(&pivot_hist);
+        let remaining = nrows - pivot_row - 1;
+        if remaining > 10_000 {
+            // Parallel elimination for large matrices.
+            let (_, tail_mat) = matrix.split_at_mut(pivot_row + 1);
+            let (_, tail_hist) = history.split_at_mut(pivot_row + 1);
+            tail_mat
+                .par_iter_mut()
+                .zip(tail_hist.par_iter_mut())
+                .for_each(|(row, hist)| {
+                    if row.get(col) {
+                        row.xor_with(&pivot_data);
+                        hist.xor_with(&pivot_hist);
+                    }
+                });
+        } else {
+            for r in (pivot_row + 1)..nrows {
+                if matrix[r].get(col) {
+                    matrix[r].xor_with(&pivot_data);
+                    history[r].xor_with(&pivot_hist);
+                }
             }
         }
 
@@ -354,19 +371,97 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
     let mut row_alive = vec![true; nrows];
     let mut col_alive = vec![true; ncols];
 
-    // Pre-elimination loop
-    loop {
-        let mut changed = false;
+    // Phase 1: Queue-based singleton elimination (O(nnz) total).
+    // Compute column weights via word-level bit traversal.
+    let mut col_weight: Vec<u32> = vec![0; ncols];
+    // Track one row per column for singleton lookup (avoids re-scan).
+    let mut col_first_row: Vec<usize> = vec![usize::MAX; ncols];
+    for r in 0..nrows {
+        if !row_alive[r] {
+            continue;
+        }
+        for (wi, &word) in matrix[r].bits.iter().enumerate() {
+            let mut w = word;
+            while w != 0 {
+                let bit = w.trailing_zeros() as usize;
+                let c = wi * 64 + bit;
+                if c < ncols && col_alive[c] {
+                    col_weight[c] += 1;
+                    if col_weight[c] == 1 {
+                        col_first_row[c] = r;
+                    }
+                }
+                w &= w - 1;
+            }
+        }
+    }
 
-        // Compute column weights over alive rows, and record which alive rows
-        // contain each alive column. We only need up to 3 entries per column
-        // (we care about weight 0, 1, or 2; anything >= 3 we skip).
-        // col_rows[c] stores up to 3 row indices where column c is set.
-        //
-        // Use word-level bit traversal (trailing_zeros + w &= w-1) instead
-        // of per-bit checking, reducing cost from O(nrows*ncols) to
-        // O(nrows*nwords + total_set_bits).
-        let mut col_rows: Vec<Vec<usize>> = vec![Vec::new(); ncols];
+    // Seed singleton queue.
+    let mut singleton_queue: Vec<usize> = Vec::new();
+    for c in 0..ncols {
+        if col_alive[c] && col_weight[c] == 1 {
+            singleton_queue.push(c);
+        }
+    }
+
+    while let Some(c) = singleton_queue.pop() {
+        if !col_alive[c] || col_weight[c] != 1 {
+            continue;
+        }
+        // Find the single row containing this column.
+        let r = if col_first_row[c] != usize::MAX
+            && row_alive[col_first_row[c]]
+            && matrix[col_first_row[c]].get(c)
+        {
+            col_first_row[c]
+        } else {
+            // Cached row was killed; scan for the actual singleton row.
+            let mut found = usize::MAX;
+            for ri in 0..nrows {
+                if row_alive[ri] && matrix[ri].get(c) {
+                    found = ri;
+                    break;
+                }
+            }
+            found
+        };
+        if r == usize::MAX {
+            col_alive[c] = false;
+            continue;
+        }
+
+        // Remove this row; decrement weights for all its other columns.
+        row_alive[r] = false;
+        col_alive[c] = false;
+        for (wi, &word) in matrix[r].bits.iter().enumerate() {
+            let mut w = word;
+            while w != 0 {
+                let bit = w.trailing_zeros() as usize;
+                let c2 = wi * 64 + bit;
+                if c2 < ncols && col_alive[c2] {
+                    col_weight[c2] = col_weight[c2].saturating_sub(1);
+                    if col_weight[c2] == 1 {
+                        singleton_queue.push(c2);
+                    }
+                }
+                w &= w - 1;
+            }
+        }
+    }
+
+    // Phase 2: Batched weight-2 column merges.
+    // Each pass: scan alive rows once to find weight-2 columns and their rows,
+    // batch non-conflicting merges, then re-run singleton elimination.
+    loop {
+        // Scan all alive rows to build weight-2 column→rows mapping.
+        // Reset col_weight for alive columns.
+        for c in 0..ncols {
+            if col_alive[c] {
+                col_weight[c] = 0;
+            }
+        }
+        let mut col_r1: Vec<usize> = vec![usize::MAX; ncols];
+        let mut col_r2: Vec<usize> = vec![usize::MAX; ncols];
         for r in 0..nrows {
             if !row_alive[r] {
                 continue;
@@ -376,98 +471,75 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
                 while w != 0 {
                     let bit = w.trailing_zeros() as usize;
                     let c = wi * 64 + bit;
-                    if c < ncols && col_alive[c] && col_rows[c].len() < 3 {
-                        col_rows[c].push(r);
-                    }
-                    w &= w - 1; // clear lowest set bit
-                }
-            }
-        }
-
-        // Pass 1: remove singleton columns (weight == 1).
-        for c in 0..ncols {
-            if !col_alive[c] {
-                continue;
-            }
-            if col_rows[c].len() == 1 {
-                let r = col_rows[c][0];
-                if row_alive[r] {
-                    row_alive[r] = false;
-                    // Mark all columns that this row participates in as
-                    // potentially changed (their weight decreased by 1).
-                    // We don't need to update col_rows here; the outer loop
-                    // will recompute on the next iteration.
-                    col_alive[c] = false;
-                    changed = true;
-                }
-            }
-        }
-
-        // Pass 2: merge weight-2 columns.
-        // IMPORTANT: each merge modifies a row's bits, which can change other
-        // columns' weights. We must recompute all column weights after each
-        // merge, so we break after the first successful merge.
-        for c in 0..ncols {
-            if !col_alive[c] {
-                continue;
-            }
-            // Recompute actual weight using col_rows (which may be stale
-            // after pass 1 killed some rows). Filter to still-alive rows.
-            // For columns where col_rows recorded < 3 entries, this is exact.
-            // For columns that had 3+ entries (truncated), we must re-scan.
-            let alive_in_col: Vec<usize>;
-            if col_rows[c].len() < 3 {
-                // Exact: just filter out killed rows
-                alive_in_col = col_rows[c]
-                    .iter()
-                    .copied()
-                    .filter(|&r| row_alive[r])
-                    .collect();
-            } else {
-                // Truncated at 3: need full re-scan to get accurate count
-                let mut v = Vec::new();
-                for r in 0..nrows {
-                    if row_alive[r] && matrix[r].get(c) {
-                        v.push(r);
-                        if v.len() > 2 {
-                            break;
+                    if c < ncols && col_alive[c] {
+                        col_weight[c] += 1;
+                        if col_weight[c] == 1 {
+                            col_r1[c] = r;
+                        } else if col_weight[c] == 2 {
+                            col_r2[c] = r;
                         }
                     }
+                    w &= w - 1;
                 }
-                alive_in_col = v;
-            }
-            if alive_in_col.len() == 2 {
-                let r1 = alive_in_col[0];
-                let r2 = alive_in_col[1];
-                // XOR row r2 into r1, then eliminate r2.
-                let r2_data = matrix[r2].clone();
-                matrix[r1].xor_with(&r2_data);
-                // Merge history: symmetric difference.
-                let mut merged = history[r1].clone();
-                for &idx in &history[r2] {
-                    if let Some(pos) = merged.iter().position(|&x| x == idx) {
-                        merged.swap_remove(pos);
-                    } else {
-                        merged.push(idx);
-                    }
-                }
-                history[r1] = merged;
-                row_alive[r2] = false;
-                col_alive[c] = false;
-                changed = true;
-                break; // recompute all column weights
-            } else if alive_in_col.is_empty() {
-                col_alive[c] = false;
-            } else if alive_in_col.len() == 1 {
-                // Became singleton after pass 1 row removals
-                row_alive[alive_in_col[0]] = false;
-                col_alive[c] = false;
-                changed = true;
             }
         }
 
-        if !changed {
+        // Collect weight-2 merge candidates, skipping row conflicts.
+        let mut row_used = vec![false; nrows];
+        let mut merges: Vec<(usize, usize, usize)> = Vec::new(); // (col, r1, r2)
+        // Also handle new singletons and empty columns found in this scan.
+        let mut new_singletons = false;
+        for c in 0..ncols {
+            if !col_alive[c] {
+                continue;
+            }
+            match col_weight[c] {
+                0 => {
+                    col_alive[c] = false;
+                }
+                1 => {
+                    // New singleton from prior merges
+                    let r = col_r1[c];
+                    if r != usize::MAX && row_alive[r] {
+                        row_alive[r] = false;
+                        col_alive[c] = false;
+                        new_singletons = true;
+                        // Decrement weights (will be caught next iteration)
+                    }
+                }
+                2 => {
+                    let r1 = col_r1[c];
+                    let r2 = col_r2[c];
+                    if r1 != usize::MAX && r2 != usize::MAX && !row_used[r1] && !row_used[r2] {
+                        merges.push((c, r1, r2));
+                        row_used[r1] = true;
+                        row_used[r2] = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if merges.is_empty() && !new_singletons {
             break;
+        }
+
+        // Execute all batched merges.
+        for &(c, r1, r2) in &merges {
+            let r2_data = matrix[r2].clone();
+            matrix[r1].xor_with(&r2_data);
+            // Merge history: symmetric difference.
+            let mut merged = std::mem::take(&mut history[r1]);
+            for &idx in &history[r2] {
+                if let Some(pos) = merged.iter().position(|&x| x == idx) {
+                    merged.swap_remove(pos);
+                } else {
+                    merged.push(idx);
+                }
+            }
+            history[r1] = merged;
+            row_alive[r2] = false;
+            col_alive[c] = false;
         }
     }
 

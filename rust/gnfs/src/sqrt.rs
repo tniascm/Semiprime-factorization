@@ -54,7 +54,7 @@ pub fn nf_element_from_ab(a: i64, b: u64, degree: usize) -> Vec<Integer> {
 /// f must be monic: f = [c0, c1, ..., c_{d-1}, 1] (leading coefficient 1).
 pub fn nf_multiply(a: &[Integer], b: &[Integer], f: &[Integer]) -> Vec<Integer> {
     let d = f.len() - 1;
-    debug_assert_eq!(f[d], Integer::from(1), "nf_multiply requires monic f");
+    assert_eq!(f[d], Integer::from(1), "nf_multiply requires monic f");
 
     // Standard polynomial multiplication
     let mut product = vec![Integer::from(0); 2 * d - 1];
@@ -502,7 +502,7 @@ fn algebraic_square_roots(
     use crate::arith::*;
 
     let d = f_coeffs.len() - 1;
-    debug_assert_eq!(f_coeffs[d], Integer::from(1), "f must be monic");
+    assert_eq!(f_coeffs[d], Integer::from(1), "f must be monic");
 
     let f_i64: Option<Vec<i64>> = f_coeffs.iter().map(|c| c.to_i64()).collect();
     let f_i64 = match f_i64 {

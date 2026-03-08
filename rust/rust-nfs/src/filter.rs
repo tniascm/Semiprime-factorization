@@ -62,49 +62,75 @@ fn relation_lp_keys(rel: &Relation) -> Vec<LpKey> {
 /// (CADO does this after richer merge stages). Removing only sparse singletons
 /// preserves matrix quality without collapsing relation count.
 pub fn filter_relations(relations: Vec<Relation>) -> Vec<Relation> {
+    filter_relations_ref(&relations)
+}
+
+/// Filter relations without taking ownership — avoids cloning the input.
+pub fn filter_relations_ref(relations: &[Relation]) -> Vec<Relation> {
     // Step 1: Deduplicate by (a, b, special_q). The same (a,b) can appear
     // under different special-q ideals.
     let mut seen = HashSet::new();
-    let mut filtered: Vec<Relation> = relations
-        .into_iter()
-        .filter(|r| seen.insert((r.a, r.b, r.special_q)))
+    let mut alive: Vec<bool> = relations
+        .iter()
+        .map(|r| seen.insert((r.a, r.b, r.special_q)))
         .collect();
 
     // Step 2: Iterative sparse singleton removal.
+    // Pre-compute LP keys once to avoid redundant HashSet + sort per iteration.
+    let lp_keys_cache: Vec<Vec<LpKey>> = relations.iter().map(|r| relation_lp_keys(r)).collect();
+
     loop {
         let mut sq_count: HashMap<(u64, u64), usize> = HashMap::new();
         let mut lp_count: HashMap<LpKey, usize> = HashMap::new();
 
-        for rel in &filtered {
+        for (i, rel) in relations.iter().enumerate() {
+            if !alive[i] {
+                continue;
+            }
             if let Some(sq) = rel.special_q {
                 *sq_count.entry(sq).or_insert(0) += 1;
             }
-            for key in relation_lp_keys(rel) {
-                *lp_count.entry(key).or_insert(0) += 1;
+            for key in &lp_keys_cache[i] {
+                *lp_count.entry(*key).or_insert(0) += 1;
             }
         }
 
-        let before = filtered.len();
-        filtered.retain(|rel| {
+        let mut changed = false;
+        for (i, rel) in relations.iter().enumerate() {
+            if !alive[i] {
+                continue;
+            }
+            let mut remove = false;
             if let Some(sq) = rel.special_q {
                 if sq_count.get(&sq).copied().unwrap_or(0) < 2 {
-                    return false;
+                    remove = true;
                 }
             }
-            for key in relation_lp_keys(rel) {
-                if lp_count.get(&key).copied().unwrap_or(0) < 2 {
-                    return false;
+            if !remove {
+                for key in &lp_keys_cache[i] {
+                    if lp_count.get(key).copied().unwrap_or(0) < 2 {
+                        remove = true;
+                        break;
+                    }
                 }
             }
-            true
-        });
+            if remove {
+                alive[i] = false;
+                changed = true;
+            }
+        }
 
-        if filtered.len() == before {
+        if !changed {
             break;
         }
     }
 
-    filtered
+    relations
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| alive[*i])
+        .map(|(_, r)| r.clone())
+        .collect()
 }
 
 #[cfg(test)]
