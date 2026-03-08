@@ -207,7 +207,10 @@ pub fn select_best_polynomial(
 
     let mut candidates: Vec<(f64, PolynomialPair)> = Vec::new();
 
-    // Also try monic variants for comparison
+    // Monic variants: use original base-m coefficients (no rotation).
+    // Base-m coefficients are already in [0, m), giving near-optimal norms.
+    // Rotation shifts c0 by -v*m, which can inflate norms catastrophically
+    // for monic polynomials where m >> rotation_range.
     for v in 0..5u32 {
         let poly = select_base_m_variant(n, degree, v);
         let f_i64 = poly_to_i64(&poly);
@@ -216,18 +219,9 @@ pub fn select_best_polynomial(
             continue;
         }
 
-        let (rotated_f, _, _) = if rotation_range > 0 && g_i64.len() == 2 {
-            rotation::optimize_rotation(&f_i64, &g_i64, rotation_range, alpha_bound)
-        } else {
-            (f_i64.clone(), 0, 0)
-        };
-
-        let skew = murphy_e::optimal_skewness(&rotated_f);
-        let e = murphy_e::murphy_e(&rotated_f, &g_i64, skew, bf, bg, alpha_bound);
-
-        // Build PolynomialPair with rotated coefficients
-        let rotated_poly = rebuild_poly_with_coeffs(&poly, &rotated_f, n);
-        candidates.push((e, rotated_poly));
+        let skew = murphy_e::optimal_skewness(&f_i64);
+        let e = murphy_e::murphy_e(&f_i64, &g_i64, skew, bf, bg, alpha_bound);
+        candidates.push((e, poly));
     }
 
     // Sweep over non-monic leading coefficients
