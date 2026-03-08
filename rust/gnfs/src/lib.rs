@@ -4,6 +4,7 @@ pub mod linalg;
 pub mod log;
 pub mod params;
 pub mod pipeline;
+pub mod linalg_wiedemann;
 pub mod polyselect;
 pub mod relation;
 pub mod sieve;
