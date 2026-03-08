@@ -198,7 +198,9 @@ pub fn select_best_polynomial(
     nrkeep: usize,
     lim: u64,
 ) -> Vec<PolynomialPair> {
-    let alpha_bound = 2000u64;
+    // Use alpha_bound=200 for fast ranking (matches CADO's initial phase).
+    // Full alpha_bound=2000 would be more accurate but ~100x slower.
+    let alpha_bound = 200u64;
     let bf = lim as f64;
     let bg = lim as f64;
     let rotation_range = (50.0 * ropteffort) as i64;

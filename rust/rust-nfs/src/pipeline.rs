@@ -220,8 +220,10 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         .ok().and_then(|s| s.parse().ok()).unwrap_or(5000);
     let ad_incr: u64 = std::env::var("RUST_NFS_AD_INCR")
         .ok().and_then(|s| s.parse().ok()).unwrap_or(20);
+    // ropteffort controls rotation search intensity (range = 50 * ropteffort).
+    // Default 0.1 for fast polyselect; increase for larger numbers.
     let ropteffort: f64 = std::env::var("RUST_NFS_ROPTEFFORT")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(1.0);
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(0.1);
 
     let ranked_polys = gnfs::polyselect::select_best_polynomial(
         n, params.degree, admax, ad_incr, ropteffort,
