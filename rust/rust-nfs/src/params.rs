@@ -36,7 +36,7 @@ impl NfsParams {
             mfb1: 18,
             sieve_mfb0: 18,
             sieve_mfb1: 18,
-            log_i: 7,
+            log_i: 9,
             qmin: 50_000,
             qrange: 1_000,
             rels_wanted: 30_000,
@@ -143,7 +143,16 @@ mod tests {
         let p = NfsParams::c30();
         assert_eq!(p.degree, 3);
         assert_eq!(p.large_prime_bound_0(), 131_072);
-        assert_eq!(p.sieve_half_width(), 128);
+        assert_eq!(p.sieve_half_width(), 512);
+    }
+
+    #[test]
+    fn test_c30_matches_cado() {
+        let p = NfsParams::c30();
+        assert_eq!(p.log_i, 9, "log_i should match CADO I=9");
+        assert_eq!(p.lim0, 30_000);
+        assert_eq!(p.lpb0, 17);
+        assert_eq!(p.mfb0, 18);
     }
 
     #[test]
