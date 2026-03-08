@@ -49,7 +49,7 @@ struct FullReport {
     factoring_results: Vec<ExperimentResult>,
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Smooth-Pilatte: Lattice-Geometric Smooth Relation Finder ===");
     println!("Prong 2 of the six-prong factoring plan");
     println!();
@@ -194,5 +194,7 @@ fn main() {
 
     println!();
     println!("--- JSON Report ---");
-    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    println!("{}", serde_json::to_string_pretty(&report)?);
+
+    Ok(())
 }
