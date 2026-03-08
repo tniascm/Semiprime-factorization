@@ -343,6 +343,7 @@ name = "classical-nfs"
 version = "0.1.0"
 dependencies = [
  "factoring-core",
+ "nfs-pillar-3",
  "num-bigint",
  "num-integer",
  "num-traits",

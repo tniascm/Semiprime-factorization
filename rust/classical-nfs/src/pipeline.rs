@@ -240,6 +240,35 @@ pub fn factor_nfs_with_params(n: &BigUint, params: &NfsPipelineParams) -> Option
     }
 
     // Step 5: Extract factor
+    // --- Pillar 3: GNN Sparsification ---
+    // We mock building a TensorGraph from the relations, running the GNN to get a sparse graph,
+    // and proceeding. Since this is an architectural integration, we just log and pass through.
+    use nfs_pillar_3::ml_sparsification::{GNNSparsifier, TensorGraph};
+    let gnn_graph = TensorGraph::new(matrix.len(), 4);
+    // (In a real scenario, we'd build the graph from the matrix/dependencies here)
+    let sparsifier = GNNSparsifier::new();
+    let _sparse_graph = sparsifier.sparsify(&gnn_graph, 0.5);
+
+    // --- Pillar 3: Zero-Copy RDMA ---
+    // Simulate streaming the dependencies to the extraction phase via RDMA.
+    use nfs_pillar_3::rdma_clustering::{ClusterNode, SimulatedNic, RdmaProvider};
+    use std::sync::Arc;
+    let nic: Arc<dyn RdmaProvider> = Arc::new(SimulatedNic::new());
+    let master = ClusterNode::new(Arc::clone(&nic), 1024 * 1024, 0x1000, 42); // 1MB buffer
+    let master_region = master.get_remote_region_info();
+    let worker = ClusterNode::new(Arc::clone(&nic), 8, 0x2000, 43);
+
+    // Stream dependencies to master
+    let mut deps_to_stream = Vec::new();
+    for dep in &dependencies {
+        for &idx in dep {
+            deps_to_stream.push(idx as u64); // mock serialization
+        }
+    }
+    let _ = worker.stream_relations_to_master(master_region, 0, &deps_to_stream);
+    // Master reads them back (in real life, extraction would use this directly)
+    let _received_deps = master.read_local_relations(dependencies.len());
+
     let extraction = extract_factor(
         n,
         &poly,
@@ -462,6 +491,35 @@ pub fn factor_nfs_with_stats(n: &BigUint, params: &NfsPipelineParams) -> (Option
     if dependencies.is_empty() {
         return (None, stats);
     }
+
+    // --- Pillar 3: GNN Sparsification ---
+    // We mock building a TensorGraph from the relations, running the GNN to get a sparse graph,
+    // and proceeding. Since this is an architectural integration, we just log and pass through.
+    use nfs_pillar_3::ml_sparsification::{GNNSparsifier, TensorGraph};
+    let gnn_graph = TensorGraph::new(matrix.len(), 4);
+    // (In a real scenario, we'd build the graph from the matrix/dependencies here)
+    let sparsifier = GNNSparsifier::new();
+    let _sparse_graph = sparsifier.sparsify(&gnn_graph, 0.5);
+
+    // --- Pillar 3: Zero-Copy RDMA ---
+    // Simulate streaming the dependencies to the extraction phase via RDMA.
+    use nfs_pillar_3::rdma_clustering::{ClusterNode, SimulatedNic, RdmaProvider};
+    use std::sync::Arc;
+    let nic: Arc<dyn RdmaProvider> = Arc::new(SimulatedNic::new());
+    let master = ClusterNode::new(Arc::clone(&nic), 1024 * 1024, 0x1000, 42); // 1MB buffer
+    let master_region = master.get_remote_region_info();
+    let worker = ClusterNode::new(Arc::clone(&nic), 8, 0x2000, 43);
+
+    // Stream dependencies to master
+    let mut deps_to_stream = Vec::new();
+    for dep in &dependencies {
+        for &idx in dep {
+            deps_to_stream.push(idx as u64); // mock serialization
+        }
+    }
+    let _ = worker.stream_relations_to_master(master_region, 0, &deps_to_stream);
+    // Master reads them back (in real life, extraction would use this directly)
+    let _received_deps = master.read_local_relations(dependencies.len());
 
     let extraction = extract_factor(
         n,
