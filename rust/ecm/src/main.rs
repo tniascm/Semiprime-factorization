@@ -13,6 +13,9 @@ fn main() {
     section_3_multi_curve_scaling();
     section_4_factor_result();
     section_5_random_rsa_targets();
+
+    #[cfg(target_os = "macos")]
+    section_6_gpu_batch_ecm();
 }
 
 // -------------------------------------------------------------------------
@@ -299,4 +302,58 @@ fn section_5_random_rsa_targets() {
             successes, trials
         );
     }
+}
+
+// -------------------------------------------------------------------------
+// Section 6 — GPU Batch ECM Demonstration
+// -------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+fn section_6_gpu_batch_ecm() {
+    println!("--- Section 6: GPU Batch ECM (macOS Metal) ---\n");
+
+    use ecm::gpu::{EcmCandidateGpu, GpuEcm, Uint256};
+
+    let engine = match GpuEcm::new() {
+        Some(e) => e,
+        None => {
+            println!("  [!] Metal device not available or shader compile failed.");
+            return;
+        }
+    };
+
+    println!("  [+] Metal compute engine initialized successfully.");
+
+    let n = BigUint::from(224_737u64) * BigUint::from(350_377u64);
+
+    // Create a dummy batch of 4096 candidates for throughput demonstration
+    let batch_size = 4096;
+    let mut candidates = Vec::with_capacity(batch_size);
+
+    for i in 0..batch_size {
+        let n_val = Uint256::from_biguint(&n);
+        let x_val = Uint256::from_biguint(&BigUint::from(i as u64 + 2)); // dummy varying point
+        let z_val = Uint256::from_biguint(&BigUint::from(1u64));
+        let a24_val = Uint256::from_biguint(&BigUint::from(3u64)); // dummy curve parameter
+
+        candidates.push(EcmCandidateGpu {
+            n: n_val,
+            x: x_val,
+            z: z_val,
+            a24: a24_val,
+            b1: 500,
+            padding: Default::default(),
+        });
+    }
+
+    let start = Instant::now();
+    let _results = engine.batch_ecm(&candidates);
+    let elapsed = start.elapsed();
+
+    println!(
+        "  Dispatched {} curves to GPU in {:?}",
+        batch_size, elapsed
+    );
+    let curves_per_sec = (batch_size as f64) / elapsed.as_secs_f64();
+    println!("  Throughput: {:.2} curves/sec\n", curves_per_sec);
 }

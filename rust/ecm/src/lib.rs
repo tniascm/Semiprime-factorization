@@ -3,6 +3,9 @@
 //! Uses Montgomery curve arithmetic for speed and rayon for parallel
 //! trial on multiple random curves simultaneously.
 
+#[cfg(target_os = "macos")]
+pub mod gpu;
+
 use factoring_core::{Algorithm, FactorResult};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};

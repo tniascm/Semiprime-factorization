@@ -1,5 +1,6 @@
 use crate::arith::QuadCharSet;
 use crate::types::BitRow;
+use crate::linalg_wiedemann::{SparseMatrix, wiedemann_nullspace_multi};
 
 /// Build the GF(2) exponent matrix from relations.
 ///
@@ -140,6 +141,15 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
     let nrows = rows.len();
     if nrows == 0 || ncols == 0 {
         return vec![];
+    }
+
+    // Heuristically switch to Wiedemann for large matrices to avoid O(N^3) GE.
+    if nrows > 5000 && ncols > 5000 {
+        let sparse = SparseMatrix::from_bitrows(rows, ncols);
+        let deps = wiedemann_nullspace_multi(&sparse);
+        if !deps.is_empty() {
+            return deps;
+        }
     }
 
     let mut matrix: Vec<BitRow> = rows.to_vec();
