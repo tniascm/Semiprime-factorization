@@ -10,5 +10,8 @@ rust/cado_*.json
 rust/cado_*.params
 rust/results/
 
+# Worktrees
+.worktrees/
+
 # OS
 .DS_Store
