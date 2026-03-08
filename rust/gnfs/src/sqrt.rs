@@ -60,17 +60,16 @@ pub fn nf_multiply(a: &[Integer], b: &[Integer], f: &[Integer]) -> Vec<Integer> 
     let mut product = vec![Integer::from(0); 2 * d - 1];
     for (i, ai) in a.iter().enumerate() {
         for (j, bj) in b.iter().enumerate() {
-            product[i + j] += Integer::from(ai * bj);
+            product[i + j] += ai * bj;
         }
     }
 
     // Reduce modulo monic f(x): x^d = -(c_{d-1}*x^{d-1} + ... + c_0)
     for i in (d..product.len()).rev() {
-        let coeff = product[i].clone();
+        let coeff = std::mem::take(&mut product[i]);
         if coeff != 0 {
-            product[i] = Integer::from(0);
             for j in 0..d {
-                product[i - d + j] -= Integer::from(&coeff * &f[j]);
+                product[i - d + j] -= &coeff * &f[j];
             }
         }
     }
@@ -149,20 +148,20 @@ fn nf_multiply_mod(a: &[Integer], b: &[Integer], f: &[Integer], m: &Integer) -> 
     let mut product = vec![Integer::from(0); 2 * d - 1];
     for (i, ai) in a.iter().enumerate() {
         for (j, bj) in b.iter().enumerate() {
-            product[i + j] += Integer::from(ai * bj);
+            product[i + j] += ai * bj;
         }
     }
     // Reduce modulo monic f
     for i in (d..product.len()).rev() {
-        let coeff = Integer::from(&product[i] % m);
-        let coeff = if coeff < 0 { coeff + m } else { coeff };
+        let mut coeff = std::mem::take(&mut product[i]);
+        coeff %= m;
+        if coeff < 0 {
+            coeff += m;
+        }
         if coeff != 0 {
-            product[i] = Integer::from(0);
             for j in 0..d {
-                product[i - d + j] -= Integer::from(&coeff * &f[j]);
+                product[i - d + j] -= &coeff * &f[j];
             }
-        } else {
-            product[i] = Integer::from(0);
         }
     }
     product.truncate(d);
