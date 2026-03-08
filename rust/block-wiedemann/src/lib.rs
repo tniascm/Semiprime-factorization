@@ -8,9 +8,11 @@
 //! standard Gaussian Elimination ($O(n^3)$) becomes computationally infeasible.
 
 use rand::Rng;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Represents a sparse matrix over GF(2) in Compressed Sparse Row (CSR) format.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparseMatrixGF2 {
     /// The number of rows in the matrix.
     pub rows: usize,
@@ -39,14 +41,13 @@ impl SparseMatrixGF2 {
     /// Multiplies the sparse matrix with a dense vector over GF(2).
     /// `x` and `y` are represented as bit-packed `u64` slices.
     /// `y = M * x` where addition is XOR.
+    /// **WARNING:** This method is extremely slow ($1 \text{ bit per iteration}$).
+    /// Use `mul_block_gf2` for production.
     pub fn mul_vec_gf2(&self, x: &[u64], y: &mut [u64]) {
         assert!(x.len() * 64 >= self.cols);
         assert!(y.len() * 64 >= self.rows);
 
-        // Clear the output vector
-        for val in y.iter_mut() {
-            *val = 0;
-        }
+        y.fill(0);
 
         for i in 0..self.rows {
             let mut dot_product = 0u64;
@@ -66,6 +67,54 @@ impl SparseMatrixGF2 {
                 y[word_idx] ^= 1 << bit_idx;
             }
         }
+    }
+
+    /// **Production-Grade Block Wiedemann Core:**
+    /// Multiplies the matrix $M$ by a block of 64 vectors simultaneously.
+    /// In GF(2), 64 distinct bits can be packed into a single `u64`.
+    /// `input_block` contains $N_{cols}$ words, where `input_block[j]` represents
+    /// the $j$-th element of all 64 vectors.
+    /// `output_block` contains $N_{rows}$ words, where `output_block[i]` represents
+    /// the $i$-th element of the resulting 64 vectors.
+    pub fn mul_block_gf2(&self, input_block: &[u64], output_block: &mut [u64]) {
+        assert_eq!(input_block.len(), self.cols);
+        assert_eq!(output_block.len(), self.rows);
+
+        output_block.fill(0);
+
+        for i in 0..self.rows {
+            let start = self.row_ptrs[i];
+            let end = self.row_ptrs[i + 1];
+
+            let mut row_val = 0u64;
+            // Iterate over all non-zero columns in this row
+            // We XOR the corresponding word from the input block.
+            // This computes 64 distinct dot products simultaneously with zero branching.
+            for &col in &self.col_indices[start..end] {
+                row_val ^= input_block[col];
+            }
+            output_block[i] = row_val;
+        }
+    }
+
+    /// **Production-Grade Parallel Block Wiedemann Core:**
+    /// Multiplies the matrix $M$ by a block of 64 vectors simultaneously, parallelizing
+    /// the row iterations across available CPU cores using Rayon.
+    /// This is the foundation for an $O(n^2)$ GF(2) memory-bound SpMV kernel.
+    pub fn par_mul_block_gf2(&self, input_block: &[u64], output_block: &mut [u64]) {
+        assert_eq!(input_block.len(), self.cols);
+        assert_eq!(output_block.len(), self.rows);
+
+        output_block.par_iter_mut().enumerate().for_each(|(i, out_val)| {
+            let start = self.row_ptrs[i];
+            let end = self.row_ptrs[i + 1];
+
+            let mut row_val = 0u64;
+            for &col in &self.col_indices[start..end] {
+                row_val ^= input_block[col];
+            }
+            *out_val = row_val;
+        });
     }
 }
 
@@ -322,6 +371,47 @@ mod tests {
         let x2 = vec![0b011];
         m2.mul_vec_gf2(&x2, &mut y);
         assert_eq!(y[0], 0b110);
+    }
+
+    #[test]
+    fn test_block_matrix_vector_mul() {
+        // [1 1 0]
+        // [0 1 1]
+        // [1 0 1]
+        let m2 = SparseMatrixGF2::new(
+            3, 3,
+            vec![0, 1, 1, 2, 0, 2],
+            vec![0, 2, 4, 6]
+        );
+
+        // input_block represents 64 vectors.
+        // Let's set vector 0: [1, 1, 0]^T
+        // Let's set vector 1: [1, 0, 1]^T
+        // Vector 0 bits are at bit position 0 in each word.
+        // Vector 1 bits are at bit position 1 in each word.
+
+        // j=0 (first element of all 64 vectors): v0_0=1, v1_0=1 -> 1 | 2 = 3
+        // j=1 (second element of all 64 vectors): v0_1=1, v1_1=0 -> 1 | 0 = 1
+        // j=2 (third element of all 64 vectors): v0_2=0, v1_2=1 -> 0 | 2 = 2
+        let input_block = vec![3, 1, 2];
+        let mut output_block = vec![0; 3];
+
+        m2.mul_block_gf2(&input_block, &mut output_block);
+
+        // Expected Vector 0: M * [1, 1, 0]^T = [1+1, 1+0, 1+0]^T = [0, 1, 1]^T
+        // Expected Vector 1: M * [1, 0, 1]^T = [1+0, 0+1, 1+1]^T = [1, 1, 0]^T
+
+        // Output word 0 (i=0): bit 0 should be 0, bit 1 should be 1 -> 2
+        // Output word 1 (i=1): bit 0 should be 1, bit 1 should be 1 -> 3
+        // Output word 2 (i=2): bit 0 should be 1, bit 1 should be 0 -> 1
+        assert_eq!(output_block[0], 2);
+        assert_eq!(output_block[1], 3);
+        assert_eq!(output_block[2], 1);
+
+        // Test parallel implementation matches
+        let mut par_output_block = vec![0; 3];
+        m2.par_mul_block_gf2(&input_block, &mut par_output_block);
+        assert_eq!(par_output_block, output_block);
     }
 
     #[test]

@@ -181,6 +181,8 @@ name = "block-wiedemann"
 version = "0.1.0"
 dependencies = [
  "rand",
+ "rayon",
+ "serde",
 ]
 
 [[package]]
