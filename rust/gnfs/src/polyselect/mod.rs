@@ -1,4 +1,5 @@
 pub mod alpha;
+pub mod dickman;
 pub mod rotation;
 pub use alpha::murphy_alpha;
 
