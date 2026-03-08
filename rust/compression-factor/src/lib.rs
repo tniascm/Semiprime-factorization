@@ -379,6 +379,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_number_to_bytes() {
+        // Zero case (BigUint to_bytes_be returns empty vector for zero)
+        let n_zero = BigUint::zero();
+        assert_eq!(number_to_bytes(&n_zero), Vec::<u8>::new());
+
+        // Single byte case
+        let n_one = BigUint::from(1u32);
+        assert_eq!(number_to_bytes(&n_one), vec![1]);
+
+        // Multi-byte case (258 = 0x0102)
+        let n_multi = BigUint::from(258u32);
+        assert_eq!(number_to_bytes(&n_multi), vec![1, 2]);
+
+        // Large number case (0x12345678)
+        let n_large = BigUint::from(0x12345678u32);
+        assert_eq!(number_to_bytes(&n_large), vec![0x12, 0x34, 0x56, 0x78]);
+    }
+
+    #[test]
     fn test_rle() {
         let data = vec![1, 1, 1, 2, 2, 3];
         let ratio = rle_compression_ratio(&data);
