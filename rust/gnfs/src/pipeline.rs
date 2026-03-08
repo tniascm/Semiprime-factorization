@@ -2,7 +2,10 @@ use rug::Integer;
 use std::path::Path;
 
 use crate::arith::select_quad_char_primes;
-use crate::linalg::{build_matrix, find_dependencies, randomize_dependencies};
+use crate::linalg::{
+    build_matrix, find_dependencies, find_dependencies_with_preelim,
+    find_dependencies_with_preelim_bw, randomize_dependencies,
+};
 use crate::log::StageLogger;
 use crate::params::{GnfsParams, SieveMode};
 use crate::polyselect::select_base_m_variant;
@@ -343,7 +346,17 @@ fn factor_gnfs_inner(
 
     la_log.log(&format!("Matrix: {} rows × {} cols", matrix.len(), ncols));
 
-    let ge_deps = find_dependencies(&matrix, ncols);
+    let bw_threshold: usize = std::env::var("GNFS_BW_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20_000);
+    let ge_deps = if matrix.len() > bw_threshold {
+        find_dependencies_with_preelim_bw(&matrix, ncols)
+    } else if matrix.len() > 5_000 {
+        find_dependencies_with_preelim(&matrix, ncols)
+    } else {
+        find_dependencies(&matrix, ncols)
+    };
 
     // Randomize: combine GE basis vectors to produce decorrelated dependencies.
     // GE basis vectors are short and correlated → trivial gcd. Random XOR

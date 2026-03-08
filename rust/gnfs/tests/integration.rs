@@ -55,3 +55,11 @@ fn test_run_directory_created() {
     assert!(dir.exists());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn test_factor_8051_bw() {
+    // Force BW threshold low to exercise the Block Wiedemann path
+    std::env::set_var("GNFS_BW_THRESHOLD", "10");
+    assert_factors(8051);
+    std::env::remove_var("GNFS_BW_THRESHOLD");
+}

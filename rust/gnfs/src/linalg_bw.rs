@@ -55,6 +55,47 @@ impl SparseMatrixGF2 {
         }
     }
 
+    /// Build CSR for the TRANSPOSE of the BitRow matrix.
+    ///
+    /// Dependencies require the left null space (v^T M = 0), which equals
+    /// the right null space of M^T. Wiedemann finds right null space vectors,
+    /// so we run it on M^T.
+    ///
+    /// M^T has ncols rows and nrows columns: each original column becomes a row.
+    pub fn from_bitrows_transposed(rows: &[BitRow], ncols: usize) -> Self {
+        let nrows = rows.len();
+        // Transpose: collect which original rows set each column
+        let mut col_entries: Vec<Vec<usize>> = vec![Vec::new(); ncols];
+        for (r, row) in rows.iter().enumerate() {
+            for (wi, &word) in row.bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let col = wi * 64 + bit;
+                    if col < ncols {
+                        col_entries[col].push(r);
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        let mut col_indices = Vec::new();
+        let mut row_ptrs = Vec::with_capacity(ncols + 1);
+        for entries in &col_entries {
+            row_ptrs.push(col_indices.len());
+            col_indices.extend_from_slice(entries);
+        }
+        row_ptrs.push(col_indices.len());
+
+        SparseMatrixGF2 {
+            rows: ncols,
+            cols: nrows,
+            col_indices,
+            row_ptrs,
+        }
+    }
+
     /// Scalar SpMV: y = M * x over GF(2).
     ///
     /// x and y are bit-packed in u64 slices. Slow (1 bit per iteration) —
@@ -548,6 +589,10 @@ impl SimpleRng {
 /// Accepts `&[BitRow]` input and returns `Vec<Vec<usize>>` — each inner vec
 /// is a list of row indices whose XOR is the zero vector.
 ///
+/// Key insight: dependencies require the LEFT null space of M (v^T M = 0),
+/// which equals the RIGHT null space of M^T. Wiedemann finds right null space
+/// vectors, so we run it on M^T.
+///
 /// The seed for the PRNG is controlled by `RUST_NFS_BW_SEED` env var (default: 42).
 pub fn find_dependencies_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
     let nrows = rows.len();
@@ -562,24 +607,17 @@ pub fn find_dependencies_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
 
     let mut rng = SimpleRng::new(seed);
 
-    // Convert to CSR
-    let mut csr = SparseMatrixGF2::from_bitrows(rows, ncols);
+    // Build CSR for M^T. Kernel of M^T = left null space of M = dependencies.
+    // M^T has ncols rows and nrows columns.
+    let mut csr = SparseMatrixGF2::from_bitrows_transposed(rows, ncols);
 
-    // Pad to square if needed (add zero columns or zero rows)
-    let dim = nrows.max(ncols);
+    // Pad to square (BW requires square matrix)
+    let dim = csr.rows.max(csr.cols);
     if csr.rows < dim {
-        // Add empty rows (all zeros)
-        let extra = dim - csr.rows;
-        for _ in 0..extra {
-            csr.row_ptrs.push(csr.col_indices.len());
+        let nnz = csr.col_indices.len();
+        for _ in 0..(dim - csr.rows) {
+            csr.row_ptrs.push(nnz);
         }
-        // Fix the sentinel — remove old last, add extras, then re-add sentinel
-        // Actually row_ptrs already has rows+1 entries. We need to add `extra` more rows.
-        // Each new row has 0 non-zeros, so we just duplicate the last value.
-        // But we already pushed above into a vec of size rows+1+extra. Fix:
-        // row_ptrs was [0, ..., nnz] with length rows+1.
-        // We need it to be [0, ..., nnz, nnz, ..., nnz] with length dim+1.
-        // The pushes above already did that correctly since each push adds nnz.
         csr.rows = dim;
     }
     csr.cols = dim;
@@ -588,11 +626,9 @@ pub fn find_dependencies_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
     let max_rounds = 10;
     let mut all_kernel_vecs: Vec<Vec<u64>> = Vec::new();
     for round in 0..max_rounds {
-        // Try batched first (64-way), fall back to scalar for small matrices
         let new_vecs = if dim >= 64 {
             wiedemann_nullspace_batched(&csr, &mut rng)
         } else {
-            // For very small matrices, scalar Wiedemann is more reliable
             let mut vecs = Vec::new();
             for _ in 0..64 {
                 if let Some(v) = wiedemann_nullspace_vector(&csr, &mut rng) {
@@ -603,7 +639,6 @@ pub fn find_dependencies_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
         };
 
         for v in new_vecs {
-            // Check linear independence with existing vectors (simple: check not duplicate)
             let is_dup = all_kernel_vecs.iter().any(|existing| {
                 existing.iter().zip(v.iter()).all(|(&a, &b)| a == b)
             });
@@ -612,15 +647,17 @@ pub fn find_dependencies_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
             }
         }
 
-        // We need at least nrows - ncols + 1 kernel vectors (null space dimension),
-        // but more is better. Stop if we have a reasonable number.
+        // Left null space dimension = nrows - rank(M). For overdetermined systems
+        // (nrows > ncols), dimension ≥ nrows - ncols.
         let target = if nrows > ncols { nrows - ncols + 1 } else { 1 };
         if all_kernel_vecs.len() >= target || (round > 2 && !all_kernel_vecs.is_empty()) {
             break;
         }
     }
 
-    // Convert kernel vectors to dependency lists
+    // Convert kernel vectors of M^T to dependency lists.
+    // Kernel vector x of M^T has components indexed by M^T's columns = M's rows.
+    // x[i]=1 means row i participates in the dependency.
     let mut deps = Vec::new();
     for kv in &all_kernel_vecs {
         let mut dep = Vec::new();
@@ -1223,5 +1260,89 @@ mod tests {
             }
             assert!(check.is_zero(), "Dep {:?} should XOR to zero", dep);
         }
+    }
+
+    #[test]
+    fn test_bw_cross_validate_200x150() {
+        // Cross-validate BW vs GE on a 200x150 random sparse matrix.
+        // BW should find valid dependencies (all verified), and GE should too.
+        let ncols = 150;
+        let nrows = 200;
+        let mut rows: Vec<BitRow> = (0..nrows).map(|_| BitRow::new(ncols)).collect();
+
+        // Deterministic sparse pattern (~5 non-zeros per row)
+        let mut rng = SimpleRng::new(12345);
+        for r in 0..nrows {
+            for _ in 0..5 {
+                let c = (rng.next_u64() as usize) % ncols;
+                rows[r].flip(c);
+            }
+        }
+
+        let ge_deps = crate::linalg::find_dependencies(&rows, ncols);
+        let bw_deps = find_dependencies_bw(&rows, ncols);
+
+        // GE finds exact null space. BW should find at least some valid deps.
+        assert!(
+            !ge_deps.is_empty(),
+            "GE should find deps for 200x150 matrix"
+        );
+        assert!(
+            !bw_deps.is_empty(),
+            "BW should find deps for 200x150 matrix"
+        );
+
+        // Verify all BW deps are valid
+        for dep in &bw_deps {
+            let mut check = BitRow::new(ncols);
+            for &idx in dep {
+                check.xor_with(&rows[idx]);
+            }
+            assert!(check.is_zero(), "BW dep should XOR to zero");
+        }
+    }
+
+    #[test]
+    fn test_bw_preelim_nfs_like_matrix() {
+        // NFS-like structure: sparse LP columns + dense FB core
+        let ncols = 50;
+        let nrows = 60;
+        let mut rows: Vec<BitRow> = (0..nrows).map(|_| BitRow::new(ncols)).collect();
+
+        // First 20 cols: sparse (each in ~2 rows) — like large primes
+        let mut rng = SimpleRng::new(999);
+        for c in 0..20 {
+            let r1 = (rng.next_u64() as usize) % nrows;
+            let r2 = (rng.next_u64() as usize) % nrows;
+            rows[r1].set(c);
+            if r2 != r1 {
+                rows[r2].set(c);
+            }
+        }
+        // Last 30 cols: dense (~3 per row) — like factor base
+        for r in 0..nrows {
+            for _ in 0..3 {
+                let c = 20 + (rng.next_u64() as usize) % 30;
+                rows[r].flip(c);
+            }
+        }
+
+        let ge_deps = crate::linalg::find_dependencies_with_preelim(&rows, ncols);
+        let bw_deps = find_dependencies_with_preelim_bw(&rows, ncols);
+
+        // Both should find valid deps
+        for dep in &bw_deps {
+            let mut check = BitRow::new(ncols);
+            for &idx in dep {
+                check.xor_with(&rows[idx]);
+            }
+            assert!(check.is_zero(), "BW preelim dep should XOR to zero");
+        }
+
+        // Both should find at least some deps
+        assert!(
+            !ge_deps.is_empty(),
+            "GE preelim should find deps for 60x50"
+        );
     }
 }

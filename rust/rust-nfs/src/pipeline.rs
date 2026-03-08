@@ -1571,9 +1571,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         return result;
     }
 
-    // Use pre-elimination for large matrices (>20K rows) where the weight-2
-    // merge amortizes its scanning cost. For smaller matrices, plain GE is faster.
-    let mut ge_deps = if matrix.len() > 20_000 {
+    // Use BW for very large matrices (O(n^2) vs GE O(n^3)),
+    // pre-elimination + GE for medium, plain GE for small.
+    let bw_threshold: usize = std::env::var("RUST_NFS_BW_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20_000);
+    let mut ge_deps = if matrix.len() > bw_threshold {
+        gnfs::linalg::find_dependencies_with_preelim_bw(&matrix, ncols)
+    } else if matrix.len() > 20_000 {
         gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols)
     } else {
         gnfs::linalg::find_dependencies(&matrix, ncols)
