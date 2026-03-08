@@ -29,7 +29,7 @@ members = [
     "path-sum-degree",
     "eigenvector-character",
     "nfs-tn-hybrid",
-    "novel-relation-sampler",
+    "novel-relation-sampler", "block-wiedemann",
 ]
 
 [workspace.dependencies]
