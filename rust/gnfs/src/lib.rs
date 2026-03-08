@@ -1,6 +1,7 @@
 pub mod arith;
 pub mod lattice;
 pub mod linalg;
+pub mod linalg_bw;
 pub mod log;
 pub mod params;
 pub mod pipeline;

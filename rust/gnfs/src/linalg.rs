@@ -1,6 +1,8 @@
 use crate::arith::QuadCharSet;
 use crate::types::BitRow;
 
+pub use crate::linalg_bw::{find_dependencies_bw, find_dependencies_with_preelim_bw};
+
 /// Build the GF(2) exponent matrix from relations.
 ///
 /// Column layout places sparse columns FIRST so GE eliminates them early,
