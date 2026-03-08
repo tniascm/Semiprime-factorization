@@ -174,28 +174,6 @@ fn sieve_primes(bound: u64) -> Vec<u64> {
     (2..=bound).filter(|&i| is_prime[i as usize]).collect()
 }
 
-/// Check if a number is smooth with respect to the given factor base.
-/// Returns the exponent vector if smooth, None otherwise.
-#[allow(dead_code)]
-fn smooth_factorize(mut val: BigUint, primes: &[u64]) -> Option<Vec<i64>> {
-    let one = BigUint::from(1u32);
-    let mut exponents = vec![0i64; primes.len()];
-
-    for (i, &p) in primes.iter().enumerate() {
-        let p_big = BigUint::from(p);
-        while &val % &p_big == BigUint::from(0u32) {
-            val /= &p_big;
-            exponents[i] += 1;
-        }
-    }
-
-    if val == one {
-        Some(exponents)
-    } else {
-        None
-    }
-}
-
 /// Attempt to factor N using lattice reduction (Schnorr's approach).
 pub fn lattice_factor(n: &BigUint, dimension: usize) -> Option<BigUint> {
     use factoring_core::gcd;
