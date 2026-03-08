@@ -1,0 +1,9 @@
+[package]
+name = "block-wiedemann"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
