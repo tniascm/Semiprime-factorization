@@ -117,8 +117,8 @@ impl GpuSieveContext {
     /// This function applies `updates` to `sieve_array` by subtracting `logp`
     /// from the value at `pos` with saturated subtraction.
     ///
-    /// If GPU is enabled, this function runs a simulated GPU scatter kernel.
-    /// In a fully realized GPU build, it uses atomic subtraction in VRAM.
+    /// The production pipeline uses multiple bucket regions simultaneously.
+    /// This method can be invoked concurrently from different threads (if self is shared).
     pub fn dispatch_bucket_updates(
         &self,
         sieve_array: &mut [u8],

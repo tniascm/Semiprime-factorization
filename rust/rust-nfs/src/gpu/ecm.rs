@@ -50,6 +50,9 @@ pub struct GpuEcmContext {
     pipeline_state: Option<metal::ComputePipelineState>,
 }
 
+use crossbeam_channel::{unbounded, Sender, Receiver};
+use std::thread;
+
 #[cfg(not(target_os = "macos"))]
 pub struct GpuEcmContext {
     #[allow(dead_code)]
@@ -118,6 +121,27 @@ impl GpuEcmContext {
             enabled,
             shader_src: ECM_SHADER_SRC,
         }
+    }
+
+    /// Spawns a background dispatch thread connected by channels.
+    ///
+    /// Returns a `Sender` for CPU threads to enqueue candidate sets, and a
+    /// `Receiver` to get the resulting factors asynchronously.
+    pub fn start_async_pipeline(
+        self,
+    ) -> (Sender<Vec<CofactorCandidate>>, Receiver<Vec<EcmResult>>) {
+        let (job_tx, job_rx) = unbounded::<Vec<CofactorCandidate>>();
+        let (res_tx, res_rx) = unbounded::<Vec<EcmResult>>();
+
+        thread::spawn(move || {
+            for batch in job_rx {
+                if let Ok(results) = self.dispatch_batch(&batch) {
+                    let _ = res_tx.send(results);
+                }
+            }
+        });
+
+        (job_tx, res_rx)
     }
 
     /// Dispatches a batch of ECM cofactor candidates to the GPU.
@@ -245,5 +269,31 @@ mod tests {
 
         assert_eq!(results[2].id, 3);
         assert_eq!(results[2].factor, 0);
+    }
+
+    #[test]
+    fn test_gpu_ecm_async_pipeline() {
+        let ctx = GpuEcmContext::new();
+        let (tx, rx) = ctx.start_async_pipeline();
+
+        let batch1 = vec![
+            CofactorCandidate { id: 1, cofactor: 15, b1: 105, b2: 525 },
+        ];
+        let batch2 = vec![
+            CofactorCandidate { id: 2, cofactor: 14, b1: 105, b2: 525 },
+        ];
+
+        tx.send(batch1).unwrap();
+        tx.send(batch2).unwrap();
+        drop(tx); // Close the channel
+
+        let mut all_results = Vec::new();
+        for res in rx {
+            all_results.extend(res);
+        }
+
+        assert_eq!(all_results.len(), 2);
+        assert_eq!(all_results[0].factor, 3);
+        assert_eq!(all_results[1].factor, 2);
     }
 }

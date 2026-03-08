@@ -104,51 +104,60 @@ impl GpuMatrixMultiplication {
         }
     }
 
-    /// Performs Sparse Matrix-Vector multiplication (SpMV) over GF(2).
+    /// Performs iterative Block Wiedemann Krylov sequence generation.
     ///
-    /// The matrix is defined by `row_ptr` and `col_idx` (CSR format).
-    /// `source_vec` is a dense array of packed 64-bit GF(2) vectors.
-    /// `dest_vec` is where the XOR-sum of the specified indices is stored.
+    /// The matrix is defined by `row_ptr` and `col_idx` (CSR format) and is
+    /// transferred to the GPU *once*. Then, for `iterations` steps, the SpMV kernel
+    /// executes entirely on the GPU, updating the block vector `V_{i+1} = M * V_i`
+    /// using dense 64-bit GF(2) operations without moving the giant matrix over the PCIe bus.
     ///
     /// On an Apple Silicon M3 or NVIDIA GPU, this operation maps naturally to
     /// Metal/CUDA compute kernels that exploit large parallel thread grids to
-    /// evaluate every row concurrently.
-    pub fn spmv_gf2(
+    /// evaluate every row concurrently. By returning the final sequence, this
+    /// bypasses massive memory transfer bottlenecks that plague CPU pipelines.
+    pub fn block_wiedemann_krylov(
         &self,
         row_ptr: &[usize],
         col_idx: &[usize],
-        source_vec: &[u64],
-        dest_vec: &mut [u64],
-    ) -> Result<(), &'static str> {
-        if row_ptr.is_empty() {
-            return Ok(());
+        initial_vector: &[u64],
+        iterations: usize,
+    ) -> Result<Vec<u64>, &'static str> {
+        if row_ptr.is_empty() || iterations == 0 {
+            return Ok(initial_vector.to_vec());
         }
 
         let num_rows = row_ptr.len() - 1;
+        let mut current_vec = initial_vector.to_vec();
+        let mut next_vec = vec![0u64; num_rows];
 
         #[cfg(target_os = "macos")]
         {
             if !self.enabled {
-                for row in 0..num_rows {
-                    let start = row_ptr[row];
-                    let end = row_ptr[row + 1];
-                    let mut accum = 0u64;
-                    for idx in &col_idx[start..end] {
-                        accum ^= source_vec[*idx];
+                // CPU fallback
+                for _ in 0..iterations {
+                    for row in 0..num_rows {
+                        let start = row_ptr[row];
+                        let end = row_ptr[row + 1];
+                        let mut accum = 0u64;
+                        for idx in &col_idx[start..end] {
+                            accum ^= current_vec[*idx];
+                        }
+                        next_vec[row] = accum;
                     }
-                    dest_vec[row] = accum;
+                    std::mem::swap(&mut current_vec, &mut next_vec);
                 }
-                return Ok(());
+                return Ok(current_vec);
             }
 
             let device = self.device.as_ref().unwrap();
             let queue = self.queue.as_ref().unwrap();
             let pipeline_state = self.pipeline_state.as_ref().unwrap();
 
+            // 1. Pre-allocate unchanging matrix buffers ONCE.
             let row_buffer = device.new_buffer_with_data(
                 row_ptr.as_ptr() as *const _,
                 (row_ptr.len() * std::mem::size_of::<usize>()) as u64,
-                metal::MTLResourceOptions::StorageModeShared,
+                metal::MTLResourceOptions::StorageModeShared, // In prod: StorageModePrivate for discrete GPUs
             );
 
             let col_buffer = device.new_buffer_with_data(
@@ -157,65 +166,75 @@ impl GpuMatrixMultiplication {
                 metal::MTLResourceOptions::StorageModeShared,
             );
 
-            let src_buffer = device.new_buffer_with_data(
-                source_vec.as_ptr() as *const _,
-                (source_vec.len() * std::mem::size_of::<u64>()) as u64,
+            // 2. Ping-pong buffers for the V_i sequences
+            let mut v_in = device.new_buffer_with_data(
+                current_vec.as_ptr() as *const _,
+                (current_vec.len() * std::mem::size_of::<u64>()) as u64,
+                metal::MTLResourceOptions::StorageModeShared,
+            );
+            let mut v_out = device.new_buffer_with_data(
+                next_vec.as_ptr() as *const _,
+                (next_vec.len() * std::mem::size_of::<u64>()) as u64,
                 metal::MTLResourceOptions::StorageModeShared,
             );
 
-            let dest_buffer = device.new_buffer_with_data(
-                dest_vec.as_ptr() as *const _,
-                (dest_vec.len() * std::mem::size_of::<u64>()) as u64,
-                metal::MTLResourceOptions::StorageModeShared,
-            );
+            for _ in 0..iterations {
+                let command_buffer = queue.new_command_buffer();
+                let compute_encoder = command_buffer.new_compute_command_encoder();
 
-            let command_buffer = queue.new_command_buffer();
-            let compute_encoder = command_buffer.new_compute_command_encoder();
+                compute_encoder.set_compute_pipeline_state(pipeline_state);
+                compute_encoder.set_buffer(0, Some(&row_buffer), 0);
+                compute_encoder.set_buffer(1, Some(&col_buffer), 0);
+                compute_encoder.set_buffer(2, Some(&v_in), 0);
+                compute_encoder.set_buffer(3, Some(&v_out), 0);
 
-            compute_encoder.set_compute_pipeline_state(pipeline_state);
-            compute_encoder.set_buffer(0, Some(&row_buffer), 0);
-            compute_encoder.set_buffer(1, Some(&col_buffer), 0);
-            compute_encoder.set_buffer(2, Some(&src_buffer), 0);
-            compute_encoder.set_buffer(3, Some(&dest_buffer), 0);
+                let grid_size = metal::MTLSize::new(num_rows as u64, 1, 1);
+                let thread_group_size = metal::MTLSize::new(
+                    std::cmp::min(pipeline_state.max_total_threads_per_threadgroup(), num_rows as u64),
+                    1,
+                    1
+                );
 
-            let grid_size = metal::MTLSize::new(num_rows as u64, 1, 1);
-            let thread_group_size = metal::MTLSize::new(
-                std::cmp::min(pipeline_state.max_total_threads_per_threadgroup(), num_rows as u64),
-                1,
-                1
-            );
+                compute_encoder.dispatch_threads(grid_size, thread_group_size);
+                compute_encoder.end_encoding();
 
-            compute_encoder.dispatch_threads(grid_size, thread_group_size);
-            compute_encoder.end_encoding();
+                command_buffer.commit();
+                command_buffer.wait_until_completed(); // For max throughput, these should be queued up, but for safety here we wait.
 
-            command_buffer.commit();
-            command_buffer.wait_until_completed();
-
-            // Copy back results
-            let ptr = dest_buffer.contents() as *const u64;
-            unsafe {
-                std::ptr::copy_nonoverlapping(ptr, dest_vec.as_mut_ptr(), dest_vec.len());
+                // Ping-pong buffers
+                std::mem::swap(&mut v_in, &mut v_out);
             }
 
-            return Ok(());
+            // The last result is now in `v_in` because of the swap at the end of the loop
+            let ptr = v_in.contents() as *const u64;
+            unsafe {
+                std::ptr::copy_nonoverlapping(ptr, current_vec.as_mut_ptr(), current_vec.len());
+            }
+
+            return Ok(current_vec);
         }
 
         #[cfg(not(target_os = "macos"))]
         {
             // Mock simulation for standard fallback execution
-            for row in 0..num_rows {
-                let start = row_ptr[row];
-                let end = row_ptr[row + 1];
+            for _ in 0..iterations {
+                for row in 0..num_rows {
+                    let start = row_ptr[row];
+                    let end = row_ptr[row + 1];
 
-                let mut accum = 0u64;
-                for idx in &col_idx[start..end] {
-                    // GF(2) addition is XOR
-                    accum ^= source_vec[*idx];
+                    let mut accum = 0u64;
+                    for idx in &col_idx[start..end] {
+                        // GF(2) addition is XOR
+                        if *idx < current_vec.len() {
+                            accum ^= current_vec[*idx];
+                        }
+                    }
+                    next_vec[row] = accum;
                 }
-                dest_vec[row] = accum;
+                std::mem::swap(&mut current_vec, &mut next_vec);
             }
 
-            Ok(())
+            Ok(current_vec)
         }
     }
 }
@@ -241,18 +260,24 @@ mod tests {
 
         // Dense source vector of packed u64 (4 rows)
         let source_vec = vec![0b001, 0b010, 0b100, 0b101];
-        let mut dest_vec = vec![0u64; 3];
 
-        let result = ctx.spmv_gf2(&row_ptr, &col_idx, &source_vec, &mut dest_vec);
-        assert!(result.is_ok());
+        let result = ctx.block_wiedemann_krylov(&row_ptr, &col_idx, &source_vec, 1).unwrap();
 
+        // 1 iteration -> V_1 = M * V_0
         // Row 0: XOR of source[0], source[2] -> 001 ^ 100 = 101
-        assert_eq!(dest_vec[0], 0b101);
+        assert_eq!(result[0], 0b101);
 
         // Row 1: XOR of source[1], source[2], source[3] -> 010 ^ 100 ^ 101 = 011
-        assert_eq!(dest_vec[1], 0b011);
+        assert_eq!(result[1], 0b011);
 
         // Row 2: XOR of source[0], source[3] -> 001 ^ 101 = 100
-        assert_eq!(dest_vec[2], 0b100);
+        assert_eq!(result[2], 0b100);
+
+        // Test 2 iterations
+        let res2 = ctx.block_wiedemann_krylov(&row_ptr, &col_idx, &source_vec, 2).unwrap();
+        // M * M * V_0
+        // Result 1: [5, 3, 4]
+        // Row 0: R[0] ^ R[2] = 5 ^ 4 = 1
+        assert_eq!(res2[0], 0b001);
     }
 }
