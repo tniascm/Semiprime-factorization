@@ -214,36 +214,37 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
 
     let mut last_result = None;
 
-    // Score polynomial variants by average log-norm over a sample of the sieve
-    // region. Smaller norms → more smooth relations → fewer special-q's needed
-    // → fewer sq_cols → better matrix balance.
-    let mut variant_order: Vec<(u32, f64)> = (0..max_variants)
-        .map(|i| {
-            let v = variant_start.saturating_add(i);
-            let poly = gnfs::polyselect::select_base_m_variant(n, params.degree, v);
-            let coeffs_big = poly.f_coeffs();
-            let coeffs_i64: Vec<i64> = gnfs::sieve::poly_coeffs_to_i64(&coeffs_big)
-                .unwrap_or_default();
-            let quality = estimate_avg_log_norm(&coeffs_i64, params.sieve_half_width());
-            (v, quality)
-        })
-        .collect();
-    variant_order.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    eprintln!(
-        "  poly: variant order by avg_log_norm: {:?}",
-        variant_order.iter().map(|(v, q)| format!("v{}={:.1}", v, q)).collect::<Vec<_>>()
+    // Production polynomial search with Murphy E-value ranking.
+    // Searches over non-monic leading coefficients and applies rotation optimization.
+    let admax: u64 = std::env::var("RUST_NFS_ADMAX")
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(5000);
+    let ad_incr: u64 = std::env::var("RUST_NFS_AD_INCR")
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(20);
+    let ropteffort: f64 = std::env::var("RUST_NFS_ROPTEFFORT")
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(1.0);
+
+    let ranked_polys = gnfs::polyselect::select_best_polynomial(
+        n, params.degree, admax, ad_incr, ropteffort,
+        max_variants as usize, params.lim0,
     );
 
-    for (try_idx, &(variant, _)) in variant_order.iter().enumerate() {
+    // Fall back to old monic variants if new search returned nothing
+    let variant_polys: Vec<(u32, Option<gnfs::types::PolynomialPair>)> = if ranked_polys.is_empty() {
+        (0..max_variants).map(|i| (variant_start + i, None)).collect()
+    } else {
+        ranked_polys.into_iter().enumerate().map(|(i, p)| (i as u32, Some(p))).collect()
+    };
+
+    for (try_idx, (variant_id, pre_poly)) in variant_polys.iter().enumerate() {
         if try_idx > 0 {
             eprintln!(
-                "  === Trying polynomial variant {} (m_offset=-{}) ===",
-                variant, variant
+                "  === Trying polynomial {} of {} ===",
+                try_idx + 1, variant_polys.len()
             );
         }
-        let result = factor_nfs_inner(n, params, variant);
+        let result = factor_nfs_inner(n, params, *variant_id, pre_poly.as_ref());
         if let Some(logger) = run_logger.as_mut() {
-            logger.log_variant(variant, &result);
+            logger.log_variant(*variant_id, &result);
         }
         if result.factor.is_some() {
             if let Some(logger) = run_logger.as_mut() {
@@ -428,7 +429,7 @@ impl RunLogger {
 }
 
 /// Inner NFS pipeline with a specific polynomial variant.
-fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult {
+fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Option<&gnfs::types::PolynomialPair>) -> NfsResult {
     let start = std::time::Instant::now();
     let mut result = NfsResult {
         n: n.to_string(),
@@ -549,7 +550,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     }
 
     // --- Stage 1: Polynomial Selection ---
-    let poly = gnfs::polyselect::select_base_m_variant(n, params.degree, variant);
+    let poly = match pre_poly {
+        Some(p) => p.clone(),
+        None => gnfs::polyselect::select_base_m_variant(n, params.degree, variant),
+    };
     let f_coeffs_big = poly.f_coeffs();
     let f_coeffs_i64: Vec<i64> = match gnfs::sieve::poly_coeffs_to_i64(&f_coeffs_big) {
         Some(v) => v,
@@ -3366,54 +3370,6 @@ fn p_valuation_a_minus_br_hensel(
 
 /// Compute sign of the algebraic norm F(a,b).
 ///
-/// Estimate average log2 of |F(a,b)| over a sample of the sieve region.
-/// Used for polynomial quality scoring: smaller norms → more smooth relations.
-fn estimate_avg_log_norm(f_coeffs: &[i64], sieve_half_width: u64) -> f64 {
-    use rug::Integer;
-    if f_coeffs.is_empty() || sieve_half_width == 0 {
-        return f64::MAX;
-    }
-    let half_i = sieve_half_width as i64;
-    let max_j = half_i;
-    // Sample 10 j-values × 20 a-values = 200 points.
-    let j_step = (max_j / 10).max(1);
-    let a_step = (2 * half_i / 20).max(1);
-    let mut total_log = 0.0f64;
-    let mut count = 0u32;
-    let d = f_coeffs.len() - 1;
-    for j_idx in 1..=10i64 {
-        let b = (j_idx * j_step) as u64;
-        let b_big = Integer::from(b);
-        for a_idx in 0..20i64 {
-            let a = -half_i + a_idx * a_step;
-            if a == 0 && b == 0 {
-                continue;
-            }
-            let a_big = Integer::from(a);
-            // F(a,b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
-            let mut norm = Integer::from(0);
-            let mut a_pow = Integer::from(1);
-            let mut b_pow = Integer::from(b_big.clone().pow(d as u32));
-            for (i, &c) in f_coeffs.iter().enumerate() {
-                norm += Integer::from(&a_pow * &b_pow) * c;
-                a_pow *= &a_big;
-                if i < d {
-                    b_pow /= &b_big;
-                }
-            }
-            let abs_norm = norm.abs();
-            if abs_norm > 0 {
-                total_log += abs_norm.significant_bits() as f64;
-                count += 1;
-            }
-        }
-    }
-    if count == 0 {
-        return f64::MAX;
-    }
-    total_log / count as f64
-}
-
 /// Hybrid remap: keep rational factors from our sieve (complete FB), recompute
 /// algebraic factors using BigInt norms and gnfs's per-(prime,root) decomposition.
 ///
