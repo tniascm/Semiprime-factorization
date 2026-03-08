@@ -523,6 +523,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
     {
         params.degree = v;
     }
+    // Preserve original mfb for sieve threshold before any 2LP bump.
+    params.sieve_mfb0 = params.mfb0;
+    params.sieve_mfb1 = params.mfb1;
+
     if partial_merge_2lp {
         // 2LP requires room for products of two LPs; if mfb is too close to lpb
         // those candidates are rejected before merge can use them.

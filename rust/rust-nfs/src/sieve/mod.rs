@@ -323,8 +323,8 @@ pub fn sieve_specialq(
                     let mut norm_ns: u64 = 0;
                     let mut small_sieve_ns: u64 = 0;
                     let mut bucket_apply_ns: u64 = 0;
-                    let rat_bound = ((params.mfb0 as f64) * scale).min(255.0) as u8;
-                    let alg_bound = ((params.mfb1 as f64) * scale).min(255.0) as u8;
+                    let rat_bound = ((params.sieve_mfb0 as f64) * scale).min(255.0) as u8;
+                    let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
                     let d = f_coeffs.len().saturating_sub(1);
 
                     for bucket_idx in 0..n_buckets {
