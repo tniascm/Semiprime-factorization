@@ -1567,7 +1567,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32) -> NfsResult 
         return result;
     }
 
-    let mut ge_deps = gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols);
+    // Use pre-elimination for large matrices (>20K rows) where the weight-2
+    // merge amortizes its scanning cost. For smaller matrices, plain GE is faster.
+    let mut ge_deps = if matrix.len() > 20_000 {
+        gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols)
+    } else {
+        gnfs::linalg::find_dependencies(&matrix, ncols)
+    };
     let ge_deps_total = ge_deps.len();
     let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")
         .ok()
