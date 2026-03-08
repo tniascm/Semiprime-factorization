@@ -1,5 +1,6 @@
 pub mod alpha;
 pub mod dickman;
+pub mod murphy_e;
 pub mod rotation;
 pub use alpha::murphy_alpha;
 
@@ -180,6 +181,121 @@ fn build_poly_from_remainder(
     Some(PolynomialPair::new(&coeffs, &neg_m, &Integer::from(1), m, n))
 }
 
+/// Select the best polynomial for N by searching over leading coefficients
+/// and applying root optimization.
+///
+/// Parameters match CADO's polyselect:
+/// - admax: maximum leading coefficient to try
+/// - incr: step size for ad sweep
+/// - ropteffort: rotation search effort (multiplied by 50 for range)
+/// - nrkeep: number of top polynomials to retain
+pub fn select_best_polynomial(
+    n: &Integer,
+    degree: u32,
+    admax: u64,
+    incr: u64,
+    ropteffort: f64,
+    nrkeep: usize,
+    lim: u64,
+) -> Vec<PolynomialPair> {
+    let alpha_bound = 2000u64;
+    let bf = lim as f64;
+    let bg = lim as f64;
+    let rotation_range = (50.0 * ropteffort) as i64;
+
+    let mut candidates: Vec<(f64, PolynomialPair)> = Vec::new();
+
+    // Also try monic variants for comparison
+    for v in 0..5u32 {
+        let poly = select_base_m_variant(n, degree, v);
+        let f_i64 = poly_to_i64(&poly);
+        let g_i64 = g_to_i64(&poly);
+        if f_i64.is_empty() {
+            continue;
+        }
+
+        let (rotated_f, _, _) = if rotation_range > 0 && g_i64.len() == 2 {
+            rotation::optimize_rotation(&f_i64, &g_i64, rotation_range, alpha_bound)
+        } else {
+            (f_i64.clone(), 0, 0)
+        };
+
+        let skew = murphy_e::optimal_skewness(&rotated_f);
+        let e = murphy_e::murphy_e(&rotated_f, &g_i64, skew, bf, bg, alpha_bound);
+
+        // Build PolynomialPair with rotated coefficients
+        let rotated_poly = rebuild_poly_with_coeffs(&poly, &rotated_f, n);
+        candidates.push((e, rotated_poly));
+    }
+
+    // Sweep over non-monic leading coefficients
+    let mut ad = incr;
+    while ad <= admax {
+        if let Some(poly) = select_polynomial_with_ad(n, degree, ad) {
+            let f_i64 = poly_to_i64(&poly);
+            let g_i64 = g_to_i64(&poly);
+            if f_i64.is_empty() {
+                ad += incr;
+                continue;
+            }
+
+            let (rotated_f, _, _) = if rotation_range > 0 && g_i64.len() == 2 {
+                rotation::optimize_rotation(&f_i64, &g_i64, rotation_range, alpha_bound)
+            } else {
+                (f_i64.clone(), 0, 0)
+            };
+
+            let skew = murphy_e::optimal_skewness(&rotated_f);
+            let e = murphy_e::murphy_e(&rotated_f, &g_i64, skew, bf, bg, alpha_bound);
+
+            let rotated_poly = rebuild_poly_with_coeffs(&poly, &rotated_f, n);
+            candidates.push((e, rotated_poly));
+        }
+        ad += incr;
+    }
+
+    // Sort by Murphy E (descending -- higher is better)
+    candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.truncate(nrkeep);
+
+    if !candidates.is_empty() {
+        eprintln!(
+            "  polyselect: {} candidates, best E = {:.6e}, worst kept E = {:.6e}",
+            candidates.len(),
+            candidates.first().map(|(e, _)| *e).unwrap_or(0.0),
+            candidates.last().map(|(e, _)| *e).unwrap_or(0.0),
+        );
+    }
+
+    candidates.into_iter().map(|(_, p)| p).collect()
+}
+
+fn poly_to_i64(poly: &PolynomialPair) -> Vec<i64> {
+    poly.f_coeffs_str
+        .iter()
+        .map(|s| s.parse::<i64>().unwrap_or(0))
+        .collect()
+}
+
+fn g_to_i64(poly: &PolynomialPair) -> Vec<i64> {
+    poly.g_coeffs_str
+        .iter()
+        .map(|s| s.parse::<i64>().unwrap_or(0))
+        .collect()
+}
+
+fn rebuild_poly_with_coeffs(
+    original: &PolynomialPair,
+    new_f_coeffs: &[i64],
+    n: &Integer,
+) -> PolynomialPair {
+    let coeffs: Vec<Integer> = new_f_coeffs.iter().map(|&c| Integer::from(c)).collect();
+    let g0: Integer = original.g_coeffs_str[0].parse().unwrap();
+    let g1: Integer = original.g_coeffs_str[1].parse().unwrap();
+    let m: Integer = original.m_str.parse().unwrap();
+    PolynomialPair::new(&coeffs, &g0, &g1, &m, n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,5 +410,25 @@ mod tests {
             "At least half of ad values should produce valid polys, got {}",
             valid
         );
+    }
+
+    #[test]
+    fn test_select_best_polynomial() {
+        let n = Integer::from_str_radix("684217602914977371691118975023", 10).unwrap();
+        // Use small parameters for fast debug-mode testing:
+        // admax=100 (5 ad values), ropteffort=0 (skip rotation), nrkeep=3
+        let polys = select_best_polynomial(&n, 3, 100, 20, 0.0, 3, 30_000);
+        assert!(!polys.is_empty(), "Should find at least one polynomial");
+        // Verify best polynomial f(m) = N
+        let best = &polys[0];
+        let m = best.m();
+        let coeffs = best.f_coeffs();
+        let mut val = Integer::from(0);
+        let mut m_pow = Integer::from(1);
+        for c in &coeffs {
+            val += c * &m_pow;
+            m_pow *= &m;
+        }
+        assert_eq!(val, n, "Best polynomial must satisfy f(m) = N");
     }
 }
