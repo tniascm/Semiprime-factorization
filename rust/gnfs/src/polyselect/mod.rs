@@ -1,4 +1,5 @@
 pub mod alpha;
+pub mod rotation;
 pub use alpha::murphy_alpha;
 
 use crate::arith::nth_root;
@@ -104,6 +105,80 @@ pub fn select_base_m_variant(n: &Integer, degree: u32, variant: u32) -> Polynomi
     PolynomialPair::new(&coeffs, &neg_m, &Integer::from(1), &m, n)
 }
 
+/// Generate a polynomial pair with given leading coefficient `ad`.
+///
+/// Computes m = floor((N/ad)^(1/d)), then constructs f(x) = ad*x^d + ... + c_0
+/// via base-m expansion such that f(m) = N.
+pub fn select_polynomial_with_ad(n: &Integer, degree: u32, ad: u64) -> Option<PolynomialPair> {
+    let d = degree as usize;
+    let ad_int = Integer::from(ad);
+
+    // m = floor((N / ad)^(1/d))
+    let n_over_ad = Integer::from(n / &ad_int);
+    let m = nth_root(&n_over_ad, degree);
+
+    if m < 2 {
+        return None;
+    }
+
+    // Try m and m-1 to find a valid base-m expansion
+    for m_candidate in [m.clone(), Integer::from(&m - 1)] {
+        if m_candidate < 2 {
+            continue;
+        }
+        let m_pow_d = Integer::from(m_candidate.clone().pow(degree));
+        let remaining = Integer::from(n - &ad_int * &m_pow_d);
+        if remaining < 0 {
+            continue;
+        }
+
+        if let Some(poly) = build_poly_from_remainder(n, &m_candidate, &ad_int, d, &remaining) {
+            return Some(poly);
+        }
+    }
+
+    None
+}
+
+fn build_poly_from_remainder(
+    n: &Integer,
+    m: &Integer,
+    ad: &Integer,
+    d: usize,
+    remainder: &Integer,
+) -> Option<PolynomialPair> {
+    let mut coeffs = Vec::with_capacity(d + 1);
+    let mut rem = remainder.clone();
+
+    // Extract d coefficients c_0 through c_{d-1} via base-m expansion
+    for _ in 0..d {
+        let (quot, r) = rem.div_rem_euc(m.clone());
+        coeffs.push(r);
+        rem = quot;
+    }
+
+    // rem should be 0 if expansion is exact
+    if rem != 0 {
+        return None;
+    }
+
+    coeffs.push(ad.clone());
+
+    // Verify: f(m) = N
+    debug_assert!({
+        let mut val = Integer::from(0);
+        let mut m_pow = Integer::from(1);
+        for c in &coeffs {
+            val += c * &m_pow;
+            m_pow *= m;
+        }
+        val == *n
+    });
+
+    let neg_m = Integer::from(-m);
+    Some(PolynomialPair::new(&coeffs, &neg_m, &Integer::from(1), m, n))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,5 +239,59 @@ mod tests {
             m_pow *= &m;
         }
         assert_eq!(val % &n, 0);
+    }
+
+    #[test]
+    fn test_select_polynomial_with_ad_monic() {
+        let n = Integer::from_str_radix("684217602914977371691118975023", 10).unwrap();
+        // ad=1 should produce a valid polynomial
+        let poly = select_polynomial_with_ad(&n, 3, 1).unwrap();
+        assert_eq!(poly.degree, 3);
+        // Verify f(m) = N
+        let m = poly.m();
+        let coeffs = poly.f_coeffs();
+        let mut val = Integer::from(0);
+        let mut m_pow = Integer::from(1);
+        for c in &coeffs {
+            val += c * &m_pow;
+            m_pow *= &m;
+        }
+        assert_eq!(val, n, "f(m) must equal N");
+    }
+
+    #[test]
+    fn test_nonmonic_polynomial_ad_60() {
+        let n = Integer::from_str_radix("684217602914977371691118975023", 10).unwrap();
+        let poly = select_polynomial_with_ad(&n, 3, 60).unwrap();
+        assert_eq!(poly.degree, 3);
+        // Leading coefficient should be 60
+        let lead = poly.f_coeffs().last().unwrap().clone();
+        assert_eq!(lead, Integer::from(60));
+        // Verify f(m) = N
+        let m = poly.m();
+        let coeffs = poly.f_coeffs();
+        let mut val = Integer::from(0);
+        let mut m_pow = Integer::from(1);
+        for c in &coeffs {
+            val += c * &m_pow;
+            m_pow *= &m;
+        }
+        assert_eq!(val, n, "f(m) must equal N for ad=60");
+    }
+
+    #[test]
+    fn test_nonmonic_sweep_produces_diverse_polys() {
+        let n = Integer::from_str_radix("684217602914977371691118975023", 10).unwrap();
+        let mut valid = 0;
+        for ad in (20..=200).step_by(20) {
+            if select_polynomial_with_ad(&n, 3, ad).is_some() {
+                valid += 1;
+            }
+        }
+        assert!(
+            valid >= 5,
+            "At least half of ad values should produce valid polys, got {}",
+            valid
+        );
     }
 }
