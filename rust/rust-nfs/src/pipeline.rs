@@ -214,27 +214,32 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
 
     let mut last_result = None;
 
-    // Production polynomial search with Murphy E-value ranking.
-    // Searches over non-monic leading coefficients and applies rotation optimization.
-    let admax: u64 = std::env::var("RUST_NFS_ADMAX")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(5000);
-    let ad_incr: u64 = std::env::var("RUST_NFS_AD_INCR")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(20);
-    // ropteffort controls rotation search intensity (range = 50 * ropteffort).
-    // Default 0.1 for fast polyselect; increase for larger numbers.
-    let ropteffort: f64 = std::env::var("RUST_NFS_ROPTEFFORT")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(0.1);
+    // Use direct base-m variant selection (variant 0, 1, 2, ...).
+    // Murphy E-based polyselect is available via select_best_polynomial()
+    // but is not yet calibrated for small factor bases (c30-c45).
+    // Enable with RUST_NFS_POLYSELECT=murphy env var when ready.
+    let use_murphy = std::env::var("RUST_NFS_POLYSELECT")
+        .map(|v| v == "murphy")
+        .unwrap_or(false);
 
-    let ranked_polys = gnfs::polyselect::select_best_polynomial(
-        n, params.degree, admax, ad_incr, ropteffort,
-        max_variants as usize, params.lim0,
-    );
-
-    // Fall back to old monic variants if new search returned nothing
-    let variant_polys: Vec<(u32, Option<gnfs::types::PolynomialPair>)> = if ranked_polys.is_empty() {
-        (0..max_variants).map(|i| (variant_start + i, None)).collect()
+    let variant_polys: Vec<(u32, Option<gnfs::types::PolynomialPair>)> = if use_murphy {
+        let admax: u64 = std::env::var("RUST_NFS_ADMAX")
+            .ok().and_then(|s| s.parse().ok()).unwrap_or(5000);
+        let ad_incr: u64 = std::env::var("RUST_NFS_AD_INCR")
+            .ok().and_then(|s| s.parse().ok()).unwrap_or(20);
+        let ropteffort: f64 = std::env::var("RUST_NFS_ROPTEFFORT")
+            .ok().and_then(|s| s.parse().ok()).unwrap_or(0.1);
+        let ranked = gnfs::polyselect::select_best_polynomial(
+            n, params.degree, admax, ad_incr, ropteffort,
+            max_variants as usize, params.lim0,
+        );
+        if ranked.is_empty() {
+            (0..max_variants).map(|i| (variant_start + i, None)).collect()
+        } else {
+            ranked.into_iter().enumerate().map(|(i, p)| (i as u32, Some(p))).collect()
+        }
     } else {
-        ranked_polys.into_iter().enumerate().map(|(i, p)| (i as u32, Some(p))).collect()
+        (0..max_variants).map(|i| (variant_start + i, None)).collect()
     };
 
     for (try_idx, (variant_id, pre_poly)) in variant_polys.iter().enumerate() {
@@ -526,10 +531,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     {
         params.degree = v;
     }
-    // Preserve original mfb for sieve threshold before any 2LP bump.
-    params.sieve_mfb0 = params.mfb0;
-    params.sieve_mfb1 = params.mfb1;
-
     if partial_merge_2lp {
         // 2LP requires room for products of two LPs; if mfb is too close to lpb
         // those candidates are rejected before merge can use them.

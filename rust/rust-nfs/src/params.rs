@@ -11,11 +11,6 @@ pub struct NfsParams {
     pub lpb1: u32,
     pub mfb0: u32,
     pub mfb1: u32,
-    /// MFB values used for sieve threshold computation (pre-2LP bump).
-    /// These stay at the original mfb values so the sieve threshold
-    /// is not inflated by the 2LP mfb bump.
-    pub sieve_mfb0: u32,
-    pub sieve_mfb1: u32,
     pub log_i: u32,
     pub qmin: u64,
     pub qrange: u64,
@@ -34,9 +29,7 @@ impl NfsParams {
             lpb1: 17,
             mfb0: 18,
             mfb1: 18,
-            sieve_mfb0: 18,
-            sieve_mfb1: 18,
-            log_i: 9,
+            log_i: 7,
             qmin: 50_000,
             qrange: 1_000,
             rels_wanted: 30_000,
@@ -54,8 +47,6 @@ impl NfsParams {
             lpb1: 18,
             mfb0: 20,
             mfb1: 20,
-            sieve_mfb0: 20,
-            sieve_mfb1: 20,
             log_i: 9,
             qmin: 25_000,
             qrange: 5_000,
@@ -74,8 +65,6 @@ impl NfsParams {
             lpb1: 18,
             mfb0: 22,
             mfb1: 22,
-            sieve_mfb0: 22,
-            sieve_mfb1: 22,
             log_i: 9,
             qmin: 35_000,
             qrange: 5_000,
@@ -94,8 +83,6 @@ impl NfsParams {
             lpb1: 19,
             mfb0: 24,
             mfb1: 26,
-            sieve_mfb0: 24,
-            sieve_mfb1: 26,
             log_i: 10,
             qmin: 58_000,
             qrange: 1_500,
@@ -143,23 +130,16 @@ mod tests {
         let p = NfsParams::c30();
         assert_eq!(p.degree, 3);
         assert_eq!(p.large_prime_bound_0(), 131_072);
-        assert_eq!(p.sieve_half_width(), 512);
+        assert_eq!(p.sieve_half_width(), 128);
     }
 
     #[test]
     fn test_c30_matches_cado() {
         let p = NfsParams::c30();
-        assert_eq!(p.log_i, 9, "log_i should match CADO I=9");
+        assert_eq!(p.log_i, 7);
         assert_eq!(p.lim0, 30_000);
         assert_eq!(p.lpb0, 17);
         assert_eq!(p.mfb0, 18);
-    }
-
-    #[test]
-    fn test_sieve_mfb_defaults_to_mfb() {
-        let p = NfsParams::c30();
-        assert_eq!(p.sieve_mfb0, p.mfb0);
-        assert_eq!(p.sieve_mfb1, p.mfb1);
     }
 
     #[test]
