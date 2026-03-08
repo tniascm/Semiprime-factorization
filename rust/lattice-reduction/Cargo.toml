@@ -11,6 +11,7 @@ num-traits = { workspace = true }
 num-integer = { workspace = true }
 rayon = { workspace = true }
 rand = { workspace = true }
+rug = "1.28.1"
 
 [[bin]]
 name = "lattice-reduction"

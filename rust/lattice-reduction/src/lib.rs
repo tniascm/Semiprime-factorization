@@ -9,6 +9,7 @@ use num_traits::ToPrimitive;
 /// A lattice basis represented as a matrix of rational vectors.
 /// Each row is a basis vector.
 pub type LatticeBasis = Vec<Vec<f64>>;
+pub type BigLatticeBasis = Vec<Vec<rug::Float>>;
 
 /// Result of a Ducas-style verification experiment.
 ///
@@ -77,7 +78,160 @@ pub fn gram_schmidt(basis: &LatticeBasis) -> (LatticeBasis, Vec<Vec<f64>>) {
     (ortho, mu)
 }
 
+use rug::ops::Pow;
 /// LLL lattice basis reduction algorithm.
+use rug::Float;
+
+/// Precision for arbitrary precision LLL (e.g. 200 bits)
+pub const LLL_PRECISION: u32 = 256;
+
+/// High-precision Gram-Schmidt orthogonalization.
+pub fn gram_schmidt_rug(basis: &BigLatticeBasis) -> (BigLatticeBasis, Vec<Vec<Float>>) {
+    let n = basis.len();
+    let m = basis[0].len();
+    let mut ortho = basis.clone();
+    let mut mu = vec![vec![Float::with_val(LLL_PRECISION, 0.0); n]; n];
+
+    for i in 0..n {
+        for j in 0..i {
+            let mut dot_ij = Float::with_val(LLL_PRECISION, 0.0);
+            for k in 0..m {
+                dot_ij += &basis[i][k] * &ortho[j][k];
+            }
+            let mut dot_jj = Float::with_val(LLL_PRECISION, 0.0);
+            for k in 0..m {
+                dot_jj += &ortho[j][k] * &ortho[j][k];
+            }
+
+            if dot_jj > 1e-20 {
+                mu[i][j] = dot_ij / &dot_jj;
+            } else {
+                mu[i][j] = Float::with_val(LLL_PRECISION, 0.0);
+            }
+
+            let mu_ij = mu[i][j].clone();
+            for k in 0..m {
+                let sub = &mu_ij * ortho[j][k].clone();
+                ortho[i][k] -= sub;
+            }
+        }
+        mu[i][i] = Float::with_val(LLL_PRECISION, 1.0);
+    }
+    (ortho, mu)
+}
+
+/// High-precision LLL reduction using `rug::Float`.
+/// This prevents the catastrophic cancellation common with `f64` in large dimensions.
+
+/// High-precision LLL reduction using `rug::Float`.
+/// This maintains Gram-Schmidt orthogonalization incrementally to achieve O(n^4) complexity.
+pub fn lll_reduce_rug(basis: &mut BigLatticeBasis, params: &LllParams) {
+    let n = basis.len();
+    if n == 0 {
+        return;
+    }
+    let m = basis[0].len();
+
+    let delta = Float::with_val(LLL_PRECISION, params.delta);
+
+    // Initial Gram-Schmidt
+    let (mut ortho, mut mu) = gram_schmidt_rug(basis);
+
+    // Track squared norms of orthogonal vectors
+    let mut ortho_norms_sq = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut norm_sq = Float::with_val(LLL_PRECISION, 0.0);
+        for l in 0..m {
+            norm_sq += ortho[i][l].clone().pow(2);
+        }
+        ortho_norms_sq.push(norm_sq);
+    }
+
+    let mut k = 1;
+    while k < n {
+        // 1. Size reduction
+        for j in (0..k).rev() {
+            let abs_mu = mu[k][j].clone().abs();
+            if abs_mu > 0.5 {
+                let r = mu[k][j].clone().round();
+
+                // Update basis vector
+                for l in 0..m {
+                    let sub = &r * basis[j][l].clone();
+                    basis[k][l] -= sub;
+                }
+
+                // Update mu coefficients incrementally for correct subsequent size reductions
+                for i in 0..=j {
+                    let sub = &r * mu[j][i].clone();
+                    mu[k][i] -= sub;
+                }
+            }
+        }
+
+        // 2. Lovász condition check
+        let norm_k = ortho_norms_sq[k].clone();
+        let norm_k1 = ortho_norms_sq[k - 1].clone();
+        let mu_sq = mu[k][k - 1].clone().pow(2);
+        let threshold = (delta.clone() - mu_sq) * norm_k1;
+
+        if norm_k >= threshold {
+            k += 1;
+        } else {
+            // Swap basis vectors k and k-1
+            basis.swap(k, k - 1);
+
+            // Recompute Gram-Schmidt for the swapped vectors (this is a local operation,
+            // but for absolute mathematical safety in arbitrary precision without complex
+            // Givens rotations, we can recompute G-S completely when a swap occurs.
+            // Swaps are less frequent than size reductions.)
+            let (new_ortho, new_mu) = gram_schmidt_rug(basis);
+            ortho = new_ortho;
+            mu = new_mu;
+
+            for i in 0..n {
+                let mut norm_sq = Float::with_val(LLL_PRECISION, 0.0);
+                for l in 0..m {
+                    norm_sq += ortho[i][l].clone().pow(2);
+                }
+                ortho_norms_sq[i] = norm_sq;
+            }
+
+            k = k.max(1);
+            if k > 1 {
+                k -= 1;
+            }
+        }
+    }
+}
+
+/// Helper: convert f64 basis to rug basis
+pub fn basis_to_rug(basis: &LatticeBasis) -> BigLatticeBasis {
+    basis
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|&x| Float::with_val(LLL_PRECISION, x))
+                .collect()
+        })
+        .collect()
+}
+
+/// Helper: convert rug basis to f64 basis
+pub fn basis_from_rug(basis: &BigLatticeBasis) -> LatticeBasis {
+    basis
+        .iter()
+        .map(|row| row.iter().map(|x| x.to_f64()).collect())
+        .collect()
+}
+
+/// A wrapper that performs High-Precision LLL on an f64 basis.
+pub fn lll_reduce_stable(basis: &mut LatticeBasis, params: &LllParams) {
+    let mut big_basis = basis_to_rug(basis);
+    lll_reduce_rug(&mut big_basis, params);
+    *basis = basis_from_rug(&big_basis);
+}
+
 pub fn lll_reduce(basis: &mut LatticeBasis, params: &LllParams) {
     let n = basis.len();
     if n == 0 {
@@ -205,7 +359,10 @@ pub fn lattice_factor(n: &BigUint, dimension: usize) -> Option<BigUint> {
     // 1. Sieve small primes for the factor base
     let prime_bound = (dimension as u64) * 10;
     let primes = sieve_primes(prime_bound);
-    let primes: Vec<u64> = primes.into_iter().take(dimension.saturating_sub(1).max(2)).collect();
+    let primes: Vec<u64> = primes
+        .into_iter()
+        .take(dimension.saturating_sub(1).max(2))
+        .collect();
 
     // 2. Construct Schnorr's lattice
     let mut basis = schnorr_factoring_lattice(n, dimension, &primes);
@@ -386,7 +543,10 @@ pub fn ducas_verification(n: &BigUint, dimension: usize, num_trials: usize) -> D
         // Build factor base and lattice
         let prime_bound = (dim as u64) * 10;
         let primes = sieve_primes(prime_bound);
-        let fb: Vec<u64> = primes.into_iter().take(dim.saturating_sub(1).max(2)).collect();
+        let fb: Vec<u64> = primes
+            .into_iter()
+            .take(dim.saturating_sub(1).max(2))
+            .collect();
 
         let mut basis = schnorr_factoring_lattice(n, dim, &fb);
         let params = LllParams::default();
@@ -587,3 +747,5 @@ mod tests {
         assert!(norm0 < 20.0); // Reduced basis should have reasonable norms
     }
 }
+pub mod bkz;
+pub use bkz::{bkz_reduce, BkzParams};

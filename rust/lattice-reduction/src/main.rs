@@ -71,10 +71,7 @@ fn main() {
         0.0
     };
     println!("\n  Improvement:");
-    println!(
-        "    Shortest vector: {:.1}% shorter",
-        norm_improvement
-    );
+    println!("    Shortest vector: {:.1}% shorter", norm_improvement);
     println!(
         "    Orthogonality defect: {:.1}% closer to ideal",
         defect_improvement
@@ -97,11 +94,7 @@ fn main() {
         let basis = schnorr_factoring_lattice(&n, dimension, &primes);
 
         println!("  N = {} ({})", n_val, label);
-        println!(
-            "    Factor base: {:?} ({} primes)",
-            primes,
-            primes.len()
-        );
+        println!("    Factor base: {:?} ({} primes)", primes, primes.len());
         println!(
             "    Lattice dimension: {} x {}",
             basis.len(),
@@ -145,9 +138,7 @@ fn main() {
 
     // ─── Section 3: Ducas verification experiment ───────────────────────────────
     println!("=== 3. Ducas Verification (Schnorr's Method Effectiveness) ===\n");
-    println!(
-        "  Ducas showed that Schnorr's lattice-based factoring approach yields"
-    );
+    println!("  Ducas showed that Schnorr's lattice-based factoring approach yields");
     println!("  essentially 0 out of 1000 useful relations. We replicate this.\n");
 
     let ducas_cases: Vec<(u64, &str, usize, usize)> = vec![
@@ -179,14 +170,8 @@ fn main() {
     }
 
     println!();
-    println!(
-        "  Observation: Low success rates confirm Ducas' finding that Schnorr's"
-    );
-    println!(
-        "  lattice approach struggles to produce useful factoring relations,"
-    );
-    println!(
-        "  even for small semiprimes. The short vectors found after LLL reduction"
-    );
+    println!("  Observation: Low success rates confirm Ducas' finding that Schnorr's");
+    println!("  lattice approach struggles to produce useful factoring relations,");
+    println!("  even for small semiprimes. The short vectors found after LLL reduction");
     println!("  rarely correspond to valid smooth relations over the factor base.");
 }
