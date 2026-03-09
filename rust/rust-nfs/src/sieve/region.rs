@@ -47,6 +47,10 @@ pub fn apply_bucket_updates(sieve: &mut [u8], updates: &[BucketUpdate]) {
 /// A survivor is a position where BOTH rational and algebraic sieve values
 /// are at or below their respective bounds. Returns positions within the
 /// bucket region.
+///
+/// Uses NEON SIMD on aarch64 to process 16 bytes at a time. Since survivors
+/// are <0.1% of cells, the fast path (no survivors in a 16-byte block) exits
+/// in ~1 cycle per block.
 pub fn scan_survivors(
     rat_sieve: &[u8],
     alg_sieve: &[u8],
@@ -55,6 +59,84 @@ pub fn scan_survivors(
 ) -> Vec<u16> {
     let len = rat_sieve.len().min(alg_sieve.len());
     let mut survivors = Vec::with_capacity(len / 64 + 16);
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        scan_survivors_neon(rat_sieve, alg_sieve, rat_bound, alg_bound, len, &mut survivors);
+    }
+
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        scan_survivors_scalar(rat_sieve, alg_sieve, rat_bound, alg_bound, len, &mut survivors);
+    }
+
+    survivors
+}
+
+#[cfg(target_arch = "aarch64")]
+fn scan_survivors_neon(
+    rat_sieve: &[u8],
+    alg_sieve: &[u8],
+    rat_bound: u8,
+    alg_bound: u8,
+    len: usize,
+    survivors: &mut Vec<u16>,
+) {
+    use std::arch::aarch64::*;
+
+    let chunks = len / 16;
+    let remainder = len % 16;
+
+    unsafe {
+        let rat_thresh = vdupq_n_u8(rat_bound);
+        let alg_thresh = vdupq_n_u8(alg_bound);
+
+        for chunk in 0..chunks {
+            let base = chunk * 16;
+            let r = vld1q_u8(rat_sieve.as_ptr().add(base));
+            let a = vld1q_u8(alg_sieve.as_ptr().add(base));
+            // vcleq_u8: 0xFF if val <= thresh, 0x00 otherwise
+            let r_ok = vcleq_u8(r, rat_thresh);
+            let a_ok = vcleq_u8(a, alg_thresh);
+            let both = vandq_u8(r_ok, a_ok);
+            // Fast path: if no survivors in this 16-byte block, skip
+            if vmaxvq_u8(both) == 0 {
+                continue;
+            }
+            // Slow path: extract individual survivor positions
+            // Read the mask bytes and check each one
+            let mut mask_bytes = [0u8; 16];
+            vst1q_u8(mask_bytes.as_mut_ptr(), both);
+            for j in 0..16 {
+                if mask_bytes[j] != 0 {
+                    survivors.push((base + j) as u16);
+                }
+            }
+        }
+    }
+
+    // Handle remaining bytes with scalar code
+    let tail_start = chunks * 16;
+    for i in tail_start..tail_start + remainder {
+        unsafe {
+            if *rat_sieve.get_unchecked(i) <= rat_bound
+                && *alg_sieve.get_unchecked(i) <= alg_bound
+            {
+                survivors.push(i as u16);
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn scan_survivors_scalar(
+    rat_sieve: &[u8],
+    alg_sieve: &[u8],
+    rat_bound: u8,
+    alg_bound: u8,
+    len: usize,
+    survivors: &mut Vec<u16>,
+) {
     for i in 0..len {
         unsafe {
             if *rat_sieve.get_unchecked(i) <= rat_bound
@@ -64,7 +146,6 @@ pub fn scan_survivors(
             }
         }
     }
-    survivors
 }
 
 /// Convert a survivor position in a bucket region to (i, j) q-lattice coordinates.
