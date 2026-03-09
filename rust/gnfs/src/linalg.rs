@@ -833,9 +833,6 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
     let phase3_ms = phase3_start.elapsed().as_secs_f64() * 1000.0;
     let phase3_alive = (0..nrows).filter(|&r| row_alive[r]).count();
 
-    let phase3_ms = phase3_start.elapsed().as_secs_f64() * 1000.0;
-    let phase3_alive = (0..nrows).filter(|&r| row_alive[r]).count();
-
     // Phase 4: Generalized weight-K column merges (K = 3..max_col_weight).
     // For each column with weight K, pick the lightest row as Markowitz pivot,
     // XOR into the other K-1 rows. Lower-weight columns are processed first.
@@ -845,14 +842,21 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(10);
     let mut phase4_merges = 0usize;
+    // Flat storage for column→rows index: col_rows_flat[col_rows_offset[c]..] holds
+    // up to phase4_max_col_weight row indices for column c.
+    let mut col_rows_flat: Vec<usize> = Vec::new();
+    let mut col_rows_offset: Vec<usize> = vec![0; ncols];
 
     'phase4: loop {
-        // Recompute column weights.
+        // Recompute column weights AND build column→rows index in one pass.
+        col_rows_flat.clear();
         for c in 0..ncols {
             if col_alive[c] {
                 col_weight[c] = 0;
+                col_rows_offset[c] = 0;
             }
         }
+        // First pass: count weights.
         for r in 0..nrows {
             if !row_alive[r] { continue; }
             for (wi, &word) in matrix[r].bits.iter().enumerate() {
@@ -862,6 +866,38 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
                     let c = wi * 64 + bit;
                     if c < ncols && col_alive[c] {
                         col_weight[c] += 1;
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+        // Compute offsets for columns we'll track (weight 1..=max_col_weight).
+        let mut total_slots = 0usize;
+        for c in 0..ncols {
+            if col_alive[c] && col_weight[c] >= 1 && (col_weight[c] as usize) <= phase4_max_col_weight {
+                col_rows_offset[c] = total_slots;
+                total_slots += col_weight[c] as usize;
+            } else {
+                col_rows_offset[c] = usize::MAX;
+            }
+        }
+        col_rows_flat.resize(total_slots, usize::MAX);
+        // Track how many rows we've recorded per column.
+        let mut col_fill: Vec<u32> = vec![0; ncols];
+        // Second pass: record row indices.
+        for r in 0..nrows {
+            if !row_alive[r] { continue; }
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c = wi * 64 + bit;
+                    if c < ncols && col_alive[c] && col_rows_offset[c] != usize::MAX {
+                        let idx = col_rows_offset[c] + col_fill[c] as usize;
+                        if idx < col_rows_flat.len() {
+                            col_rows_flat[idx] = r;
+                            col_fill[c] += 1;
+                        }
                     }
                     w &= w - 1;
                 }
@@ -880,11 +916,21 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         }
         while let Some(c) = singleton_queue4.pop() {
             if !col_alive[c] || col_weight[c] != 1 { continue; }
-            // Find the single row for this column.
-            let mut r = usize::MAX;
-            for ri in 0..nrows {
-                if row_alive[ri] && matrix[ri].get(c) { r = ri; break; }
-            }
+            // Find the single row for this column from the index.
+            let r = if col_rows_offset[c] != usize::MAX {
+                let ri = col_rows_flat[col_rows_offset[c]];
+                if ri != usize::MAX && row_alive[ri] && matrix[ri].get(c) { ri } else { usize::MAX }
+            } else {
+                usize::MAX
+            };
+            // Fallback scan if cached row was killed.
+            let r = if r == usize::MAX {
+                let mut found = usize::MAX;
+                for ri in 0..nrows {
+                    if row_alive[ri] && matrix[ri].get(c) { found = ri; break; }
+                }
+                found
+            } else { r };
             if r == usize::MAX { col_alive[c] = false; continue; }
             current_nnz = current_nnz.saturating_sub(row_weight[r]);
             row_alive[r] = false;
@@ -903,7 +949,8 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
             }
         }
 
-        // Collect merge candidates for columns with weight 3..=max_col_weight.
+        // Collect merge candidates for columns with weight 3..=max_col_weight
+        // using pre-built column→rows index.
         struct WkCandidate { col: usize, pivot: usize, targets: Vec<usize>, pivot_w: usize }
         let mut candidates: Vec<WkCandidate> = Vec::new();
         for i in 0..nrows { row_used[i] = false; }
@@ -912,14 +959,15 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
             if !col_alive[c] { continue; }
             let cw = col_weight[c] as usize;
             if cw < 3 || cw > phase4_max_col_weight { continue; }
+            if col_rows_offset[c] == usize::MAX { continue; }
 
-            // Find all rows containing this column.
-            let mut col_rows: Vec<(usize, usize)> = Vec::with_capacity(cw); // (row_idx, row_weight)
-            for ri in 0..nrows {
-                if row_alive[ri] && matrix[ri].get(c) {
-                    col_rows.push((ri, row_weight[ri]));
-                    if col_rows.len() == cw { break; }
-                }
+            // Read rows from the pre-built index.
+            let offset = col_rows_offset[c];
+            let mut col_rows: Vec<(usize, usize)> = Vec::with_capacity(cw);
+            for k in 0..cw {
+                let ri = col_rows_flat[offset + k];
+                if ri == usize::MAX || !row_alive[ri] { break; }
+                col_rows.push((ri, row_weight[ri]));
             }
             if col_rows.len() != cw { continue; }
 
