@@ -226,7 +226,7 @@ pub fn select_best_polynomial(
     // Phase 1: Score all candidates by (lognorm + alpha) — no rotation.
     //   Alpha (root properties) is cheap; rotation is expensive.
     // Phase 2: Full rotation + Murphy E for top candidates only.
-    let phase2_keep = 200.max(nrkeep * 10);
+    let phase2_keep = 100.max(nrkeep * 10);
     let mut phase1: Vec<(f64, Vec<i64>, Vec<i64>, PolynomialPair)> = Vec::new();
 
     // Monic variants
