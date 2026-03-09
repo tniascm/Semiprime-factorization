@@ -89,6 +89,17 @@ pub fn select_base_m_variant(n: &Integer, degree: u32, variant: u32) -> Polynomi
         }
     }
 
+    // Center coefficients c_0 through c_{d-1} for smaller norms.
+    if m > 1 {
+        let half_m = Integer::from(&m / 2);
+        for i in 0..d {
+            if coeffs[i] > half_m {
+                coeffs[i] -= &m;
+                coeffs[i + 1] += 1;
+            }
+        }
+    }
+
     // Verify: f(m) should equal N
     debug_assert!({
         let mut val = Integer::from(0);
@@ -99,9 +110,6 @@ pub fn select_base_m_variant(n: &Integer, degree: u32, variant: u32) -> Polynomi
         }
         val == *n
     });
-
-    // Verify monic: leading coefficient must be 1
-    debug_assert_eq!(coeffs[d], Integer::from(1), "Polynomial must be monic");
 
     let neg_m = Integer::from(-&m);
     PolynomialPair::new(&coeffs, &neg_m, &Integer::from(1), &m, n)
@@ -165,6 +173,17 @@ fn build_poly_from_remainder(
     }
 
     coeffs.push(ad.clone());
+
+    // Center coefficients c_0 through c_{d-1}: if c_i > m/2, replace with
+    // c_i - m and carry +1 to c_{i+1}. This halves coefficient magnitudes,
+    // reducing norms and improving smoothness probability.
+    let half_m = Integer::from(m / 2);
+    for i in 0..d {
+        if coeffs[i] > half_m {
+            coeffs[i] -= m;
+            coeffs[i + 1] += 1;
+        }
+    }
 
     // Verify: f(m) = N
     debug_assert!({
