@@ -832,10 +832,171 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
 
     let phase3_ms = phase3_start.elapsed().as_secs_f64() * 1000.0;
     let phase3_alive = (0..nrows).filter(|&r| row_alive[r]).count();
+
+    // Phase 4: Weight-4 column merges (same structure as phase3 but for weight-4).
+    // For each weight-4 column, pick the lightest row as pivot, XOR into the other 3.
+    // Also handles any weight-3 columns created by weight-4 merges.
+    let phase4_start = std::time::Instant::now();
+    let mut col_r4: Vec<usize> = vec![usize::MAX; ncols];
+    let mut phase4_merges = 0usize;
+
+    'phase4: loop {
+        // Recompute column weights for weight-3/4 detection.
+        for c in 0..ncols {
+            if col_alive[c] {
+                col_weight[c] = 0;
+                col_r1[c] = usize::MAX;
+                col_r2[c] = usize::MAX;
+                col_r3[c] = usize::MAX;
+                col_r4[c] = usize::MAX;
+            }
+        }
+        for r in 0..nrows {
+            if !row_alive[r] { continue; }
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c = wi * 64 + bit;
+                    if c < ncols && col_alive[c] {
+                        col_weight[c] += 1;
+                        match col_weight[c] {
+                            1 => col_r1[c] = r,
+                            2 => col_r2[c] = r,
+                            3 => col_r3[c] = r,
+                            4 => col_r4[c] = r,
+                            _ => {}
+                        }
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        // Clean up singletons first.
+        let mut singleton_queue4: Vec<usize> = Vec::new();
+        for c in 0..ncols {
+            if !col_alive[c] { continue; }
+            match col_weight[c] {
+                0 => { col_alive[c] = false; }
+                1 => { singleton_queue4.push(c); }
+                _ => {}
+            }
+        }
+        while let Some(c) = singleton_queue4.pop() {
+            if !col_alive[c] || col_weight[c] != 1 { continue; }
+            let r = if col_r1[c] != usize::MAX && row_alive[col_r1[c]] && matrix[col_r1[c]].get(c) {
+                col_r1[c]
+            } else {
+                let mut found = usize::MAX;
+                for ri in 0..nrows {
+                    if row_alive[ri] && matrix[ri].get(c) { found = ri; break; }
+                }
+                found
+            };
+            if r == usize::MAX { col_alive[c] = false; continue; }
+            current_nnz = current_nnz.saturating_sub(row_weight[r]);
+            row_alive[r] = false;
+            col_alive[c] = false;
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c2 = wi * 64 + bit;
+                    if c2 < ncols && col_alive[c2] {
+                        col_weight[c2] = col_weight[c2].saturating_sub(1);
+                        if col_weight[c2] == 1 { singleton_queue4.push(c2); }
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        // Collect weight-3 AND weight-4 candidates, preferring weight-3 (less fill-in).
+        struct W4Candidate { col: usize, pivot: usize, targets: Vec<usize>, pivot_w: usize }
+        let mut candidates4: Vec<W4Candidate> = Vec::new();
+        for i in 0..nrows { row_used[i] = false; }
+
+        for c in 0..ncols {
+            if !col_alive[c] { continue; }
+            if col_weight[c] == 3 {
+                let r1 = col_r1[c]; let r2 = col_r2[c]; let r3 = col_r3[c];
+                if r1 == usize::MAX || r2 == usize::MAX || r3 == usize::MAX { continue; }
+                if !row_alive[r1] || !row_alive[r2] || !row_alive[r3] { continue; }
+                let w1 = row_weight[r1]; let w2 = row_weight[r2]; let w3 = row_weight[r3];
+                let (pivot, targets, pw) = if w1 <= w2 && w1 <= w3 {
+                    (r1, vec![r2, r3], w1)
+                } else if w2 <= w3 {
+                    (r2, vec![r1, r3], w2)
+                } else {
+                    (r3, vec![r1, r2], w3)
+                };
+                if pw > phase3_max_weight { continue; }
+                candidates4.push(W4Candidate { col: c, pivot, targets, pivot_w: pw });
+            } else if col_weight[c] == 4 {
+                let r1 = col_r1[c]; let r2 = col_r2[c]; let r3 = col_r3[c]; let r4 = col_r4[c];
+                if r1 == usize::MAX || r2 == usize::MAX || r3 == usize::MAX || r4 == usize::MAX { continue; }
+                if !row_alive[r1] || !row_alive[r2] || !row_alive[r3] || !row_alive[r4] { continue; }
+                let ws = [(r1, row_weight[r1]), (r2, row_weight[r2]), (r3, row_weight[r3]), (r4, row_weight[r4])];
+                let (pivot_idx, &(pivot, pw)) = ws.iter().enumerate().min_by_key(|(_, (_, w))| *w).unwrap();
+                if pw > phase3_max_weight { continue; }
+                let targets: Vec<usize> = ws.iter().enumerate()
+                    .filter(|(i, _)| *i != pivot_idx)
+                    .map(|(_, (r, _))| *r)
+                    .collect();
+                candidates4.push(W4Candidate { col: c, pivot, targets, pivot_w: pw });
+            }
+        }
+
+        if candidates4.is_empty() { break 'phase4; }
+
+        // Sort by pivot weight ascending for best Markowitz ordering.
+        candidates4.sort_unstable_by_key(|c| c.pivot_w);
+
+        let mut batch_count = 0usize;
+        for cand in &candidates4 {
+            if row_used[cand.pivot] || cand.targets.iter().any(|&t| row_used[t]) { continue; }
+            let n_targets = cand.targets.len();
+            let est_fill = n_targets * cand.pivot_w.saturating_sub(1);
+            if current_nnz + est_fill > nnz_limit { break 'phase4; }
+
+            let pivot_data = matrix[cand.pivot].clone();
+            let pivot_hist = std::mem::take(&mut history[cand.pivot]);
+
+            for &target in &cand.targets {
+                matrix[target].xor_with(&pivot_data);
+                let h_t = std::mem::take(&mut history[target]);
+                let mut set: HashSet<usize> = h_t.into_iter().collect();
+                for &idx in &pivot_hist { if !set.remove(&idx) { set.insert(idx); } }
+                history[target] = set.into_iter().collect();
+                let new_w: usize = matrix[target].bits.iter().enumerate().map(|(wi, &word)| {
+                    let mut w = word; let mut cnt = 0;
+                    while w != 0 { let bit = w.trailing_zeros() as usize; let c = wi*64+bit; if c<ncols && col_alive[c] { cnt+=1; } w &= w-1; }
+                    cnt
+                }).sum();
+                current_nnz = current_nnz + new_w - row_weight[target];
+                row_weight[target] = new_w;
+            }
+
+            current_nnz = current_nnz.saturating_sub(row_weight[cand.pivot]);
+            row_alive[cand.pivot] = false;
+            col_alive[cand.col] = false;
+            row_used[cand.pivot] = true;
+            for &t in &cand.targets { row_used[t] = true; }
+            batch_count += 1;
+            phase4_merges += 1;
+        }
+
+        if batch_count == 0 { break 'phase4; }
+    }
+
+    let phase4_ms = phase4_start.elapsed().as_secs_f64() * 1000.0;
+    let phase4_alive = (0..nrows).filter(|&r| row_alive[r]).count();
     eprintln!(
-        "  pre-elim: phase1={:.0}ms ({}->{} rows), phase2={:.0}ms ({}->{} rows), phase3={:.0}ms ({}->{} rows, {} w3-merges, nnz {}/{})",
+        "  pre-elim: phase1={:.0}ms ({}->{} rows), phase2={:.0}ms ({}->{} rows), phase3={:.0}ms ({}->{} rows, {} w3-merges), phase4={:.0}ms ({}->{} rows, {} w3/4-merges, nnz {}/{})",
         phase1_ms, nrows, phase1_alive, phase2_ms, phase1_alive, phase2_alive,
-        phase3_ms, phase2_alive, phase3_alive, phase3_merges, current_nnz, nnz_limit
+        phase3_ms, phase2_alive, phase3_alive, phase3_merges,
+        phase4_ms, phase3_alive, phase4_alive, phase4_merges, current_nnz, nnz_limit
     );
 
     let compact_start = std::time::Instant::now();
