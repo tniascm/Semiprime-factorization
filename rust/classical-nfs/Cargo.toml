@@ -12,6 +12,8 @@ num-integer = { workspace = true }
 rayon = { workspace = true }
 rand = { workspace = true }
 
+nfs-pillar-3 = { path = "../nfs-pillar-3" }
+
 [[bin]]
 name = "classical-nfs"
 path = "src/main.rs"
