@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::arith::QuadCharSet;
 use crate::types::BitRow;
 use rayon::prelude::*;
@@ -146,7 +148,6 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
     }
 
     let mut matrix: Vec<BitRow> = rows.to_vec();
-    // Track which original rows compose each current row using BitRows
     let mut history: Vec<BitRow> = (0..nrows)
         .map(|i| {
             let mut h = BitRow::new(nrows);
@@ -176,19 +177,16 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
         }
 
         // Forward-only elimination: only reduce rows BELOW the pivot.
-        // For null-space finding, backward elimination is unnecessary — pivot rows
-        // always retain their pivot bit and never become zero, so the same
-        // dependencies appear as zero rows below the final pivot position.
+        let remaining = nrows - pivot_row - 1;
         let pivot_data = matrix[pivot_row].clone();
         let pivot_hist = history[pivot_row].clone();
-        let remaining = nrows - pivot_row - 1;
-        if remaining > 10_000 {
-            // Parallel elimination for large matrices.
-            let (_, tail_mat) = matrix.split_at_mut(pivot_row + 1);
-            let (_, tail_hist) = history.split_at_mut(pivot_row + 1);
-            tail_mat
+        if remaining > 512 {
+            // Parallel path: use rayon for large remaining row counts.
+            let (_, lower_matrix) = matrix.split_at_mut(pivot_row + 1);
+            let (_, lower_history) = history.split_at_mut(pivot_row + 1);
+            lower_matrix
                 .par_iter_mut()
-                .zip(tail_hist.par_iter_mut())
+                .zip(lower_history.par_iter_mut())
                 .for_each(|(row, hist)| {
                     if row.get(col) {
                         row.xor_with(&pivot_data);
@@ -207,11 +205,20 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
         pivot_row += 1;
     }
 
-    // Extract dependencies: zero rows whose history has ≥2 original rows
+    // Extract dependencies: zero rows whose history has ≥2 original rows.
+    // Use word-level bit traversal for O(set_bits) extraction instead of O(nrows).
     let mut deps = Vec::new();
     for r in 0..nrows {
         if matrix[r].is_zero() {
-            let dep: Vec<usize> = (0..nrows).filter(|&i| history[r].get(i)).collect();
+            let mut dep = Vec::new();
+            for (wi, &word) in history[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    dep.push(wi * 64 + bit);
+                    w &= w - 1;
+                }
+            }
             if dep.len() >= 2 {
                 deps.push(dep);
             }
@@ -263,8 +270,16 @@ pub fn randomize_dependencies(
         .collect();
 
     let mut all_deps = basis_deps.to_vec();
-    // Track seen deps as BitRows for fast dedup
-    let mut seen_bits: Vec<BitRow> = basis_bits.clone();
+    // Track seen deps via hash for O(1) dedup instead of O(n) linear scan
+    let mut seen_hashes: HashSet<u64> = HashSet::with_capacity(n + n_random);
+    for br in &basis_bits {
+        let mut h = 0xcbf29ce484222325u64; // FNV-1a offset basis
+        for &w in &br.bits {
+            h ^= w;
+            h = h.wrapping_mul(0x100000001b3); // FNV prime
+        }
+        seen_hashes.insert(h);
+    }
     let mut rng_state = seed;
     // Important: never choose all basis vectors every time, otherwise for small
     // nullspaces (n <= k) randomization collapses to one repeated dependency.
@@ -312,9 +327,13 @@ pub fn randomize_dependencies(
         // Count set bits to check >= 3
         let popcount: u32 = combined.bits.iter().map(|w| w.count_ones()).sum();
         if popcount >= 3 {
-            // Check if this combination is new (not seen before)
-            let is_new = !seen_bits.iter().any(|s| s.bits == combined.bits);
-            if is_new {
+            // Hash-based dedup: O(1) instead of O(n) linear scan
+            let mut h = 0xcbf29ce484222325u64;
+            for &w in &combined.bits {
+                h ^= w;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+            if seen_hashes.insert(h) {
                 // Extract indices from BitRow
                 let mut dep = Vec::with_capacity(popcount as usize);
                 for (wi, &word) in combined.bits.iter().enumerate() {
@@ -322,10 +341,9 @@ pub fn randomize_dependencies(
                     while w != 0 {
                         let bit = w.trailing_zeros();
                         dep.push(wi * 64 + bit as usize);
-                        w &= w - 1; // clear lowest set bit
+                        w &= w - 1;
                     }
                 }
-                seen_bits.push(combined.clone());
                 all_deps.push(dep);
             }
         }
@@ -360,6 +378,8 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
     if nrows == 0 || ncols == 0 {
         return vec![];
     }
+
+    let preelim_start = std::time::Instant::now();
 
     // Work on a mutable copy. Each row in `matrix` also tracks which original
     // rows it represents (via XOR merges). We store this as a Vec<Vec<usize>>
@@ -449,19 +469,27 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         }
     }
 
-    // Phase 2: Batched weight-2 column merges.
+    let phase1_ms = preelim_start.elapsed().as_secs_f64() * 1000.0;
+    let phase1_alive = (0..nrows).filter(|&r| row_alive[r]).count();
+    let phase2_start = std::time::Instant::now();
+
+    // Phase 2: Batched weight-2 column merges with integrated singleton queue.
     // Each pass: scan alive rows once to find weight-2 columns and their rows,
-    // batch non-conflicting merges, then re-run singleton elimination.
+    // batch non-conflicting merges, process resulting singletons via queue,
+    // then repeat until convergence.
+    let mut col_r1: Vec<usize> = vec![usize::MAX; ncols];
+    let mut col_r2: Vec<usize> = vec![usize::MAX; ncols];
+    let mut row_used = vec![false; nrows];
+    let mut merges: Vec<(usize, usize, usize)> = Vec::new();
     loop {
         // Scan all alive rows to build weight-2 column→rows mapping.
-        // Reset col_weight for alive columns.
         for c in 0..ncols {
             if col_alive[c] {
                 col_weight[c] = 0;
+                col_r1[c] = usize::MAX;
+                col_r2[c] = usize::MAX;
             }
         }
-        let mut col_r1: Vec<usize> = vec![usize::MAX; ncols];
-        let mut col_r2: Vec<usize> = vec![usize::MAX; ncols];
         for r in 0..nrows {
             if !row_alive[r] {
                 continue;
@@ -485,10 +513,12 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         }
 
         // Collect weight-2 merge candidates, skipping row conflicts.
-        let mut row_used = vec![false; nrows];
-        let mut merges: Vec<(usize, usize, usize)> = Vec::new(); // (col, r1, r2)
-        // Also handle new singletons and empty columns found in this scan.
-        let mut new_singletons = false;
+        // Process singletons via queue (same as Phase 1) instead of re-scanning.
+        merges.clear();
+        for i in 0..nrows {
+            row_used[i] = false;
+        }
+        let mut singleton_queue2: Vec<usize> = Vec::new();
         for c in 0..ncols {
             if !col_alive[c] {
                 continue;
@@ -498,14 +528,7 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
                     col_alive[c] = false;
                 }
                 1 => {
-                    // New singleton from prior merges
-                    let r = col_r1[c];
-                    if r != usize::MAX && row_alive[r] {
-                        row_alive[r] = false;
-                        col_alive[c] = false;
-                        new_singletons = true;
-                        // Decrement weights (will be caught next iteration)
-                    }
+                    singleton_queue2.push(c);
                 }
                 2 => {
                     let r1 = col_r1[c];
@@ -520,7 +543,46 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
             }
         }
 
-        if merges.is_empty() && !new_singletons {
+        // Process singletons via queue (O(removed × avg_row_weight)).
+        while let Some(c) = singleton_queue2.pop() {
+            if !col_alive[c] || col_weight[c] != 1 {
+                continue;
+            }
+            let r = if col_r1[c] != usize::MAX && row_alive[col_r1[c]] && matrix[col_r1[c]].get(c) {
+                col_r1[c]
+            } else {
+                let mut found = usize::MAX;
+                for ri in 0..nrows {
+                    if row_alive[ri] && matrix[ri].get(c) {
+                        found = ri;
+                        break;
+                    }
+                }
+                found
+            };
+            if r == usize::MAX {
+                col_alive[c] = false;
+                continue;
+            }
+            row_alive[r] = false;
+            col_alive[c] = false;
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c2 = wi * 64 + bit;
+                    if c2 < ncols && col_alive[c2] {
+                        col_weight[c2] = col_weight[c2].saturating_sub(1);
+                        if col_weight[c2] == 1 {
+                            singleton_queue2.push(c2);
+                        }
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        if merges.is_empty() {
             break;
         }
 
@@ -528,21 +590,255 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         for &(c, r1, r2) in &merges {
             let r2_data = matrix[r2].clone();
             matrix[r1].xor_with(&r2_data);
-            // Merge history: symmetric difference.
-            let mut merged = std::mem::take(&mut history[r1]);
-            for &idx in &history[r2] {
-                if let Some(pos) = merged.iter().position(|&x| x == idx) {
-                    merged.swap_remove(pos);
-                } else {
-                    merged.push(idx);
+            // Merge history: symmetric difference using HashSet for O(n+m).
+            let h1 = std::mem::take(&mut history[r1]);
+            let h2 = &history[r2];
+            let mut set: std::collections::HashSet<usize> =
+                h1.into_iter().collect();
+            for &idx in h2 {
+                if !set.remove(&idx) {
+                    set.insert(idx);
                 }
             }
-            history[r1] = merged;
+            history[r1] = set.into_iter().collect();
             row_alive[r2] = false;
             col_alive[c] = false;
         }
     }
 
+    let phase2_ms = phase2_start.elapsed().as_secs_f64() * 1000.0;
+    let phase2_alive = (0..nrows).filter(|&r| row_alive[r]).count();
+
+    // Phase 3: Weight-3 column merges with Markowitz pivot selection.
+    // For each weight-3 column, XOR the lightest row (by total weight) into
+    // the other two, eliminating one row and one column. Followed by singleton
+    // and weight-2 cleanup. Repeat until no weight-3 columns remain or fill-in
+    // exceeds threshold.
+    let phase3_start = std::time::Instant::now();
+    let phase3_max_fill = std::env::var("RUST_NFS_PREELIM_MAXFILL")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(2.0); // stop when total nnz exceeds 2x original
+    let phase3_max_weight: usize = std::env::var("RUST_NFS_PREELIM_MAXWEIGHT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(50);
+
+    // Compute initial nnz (number of non-zero entries in alive rows/cols).
+    let initial_nnz: usize = (0..nrows)
+        .filter(|&r| row_alive[r])
+        .map(|r| {
+            matrix[r].bits.iter().enumerate().map(|(wi, &word)| {
+                let mut w = word;
+                let mut cnt = 0usize;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c = wi * 64 + bit;
+                    if c < ncols && col_alive[c] {
+                        cnt += 1;
+                    }
+                    w &= w - 1;
+                }
+                cnt
+            }).sum::<usize>()
+        })
+        .sum();
+    let nnz_limit = ((initial_nnz as f64) * phase3_max_fill) as usize;
+
+    // Row weight cache for Markowitz selection.
+    let mut row_weight: Vec<usize> = vec![0; nrows];
+    for r in 0..nrows {
+        if !row_alive[r] { continue; }
+        row_weight[r] = matrix[r].bits.iter().enumerate().map(|(wi, &word)| {
+            let mut w = word;
+            let mut cnt = 0usize;
+            while w != 0 {
+                let bit = w.trailing_zeros() as usize;
+                let c = wi * 64 + bit;
+                if c < ncols && col_alive[c] { cnt += 1; }
+                w &= w - 1;
+            }
+            cnt
+        }).sum();
+    }
+
+    let mut current_nnz = initial_nnz;
+    let mut phase3_merges = 0usize;
+    let mut col_r3: Vec<usize> = vec![usize::MAX; ncols];
+
+    'phase3: loop {
+        // Recompute column weights and row associations for weight-3 detection.
+        for c in 0..ncols {
+            if col_alive[c] {
+                col_weight[c] = 0;
+                col_r1[c] = usize::MAX;
+                col_r2[c] = usize::MAX;
+                col_r3[c] = usize::MAX;
+            }
+        }
+        for r in 0..nrows {
+            if !row_alive[r] { continue; }
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c = wi * 64 + bit;
+                    if c < ncols && col_alive[c] {
+                        col_weight[c] += 1;
+                        match col_weight[c] {
+                            1 => col_r1[c] = r,
+                            2 => col_r2[c] = r,
+                            3 => col_r3[c] = r,
+                            _ => {}
+                        }
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        // Collect weight-3 merge candidates sorted by minimum row weight (Markowitz).
+        merges.clear();
+        for i in 0..nrows { row_used[i] = false; }
+        let mut singleton_queue3: Vec<usize> = Vec::new();
+
+        // First handle singletons and weight-2 from this scan.
+        for c in 0..ncols {
+            if !col_alive[c] { continue; }
+            match col_weight[c] {
+                0 => { col_alive[c] = false; }
+                1 => { singleton_queue3.push(c); }
+                _ => {}
+            }
+        }
+
+        // Process singletons.
+        while let Some(c) = singleton_queue3.pop() {
+            if !col_alive[c] || col_weight[c] != 1 { continue; }
+            let r = if col_r1[c] != usize::MAX && row_alive[col_r1[c]] && matrix[col_r1[c]].get(c) {
+                col_r1[c]
+            } else {
+                let mut found = usize::MAX;
+                for ri in 0..nrows {
+                    if row_alive[ri] && matrix[ri].get(c) { found = ri; break; }
+                }
+                found
+            };
+            if r == usize::MAX { col_alive[c] = false; continue; }
+            current_nnz = current_nnz.saturating_sub(row_weight[r]);
+            row_alive[r] = false;
+            col_alive[c] = false;
+            for (wi, &word) in matrix[r].bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let c2 = wi * 64 + bit;
+                    if c2 < ncols && col_alive[c2] {
+                        col_weight[c2] = col_weight[c2].saturating_sub(1);
+                        if col_weight[c2] == 1 { singleton_queue3.push(c2); }
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        // Now collect weight-3 candidates (after singleton cleanup).
+        // Sort by pivot weight (Markowitz: lightest pivot → least fill-in).
+        struct W3Candidate { col: usize, pivot: usize, r_a: usize, r_b: usize, pivot_w: usize }
+        let mut candidates: Vec<W3Candidate> = Vec::new();
+        for c in 0..ncols {
+            if !col_alive[c] || col_weight[c] != 3 { continue; }
+            let r1 = col_r1[c]; let r2 = col_r2[c]; let r3 = col_r3[c];
+            if r1 == usize::MAX || r2 == usize::MAX || r3 == usize::MAX { continue; }
+            if !row_alive[r1] || !row_alive[r2] || !row_alive[r3] { continue; }
+            // Pick lightest row as pivot (Markowitz criterion).
+            let w1 = row_weight[r1]; let w2 = row_weight[r2]; let w3 = row_weight[r3];
+            let (pivot, ra, rb, pw) = if w1 <= w2 && w1 <= w3 {
+                (r1, r2, r3, w1)
+            } else if w2 <= w3 {
+                (r2, r1, r3, w2)
+            } else {
+                (r3, r1, r2, w3)
+            };
+            // Skip candidates where pivot is too heavy (limits fill-in and
+            // keeps dependency histories short for sqrt quality).
+            if pw > phase3_max_weight { continue; }
+            candidates.push(W3Candidate { col: c, pivot, r_a: ra, r_b: rb, pivot_w: pw });
+        }
+
+        if candidates.is_empty() { break 'phase3; }
+
+        // Sort by pivot weight ascending for best Markowitz ordering.
+        candidates.sort_unstable_by_key(|c| c.pivot_w);
+
+        // Batch non-conflicting merges (no row used twice).
+        let mut batch_count = 0usize;
+        for cand in &candidates {
+            if row_used[cand.pivot] || row_used[cand.r_a] || row_used[cand.r_b] { continue; }
+            // Estimate fill-in: up to 2*(pivot_weight-1) new entries.
+            let est_fill = 2 * cand.pivot_w.saturating_sub(1);
+            if current_nnz + est_fill > nnz_limit { break 'phase3; }
+
+            // XOR pivot into r_a and r_b, then remove pivot row and column.
+            let pivot_data = matrix[cand.pivot].clone();
+            let pivot_hist = std::mem::take(&mut history[cand.pivot]);
+
+            // Merge into r_a.
+            matrix[cand.r_a].xor_with(&pivot_data);
+            {
+                let h_a = std::mem::take(&mut history[cand.r_a]);
+                let mut set: std::collections::HashSet<usize> = h_a.into_iter().collect();
+                for &idx in &pivot_hist { if !set.remove(&idx) { set.insert(idx); } }
+                history[cand.r_a] = set.into_iter().collect();
+            }
+            // Recompute row weight for r_a.
+            let new_w_a: usize = matrix[cand.r_a].bits.iter().enumerate().map(|(wi, &word)| {
+                let mut w = word; let mut cnt = 0;
+                while w != 0 { let bit = w.trailing_zeros() as usize; let c = wi*64+bit; if c<ncols && col_alive[c] { cnt+=1; } w &= w-1; }
+                cnt
+            }).sum();
+            current_nnz = current_nnz + new_w_a - row_weight[cand.r_a];
+            row_weight[cand.r_a] = new_w_a;
+
+            // Merge into r_b.
+            matrix[cand.r_b].xor_with(&pivot_data);
+            {
+                let h_b = std::mem::take(&mut history[cand.r_b]);
+                let mut set: std::collections::HashSet<usize> = h_b.into_iter().collect();
+                for &idx in &pivot_hist { if !set.remove(&idx) { set.insert(idx); } }
+                history[cand.r_b] = set.into_iter().collect();
+            }
+            let new_w_b: usize = matrix[cand.r_b].bits.iter().enumerate().map(|(wi, &word)| {
+                let mut w = word; let mut cnt = 0;
+                while w != 0 { let bit = w.trailing_zeros() as usize; let c = wi*64+bit; if c<ncols && col_alive[c] { cnt+=1; } w &= w-1; }
+                cnt
+            }).sum();
+            current_nnz = current_nnz + new_w_b - row_weight[cand.r_b];
+            row_weight[cand.r_b] = new_w_b;
+
+            // Remove pivot row and column.
+            current_nnz = current_nnz.saturating_sub(row_weight[cand.pivot]);
+            row_alive[cand.pivot] = false;
+            col_alive[cand.col] = false;
+            row_used[cand.pivot] = true;
+            row_used[cand.r_a] = true;
+            row_used[cand.r_b] = true;
+            batch_count += 1;
+            phase3_merges += 1;
+        }
+
+        if batch_count == 0 { break 'phase3; }
+    }
+
+    let phase3_ms = phase3_start.elapsed().as_secs_f64() * 1000.0;
+    let phase3_alive = (0..nrows).filter(|&r| row_alive[r]).count();
+    eprintln!(
+        "  pre-elim: phase1={:.0}ms ({}->{} rows), phase2={:.0}ms ({}->{} rows), phase3={:.0}ms ({}->{} rows, {} w3-merges, nnz {}/{})",
+        phase1_ms, nrows, phase1_alive, phase2_ms, phase1_alive, phase2_alive,
+        phase3_ms, phase2_alive, phase3_alive, phase3_merges, current_nnz, nnz_limit
+    );
+
+    let compact_start = std::time::Instant::now();
     // Build compacted matrix from surviving rows and columns.
     let surviving_rows: Vec<usize> = (0..nrows).filter(|&r| row_alive[r]).collect();
     let surviving_cols: Vec<usize> = (0..ncols).filter(|&c| col_alive[c]).collect();
@@ -610,29 +906,63 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
         compact_matrix.push(compact_row);
     }
 
+    let compact_ms = compact_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  pre-elim: compact {:.0}ms ({} x {}, ge_rows={}, zero_deps={})",
+        compact_ms, compact_nrows, compact_ncols, ge_rows.len(), deps.len());
+
     // Run dense GE on the compacted matrix.
+    let ge_inner_start = std::time::Instant::now();
     let compact_deps = find_dependencies(&compact_matrix, compact_ncols);
+    let ge_inner_ms = ge_inner_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  pre-elim: GE {:.0}ms -> {} deps from {} rows", ge_inner_ms, compact_deps.len(), compact_nrows);
 
     // Map compact row indices back to original row indices via history.
-    for cdep in compact_deps {
-        // Each index in cdep refers to a row in ge_rows[].
-        // That row's history gives the original row indices.
-        // The dependency is the XOR (symmetric difference) of all histories.
-        let mut combined = std::collections::HashSet::new();
-        for &ci in &cdep {
-            let orig_row = ge_rows[ci];
-            for &orig_idx in &history[orig_row] {
-                if !combined.remove(&orig_idx) {
-                    combined.insert(orig_idx);
+    // Pre-convert Vec<usize> histories to BitRow for O(nwords) XOR combining
+    // instead of O(history_len) HashSet operations per dependency.
+    let map_start = std::time::Instant::now();
+    let ge_histories_br: Vec<BitRow> = ge_rows
+        .iter()
+        .map(|&r| {
+            let mut br = BitRow::new(nrows);
+            for &idx in &history[r] {
+                br.flip(idx);
+            }
+            br
+        })
+        .collect();
+
+    let mapped_deps: Vec<Vec<usize>> = compact_deps
+        .par_iter()
+        .filter_map(|cdep| {
+            let mut combined = BitRow::new(nrows);
+            for &ci in cdep {
+                combined.xor_with(&ge_histories_br[ci]);
+            }
+            // Extract set bits via word-level traversal.
+            let mut dep = Vec::new();
+            for (wi, &word) in combined.bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    dep.push(wi * 64 + bit);
+                    w &= w - 1;
                 }
             }
-        }
-        if combined.len() >= 2 {
-            let mut dep: Vec<usize> = combined.into_iter().collect();
-            dep.sort_unstable();
-            deps.push(dep);
-        }
-    }
+            if dep.len() >= 2 {
+                Some(dep)
+            } else {
+                None
+            }
+        })
+        .collect();
+    deps.extend(mapped_deps);
+
+    let map_ms = map_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!(
+        "  pre-elim: map-back {:.0}ms -> {} total deps",
+        map_ms,
+        deps.len()
+    );
 
     deps
 }
