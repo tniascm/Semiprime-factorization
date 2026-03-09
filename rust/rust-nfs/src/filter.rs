@@ -67,6 +67,7 @@ pub fn filter_relations(relations: Vec<Relation>) -> Vec<Relation> {
 
 /// Filter relations without taking ownership — avoids cloning the input.
 pub fn filter_relations_ref(relations: &[Relation]) -> Vec<Relation> {
+    let filter_start = std::time::Instant::now();
     // Step 1: Deduplicate by (a, b, special_q). The same (a,b) can appear
     // under different special-q ideals.
     let mut seen = HashSet::new();
@@ -75,62 +76,115 @@ pub fn filter_relations_ref(relations: &[Relation]) -> Vec<Relation> {
         .map(|r| seen.insert((r.a, r.b, r.special_q)))
         .collect();
 
-    // Step 2: Iterative sparse singleton removal.
-    // Pre-compute LP keys once to avoid redundant HashSet + sort per iteration.
+    let dedup_ms = filter_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Step 2: Queue-based sparse singleton removal.
+    // Build counts once, then process singletons via queue — avoids full rescan.
+    let lp_start = std::time::Instant::now();
     let lp_keys_cache: Vec<Vec<LpKey>> = relations.iter().map(|r| relation_lp_keys(r)).collect();
+    let lp_ms = lp_start.elapsed().as_secs_f64() * 1000.0;
 
-    loop {
-        let mut sq_count: HashMap<(u64, u64), usize> = HashMap::new();
-        let mut lp_count: HashMap<LpKey, usize> = HashMap::new();
+    // Build initial counts and reverse index (key → relations containing it).
+    let mut sq_count: HashMap<(u64, u64), usize> = HashMap::new();
+    let mut lp_count: HashMap<LpKey, usize> = HashMap::new();
+    let mut sq_rels: HashMap<(u64, u64), Vec<usize>> = HashMap::new();
+    let mut lp_rels: HashMap<LpKey, Vec<usize>> = HashMap::new();
 
-        for (i, rel) in relations.iter().enumerate() {
-            if !alive[i] {
-                continue;
-            }
-            if let Some(sq) = rel.special_q {
-                *sq_count.entry(sq).or_insert(0) += 1;
-            }
-            for key in &lp_keys_cache[i] {
-                *lp_count.entry(*key).or_insert(0) += 1;
-            }
+    for (i, rel) in relations.iter().enumerate() {
+        if !alive[i] {
+            continue;
         }
-
-        let mut changed = false;
-        for (i, rel) in relations.iter().enumerate() {
-            if !alive[i] {
-                continue;
-            }
-            let mut remove = false;
-            if let Some(sq) = rel.special_q {
-                if sq_count.get(&sq).copied().unwrap_or(0) < 2 {
-                    remove = true;
-                }
-            }
-            if !remove {
-                for key in &lp_keys_cache[i] {
-                    if lp_count.get(key).copied().unwrap_or(0) < 2 {
-                        remove = true;
-                        break;
-                    }
-                }
-            }
-            if remove {
-                alive[i] = false;
-                changed = true;
-            }
+        if let Some(sq) = rel.special_q {
+            *sq_count.entry(sq).or_insert(0) += 1;
+            sq_rels.entry(sq).or_default().push(i);
         }
-
-        if !changed {
-            break;
+        for key in &lp_keys_cache[i] {
+            *lp_count.entry(*key).or_insert(0) += 1;
+            lp_rels.entry(*key).or_default().push(i);
         }
     }
 
-    relations
+    // Seed removal queue with relations that have singleton keys.
+    let mut removal_queue: Vec<usize> = Vec::new();
+    for (i, rel) in relations.iter().enumerate() {
+        if !alive[i] {
+            continue;
+        }
+        let mut is_singleton = false;
+        if let Some(sq) = rel.special_q {
+            if sq_count.get(&sq).copied().unwrap_or(0) < 2 {
+                is_singleton = true;
+            }
+        }
+        if !is_singleton {
+            for key in &lp_keys_cache[i] {
+                if lp_count.get(key).copied().unwrap_or(0) < 2 {
+                    is_singleton = true;
+                    break;
+                }
+            }
+        }
+        if is_singleton {
+            removal_queue.push(i);
+        }
+    }
+
+    let build_ms = lp_start.elapsed().as_secs_f64() * 1000.0 - lp_ms;
+    // Process queue: remove relation, decrement counts, enqueue newly-created singletons.
+    let queue_start = std::time::Instant::now();
+    while let Some(i) = removal_queue.pop() {
+        if !alive[i] {
+            continue;
+        }
+        alive[i] = false;
+
+        // Decrement counts for this relation's keys.
+        if let Some(sq) = relations[i].special_q {
+            if let Some(c) = sq_count.get_mut(&sq) {
+                *c = c.saturating_sub(1);
+                if *c == 1 {
+                    // This SQ key just became singleton — find and enqueue its remaining relation.
+                    if let Some(rels) = sq_rels.get(&sq) {
+                        for &ri in rels {
+                            if alive[ri] {
+                                removal_queue.push(ri);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for key in &lp_keys_cache[i] {
+            if let Some(c) = lp_count.get_mut(key) {
+                *c = c.saturating_sub(1);
+                if *c == 1 {
+                    if let Some(rels) = lp_rels.get(key) {
+                        for &ri in rels {
+                            if alive[ri] {
+                                removal_queue.push(ri);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let queue_ms = queue_start.elapsed().as_secs_f64() * 1000.0;
+    let alive_count = alive.iter().filter(|&&a| a).count();
+    let clone_start = std::time::Instant::now();
+    let result: Vec<Relation> = relations
         .iter()
         .enumerate()
         .filter(|(i, _)| alive[*i])
         .map(|(_, r)| r.clone())
-        .collect()
+        .collect();
+    let clone_ms = clone_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  filter breakdown: dedup={:.0}ms lp_keys={:.0}ms build_idx={:.0}ms queue={:.0}ms clone={:.0}ms ({} -> {})",
+        dedup_ms, lp_ms, build_ms, queue_ms, clone_ms, relations.len(), alive_count);
+    result
 }
 
 #[cfg(test)]
