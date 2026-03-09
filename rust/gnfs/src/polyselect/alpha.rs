@@ -14,14 +14,38 @@ pub fn murphy_alpha(f_coeffs: &[i64], bound: u64) -> f64 {
     if f_coeffs.is_empty() {
         return 0.0;
     }
-    let primes = sieve_primes(bound);
+    let primes = cached_primes(bound);
     let mut alpha = 0.0;
-    for &p in &primes {
+    for &p in primes {
         let pf = p as f64;
         let q_p = count_roots_mod_p(f_coeffs, p) as f64;
         alpha += (1.0 - q_p * pf / (pf + 1.0)) * pf.ln() / (pf - 1.0);
     }
     alpha
+}
+
+/// Cache primes up to common bounds to avoid repeated sieve_primes allocation.
+fn cached_primes(bound: u64) -> &'static [u64] {
+    use std::sync::OnceLock;
+    // Cache for the most common bound (200)
+    static PRIMES_200: OnceLock<Vec<u64>> = OnceLock::new();
+    static PRIMES_OTHER: OnceLock<std::sync::Mutex<Vec<(u64, Vec<u64>)>>> = OnceLock::new();
+
+    if bound == 200 {
+        PRIMES_200.get_or_init(|| sieve_primes(200))
+    } else {
+        let cache = PRIMES_OTHER.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+        let mut guard = cache.lock().unwrap();
+        if let Some(entry) = guard.iter().find(|(b, _)| *b == bound) {
+            // Safety: the Vec is never modified after insertion, and we hold a 'static ref
+            let ptr = entry.1.as_slice() as *const [u64];
+            unsafe { &*ptr }
+        } else {
+            guard.push((bound, sieve_primes(bound)));
+            let ptr = guard.last().unwrap().1.as_slice() as *const [u64];
+            unsafe { &*ptr }
+        }
+    }
 }
 
 /// Count the number of roots of f(x) mod p (affine + projective).
