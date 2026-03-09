@@ -217,19 +217,19 @@ pub fn select_best_polynomial(
     nrkeep: usize,
     lim: u64,
 ) -> Vec<PolynomialPair> {
-    // Use alpha_bound=200 for fast ranking (matches CADO's initial phase).
-    // Full alpha_bound=2000 would be more accurate but ~100x slower.
     let alpha_bound = 200u64;
     let bf = lim as f64;
     let bg = lim as f64;
     let rotation_range = (50.0 * ropteffort) as i64;
 
-    let mut candidates: Vec<(f64, PolynomialPair)> = Vec::new();
+    // Two-phase approach:
+    // Phase 1: Score all candidates by (lognorm + alpha) — no rotation.
+    //   Alpha (root properties) is cheap; rotation is expensive.
+    // Phase 2: Full rotation + Murphy E for top candidates only.
+    let phase2_keep = 200.max(nrkeep * 10);
+    let mut phase1: Vec<(f64, Vec<i64>, Vec<i64>, PolynomialPair)> = Vec::new();
 
-    // Monic variants: use original base-m coefficients (no rotation).
-    // Base-m coefficients are already in [0, m), giving near-optimal norms.
-    // Rotation shifts c0 by -v*m, which can inflate norms catastrophically
-    // for monic polynomials where m >> rotation_range.
+    // Monic variants
     for v in 0..5u32 {
         let poly = select_base_m_variant(n, degree, v);
         let f_i64 = poly_to_i64(&poly);
@@ -237,52 +237,111 @@ pub fn select_best_polynomial(
         if f_i64.is_empty() {
             continue;
         }
-
         let skew = murphy_e::optimal_skewness(&f_i64);
-        let e = murphy_e::murphy_e(&f_i64, &g_i64, skew, bf, bg, alpha_bound);
-        candidates.push((e, poly));
+        let score = combined_size_score(&f_i64, skew, alpha_bound);
+        phase1.push((score, f_i64, g_i64, poly));
     }
 
-    // Sweep over non-monic leading coefficients
+    // Non-monic: sweep ad values
     let mut ad = incr;
     while ad <= admax {
         if let Some(poly) = select_polynomial_with_ad(n, degree, ad) {
             let f_i64 = poly_to_i64(&poly);
             let g_i64 = g_to_i64(&poly);
-            if f_i64.is_empty() {
-                ad += incr;
-                continue;
+            if !f_i64.is_empty() {
+                let skew = murphy_e::optimal_skewness(&f_i64);
+                let score = combined_size_score(&f_i64, skew, alpha_bound);
+                phase1.push((score, f_i64, g_i64, poly));
             }
-
-            let (rotated_f, _, _) = if rotation_range > 0 && g_i64.len() == 2 {
-                rotation::optimize_rotation(&f_i64, &g_i64, rotation_range, alpha_bound)
-            } else {
-                (f_i64.clone(), 0, 0)
-            };
-
-            let skew = murphy_e::optimal_skewness(&rotated_f);
-            let e = murphy_e::murphy_e(&rotated_f, &g_i64, skew, bf, bg, alpha_bound);
-
-            let rotated_poly = rebuild_poly_with_coeffs(&poly, &rotated_f, n);
-            candidates.push((e, rotated_poly));
         }
         ad += incr;
     }
 
-    // Sort by Murphy E (descending -- higher is better)
+    let total_candidates = phase1.len();
+
+    // Screen to phase2_keep by combined score (ascending — lower is better)
+    if total_candidates > phase2_keep {
+        phase1.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        phase1.truncate(phase2_keep);
+    }
+
+    // Phase 2: Full rotation + Murphy E
+    let mut candidates: Vec<(f64, PolynomialPair)> = Vec::new();
+
+    for (_, f_i64, g_i64, poly) in &phase1 {
+        let is_monic = f_i64.last().map(|&c| c == 1).unwrap_or(false);
+
+        let final_f = if !is_monic && rotation_range > 0 && g_i64.len() == 2 {
+            let (rotated, _, _) =
+                rotation::optimize_rotation(f_i64, g_i64, rotation_range, alpha_bound);
+            rotated
+        } else {
+            f_i64.clone()
+        };
+
+        let skew = murphy_e::optimal_skewness(&final_f);
+        let e = murphy_e::murphy_e(&final_f, g_i64, skew, bf, bg, alpha_bound);
+
+        let final_poly = if !is_monic {
+            rebuild_poly_with_coeffs(poly, &final_f, n)
+        } else {
+            poly.clone()
+        };
+        candidates.push((e, final_poly));
+    }
+
+    // Sort by Murphy E (descending — higher is better)
     candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     candidates.truncate(nrkeep);
 
     if !candidates.is_empty() {
         eprintln!(
-            "  polyselect: {} candidates, best E = {:.6e}, worst kept E = {:.6e}",
+            "  polyselect: {} candidates -> {} screened -> {} kept, best E = {:.6e}",
+            total_candidates,
+            phase1.len(),
             candidates.len(),
             candidates.first().map(|(e, _)| *e).unwrap_or(0.0),
-            candidates.last().map(|(e, _)| *e).unwrap_or(0.0),
         );
     }
 
     candidates.into_iter().map(|(_, p)| p).collect()
+}
+
+/// Combined size + root score for fast Phase 1 screening.
+/// Score = lognorm + alpha (lower is better).
+/// lognorm measures geometric norm size; alpha measures root properties.
+/// Both contribute to smoothness probability without expensive rotation.
+fn combined_size_score(f_coeffs: &[i64], skewness: f64, alpha_bound: u64) -> f64 {
+    let lognorm = lognorm_score(f_coeffs, skewness);
+    let alpha = alpha::murphy_alpha(f_coeffs, alpha_bound);
+    // Both in log scale; alpha is typically negative for good polys
+    lognorm + alpha
+}
+
+/// Average log|F(x,y)| over sample points on the sieve ellipse.
+fn lognorm_score(f_coeffs: &[i64], skewness: f64) -> f64 {
+    let k = 64;
+    let area = 1e16_f64;
+    let x_scale = (area * skewness).sqrt();
+    let y_scale = (area / skewness).sqrt();
+
+    let mut sum = 0.0;
+    for i in 0..k {
+        let theta = std::f64::consts::PI / (k as f64) * (i as f64 + 0.5);
+        let xi = x_scale * theta.cos();
+        let yi = y_scale * theta.sin();
+
+        let d = f_coeffs.len() - 1;
+        let mut result = 0.0f64;
+        let mut x_pow = 1.0f64;
+        for (j, &c) in f_coeffs.iter().enumerate() {
+            let y_pow = yi.powi((d - j) as i32);
+            result += c as f64 * x_pow * y_pow;
+            x_pow *= xi;
+        }
+        sum += result.abs().max(1.0).ln();
+    }
+    sum / k as f64
 }
 
 fn poly_to_i64(poly: &PolynomialPair) -> Vec<i64> {
