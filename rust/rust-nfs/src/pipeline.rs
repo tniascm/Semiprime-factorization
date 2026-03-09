@@ -549,10 +549,18 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             );
             params.mfb1 = min_mfb1;
         }
-        // Keep sieve threshold in sync with bumped mfb so 2LP candidates
-        // survive the sieve and reach cofactoring.
-        params.sieve_mfb0 = params.mfb0;
-        params.sieve_mfb1 = params.mfb1;
+        // Sieve threshold: use 2*lpb (tighter than mfb) to reduce false
+        // positive survivors while still accepting most valid 2LP candidates.
+        // The sieve is an approximate screen — the full cofactoring at mfb
+        // will find relations that narrowly pass the tighter sieve threshold.
+        let sieve_mfb0_env = std::env::var("RUST_NFS_SIEVE_MFB0")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok());
+        let sieve_mfb1_env = std::env::var("RUST_NFS_SIEVE_MFB1")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok());
+        params.sieve_mfb0 = sieve_mfb0_env.unwrap_or(params.lpb0.saturating_mul(2));
+        params.sieve_mfb1 = sieve_mfb1_env.unwrap_or(params.lpb1.saturating_mul(2));
     }
 
     // --- Stage 1: Polynomial Selection ---
