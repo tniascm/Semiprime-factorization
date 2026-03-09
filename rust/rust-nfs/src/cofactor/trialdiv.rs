@@ -22,13 +22,26 @@ pub fn trial_divide(mut n: u64, divisors: &[TrialDivisor]) -> (Vec<(u32, u8)>, u
         if n <= 1 {
             break;
         }
+        let p = td.p;
         if td.divides(n) {
             let mut exp = 0u8;
-            while n % td.p == 0 {
-                n /= td.p;
+            while n % p == 0 {
+                n /= p;
                 exp += 1;
             }
             factors.push((i as u32, exp));
+        }
+        // Early exit: if p² > n, remaining n is 1 or prime.
+        // If n is a FB prime, find it via binary search so it's not
+        // misclassified as a large prime cofactor.
+        if p.wrapping_mul(p) > n {
+            if n > 1 {
+                if let Ok(j) = divisors[i + 1..].binary_search_by_key(&n, |d| d.p) {
+                    factors.push(((i + 1 + j) as u32, 1));
+                    n = 1;
+                }
+            }
+            break;
         }
     }
 
@@ -46,14 +59,33 @@ pub fn trial_divide_u128(mut n: u128, divisors: &[TrialDivisor]) -> (Vec<(u32, u
         if n <= 1 {
             break;
         }
-        let p = td.p as u128;
-        if n % p == 0 {
+        let p64 = td.p;
+        let p = p64 as u128;
+        // Use Montgomery fast test when n fits in u64, else fall back to u128 mod.
+        let divisible = if n <= u64::MAX as u128 {
+            td.divides(n as u64)
+        } else {
+            n % p == 0
+        };
+        if divisible {
             let mut exp = 0u8;
             while n % p == 0 {
                 n /= p;
                 exp += 1;
             }
             factors.push((i as u32, exp));
+        }
+        // Early exit: if p² > n, remaining n is 1 or prime.
+        // If n is a FB prime, find it via binary search.
+        if (p * p) > n {
+            if n > 1 {
+                let n64 = n as u64;
+                if let Ok(j) = divisors[i + 1..].binary_search_by_key(&n64, |d| d.p) {
+                    factors.push(((i + 1 + j) as u32, 1));
+                    n = 1;
+                }
+            }
+            break;
         }
     }
 
