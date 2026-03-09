@@ -250,16 +250,6 @@ pub fn select_best_polynomial(
         ad += incr;
     }
 
-    // Filter to monic polynomials only (leading coefficient = 1).
-    // The algebraic sqrt module requires monic f for number field arithmetic.
-    // Non-monic support requires modified Z[α]/(f) reduction — future work.
-    candidates.retain(|(_, poly)| {
-        poly.f_coeffs_str
-            .last()
-            .map(|s| s == "1")
-            .unwrap_or(false)
-    });
-
     // Sort by Murphy E (descending -- higher is better)
     candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     candidates.truncate(nrkeep);

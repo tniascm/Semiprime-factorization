@@ -49,6 +49,42 @@ pub fn nf_element_from_ab(a: i64, b: u64, degree: usize) -> Vec<Integer> {
     elem
 }
 
+/// Scale a non-monic polynomial f to a monic polynomial g.
+///
+/// Given f(x) = ad*x^d + c_{d-1}*x^{d-1} + ... + c_0 with ad > 1,
+/// returns g(y) = y^d + c_{d-1}*y^{d-1} + ad*c_{d-2}*y^{d-2} + ... + ad^{d-1}*c_0
+/// where θ = ad*α is a root of g.
+///
+/// Coefficients: g[i] = f[i] * ad^{d-1-i} for i = 0..d-1, g[d] = 1.
+pub fn scale_to_monic(f: &[Integer]) -> Vec<Integer> {
+    let d = f.len() - 1;
+    let ad = &f[d];
+    debug_assert!(*ad != 0, "leading coefficient must be nonzero");
+
+    let mut g = Vec::with_capacity(d + 1);
+    for i in 0..d {
+        let exp = d - 1 - i;
+        let ad_pow = Integer::from(ad.clone().pow(exp as u32));
+        g.push(Integer::from(&f[i] * &ad_pow));
+    }
+    g.push(Integer::from(1));
+    g
+}
+
+/// Create scaled number field element (a*ad - b*theta) for non-monic polynomial.
+///
+/// In the scaled ring Z[theta]/(g) where theta = ad*alpha,
+/// the element corresponding to (a - b*alpha) is (a*ad - b*theta)/ad.
+/// We work with ad*(a - b*alpha) = (a*ad - b*theta) to stay in Z[theta].
+fn nf_element_from_ab_scaled(a: i64, b: u64, degree: usize, ad: &Integer) -> Vec<Integer> {
+    let mut elem = vec![Integer::from(0); degree];
+    elem[0] = Integer::from(a) * ad;
+    if degree > 1 {
+        elem[1] = Integer::from(-(b as i64));
+    }
+    elem
+}
+
 /// Multiply two elements in Z[alpha]/(f(alpha)).
 /// Both a and b are polynomials of degree < deg(f), represented as coefficient vectors.
 /// f must be monic: f = [c0, c1, ..., c_{d-1}, 1] (leading coefficient 1).
@@ -806,10 +842,27 @@ fn extract_factor_inner(
     rat_fb_primes: Option<&[u64]>,
 ) -> (Option<Integer>, Option<FactorFailure>) {
     let d = f_coeffs.len() - 1;
+    let ad = f_coeffs[d].clone();
+    let is_nonmonic = ad != 1;
     let sqrt_profile = std::env::var("GNFS_SQRT_PROFILE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     let t0 = std::time::Instant::now();
+
+    // For non-monic f, scale to monic g and work in Z[θ]/(g) where θ = ad*α.
+    let (working_f, working_m) = if is_nonmonic {
+        let g = scale_to_monic(f_coeffs);
+        let scaled_m = Integer::from(&ad * m);
+        if verbose {
+            eprintln!(
+                "[diag] Non-monic polynomial (ad={}), scaling to monic. Eval at ad*m={}",
+                &ad, &scaled_m
+            );
+        }
+        (g, scaled_m)
+    } else {
+        (f_coeffs.to_vec(), m.clone())
+    };
 
     // Step 1: Compute rational square root x such that x² ≡ ∏(a_i - b_i*m) mod N.
     let x = if let Some(fb_primes) = rat_fb_primes {
@@ -935,6 +988,7 @@ fn extract_factor_inner(
     }
 
     // Step 2: Compute exact product of algebraic elements in Z[α]/(f)
+    // (or Z[θ]/(g) for non-monic f, where θ = ad*α and g is monic).
     // NO mod N reduction — we need exact coefficients for Couveignes' method.
     // Use a product-tree approach: multiply pairs, then pairs of pairs, etc.
     // This keeps intermediate products balanced in size, dramatically reducing
@@ -944,29 +998,35 @@ fn extract_factor_inner(
 
     let mut elements: Vec<Vec<Integer>> = dependency.iter().map(|&idx| {
         let rel = &relations[idx];
-        match nf_elem_mode.as_str() {
-            "b_alpha_minus_a" => {
-                let mut v = vec![Integer::from(0); d];
-                v[0] = Integer::from(-rel.a);
-                if d > 1 { v[1] = Integer::from(rel.b); }
-                v
+        if is_nonmonic {
+            // Scaled element: (a*ad - b*θ) in Z[θ]/(g)
+            nf_element_from_ab_scaled(rel.a, rel.b, d, &ad)
+        } else {
+            match nf_elem_mode.as_str() {
+                "b_alpha_minus_a" => {
+                    let mut v = vec![Integer::from(0); d];
+                    v[0] = Integer::from(-rel.a);
+                    if d > 1 { v[1] = Integer::from(rel.b); }
+                    v
+                }
+                "a_plus_ba" => {
+                    let mut v = vec![Integer::from(0); d];
+                    v[0] = Integer::from(rel.a);
+                    if d > 1 { v[1] = Integer::from(rel.b); }
+                    v
+                }
+                _ => nf_element_from_ab(rel.a, rel.b, d),
             }
-            "a_plus_ba" => {
-                let mut v = vec![Integer::from(0); d];
-                v[0] = Integer::from(rel.a);
-                if d > 1 { v[1] = Integer::from(rel.b); }
-                v
-            }
-            _ => nf_element_from_ab(rel.a, rel.b, d),
         }
     }).collect();
 
     // Product tree: repeatedly multiply adjacent pairs until one element remains.
+    // Uses working_f (monic g for non-monic f, or original f for monic).
     while elements.len() > 1 {
         let mut next = Vec::with_capacity((elements.len() + 1) / 2);
         let mut i = 0;
         while i + 1 < elements.len() {
-            next.push(nf_multiply(&elements[i], &elements[i + 1], f_coeffs));
+            next.push(nf_multiply(&elements[i], &elements[i + 1], &working_f));
             i += 2;
         }
         if i < elements.len() {
@@ -983,7 +1043,8 @@ fn extract_factor_inner(
     });
 
     if verbose {
-        eprintln!("[diag] NF element mode: {}", nf_elem_mode);
+        eprintln!("[diag] NF element mode: {}{}", nf_elem_mode,
+            if is_nonmonic { format!(" (non-monic, ad={})", &ad) } else { String::new() });
         let max_coeff = alg_product
             .iter()
             .map(|c| c.clone().abs())
@@ -1002,40 +1063,51 @@ fn extract_factor_inner(
                 c.clone().abs().significant_bits()
             );
         }
-        // Check P(m) = rational product?
+        // Check P(working_m) for verification.
+        // For monic: P(m) should equal rational product.
+        // For non-monic: P(ad*m) should equal ad^K * rational product.
         let mut pm = Integer::from(0);
         let mut m_pow = Integer::from(1);
         for c in &alg_product {
             pm += Integer::from(c * &m_pow);
-            m_pow *= m;
+            m_pow *= &working_m;
         }
-        // Recompute rational product for verification (only in verbose mode)
         let mut rat_product_check = Integer::from(1);
         for &idx in dependency {
             let rel = &relations[idx];
             let norm = Integer::from(rel.a) - Integer::from(rel.b) * m;
             rat_product_check *= norm;
         }
-        eprintln!(
-            "[diag] P(m) = {} ({} bits)",
-            &pm,
-            pm.clone().abs().significant_bits()
-        );
-        eprintln!(
-            "[diag] R (rational product) = {} ({} bits)",
-            &rat_product_check,
-            rat_product_check.clone().abs().significant_bits()
-        );
-        eprintln!("[diag] P(m) == R? {}", pm == rat_product_check);
+        if is_nonmonic {
+            let k = dependency.len() as u32;
+            let ad_k = Integer::from(ad.clone().pow(k));
+            let expected = Integer::from(&ad_k * &rat_product_check);
+            eprintln!(
+                "[diag] P(ad*m) = {} ({} bits)",
+                &pm, pm.clone().abs().significant_bits()
+            );
+            eprintln!(
+                "[diag] ad^K * R = {} ({} bits)",
+                &expected, expected.clone().abs().significant_bits()
+            );
+            eprintln!("[diag] P(ad*m) == ad^K*R? {}", pm == expected);
+        } else {
+            eprintln!(
+                "[diag] P(m) = {} ({} bits)",
+                &pm, pm.clone().abs().significant_bits()
+            );
+            eprintln!(
+                "[diag] R (rational product) = {} ({} bits)",
+                &rat_product_check, rat_product_check.clone().abs().significant_bits()
+            );
+            eprintln!("[diag] P(m) == R? {}", pm == rat_product_check);
+        }
     }
 
-    // Step 3: Compute algebraic square root(s)
-    // Newton (irreducible-prime) gives γ unique up to sign in Z[α]/(f).
-    // Since f is irreducible over Q, the ring Z[α]/(f) is an integral domain,
-    // so γ and -γ are the only square roots. Both Newton and Couveignes
-    // will find the same element.
+    // Step 3: Compute algebraic square root(s) using working polynomial/m.
+    // For non-monic: uses monic g and evaluates at ad*m.
     let t_newton_start = std::time::Instant::now();
-    let mut y_values = algebraic_sqrt_newton(&alg_product, f_coeffs, m, n);
+    let mut y_values = algebraic_sqrt_newton(&alg_product, &working_f, &working_m, n);
     let mut used_newton = false;
     if !y_values.is_empty() {
         used_newton = true;
@@ -1046,7 +1118,7 @@ fn extract_factor_inner(
         if verbose {
             eprintln!("[diag] Newton sqrt found nothing, trying Couveignes...");
         }
-        y_values = algebraic_square_roots(&alg_product, f_coeffs, m, n);
+        y_values = algebraic_square_roots(&alg_product, &working_f, &working_m, n);
     }
 
     if y_values.is_empty() {
@@ -1054,6 +1126,55 @@ fn extract_factor_inner(
             eprintln!("[diag] No algebraic square roots found");
         }
         return (None, Some(FactorFailure::AlgebraicNotSquare));
+    }
+
+    // For non-monic: adjust y values.
+    // δ(ad*m)² ≡ ad^K * x² (mod N), so y_adjusted = δ(ad*m) * ad^{-K/2} mod N
+    // gives y_adjusted² ≡ x² (mod N).
+    if is_nonmonic {
+        let k = dependency.len();
+        let half_k = k / 2;
+        if k % 2 == 0 && half_k > 0 {
+            let ad_half_k = ad.clone().pow_mod(&Integer::from(half_k), n).unwrap();
+            let ad_half_k_inv = match ad_half_k.clone().invert(n) {
+                Ok(inv) => inv,
+                Err(_) => {
+                    if verbose {
+                        eprintln!("[diag] ad^{{K/2}} not invertible mod N — ad may share factor with N");
+                    }
+                    return (None, Some(FactorFailure::AlgebraicNotSquare));
+                }
+            };
+            for (y, _gamma) in y_values.iter_mut() {
+                *y = Integer::from(&*y * &ad_half_k_inv) % n;
+                if *y < 0 {
+                    *y += n;
+                }
+            }
+            if verbose {
+                eprintln!("[diag] Non-monic adjustment: divided y by ad^{{K/2}} (K={}, half_K={})", k, half_k);
+            }
+        } else if k % 2 != 0 {
+            // K is odd: y_scaled² = ad^K * x², with K odd.
+            // We can still try gcd but the relationship y²=x² won't hold exactly.
+            // Try: gcd(y_scaled * ad^{-(K-1)/2} ± x*ad^{1/2}, N) — requires ad to be QR mod N.
+            // Fallback: try direct gcd anyway (may work when ad is QR mod both p and q).
+            if verbose {
+                eprintln!("[diag] Non-monic K={} is odd, attempting direct gcd (may fail)", k);
+            }
+            let half_k_floor = (k - 1) / 2;
+            if half_k_floor > 0 {
+                let ad_pow = ad.clone().pow_mod(&Integer::from(half_k_floor), n).unwrap();
+                if let Ok(ad_inv) = ad_pow.clone().invert(n) {
+                    for (y, _gamma) in y_values.iter_mut() {
+                        *y = Integer::from(&*y * &ad_inv) % n;
+                        if *y < 0 {
+                            *y += n;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Step 4: Try gcd(x ± y, N) for each algebraic square root.
@@ -1180,7 +1301,20 @@ fn extract_factor_inner(
         if verbose {
             eprintln!("[diag] Newton roots gave only trivial gcd; trying Couveignes roots...");
         }
-        let alt_y = algebraic_square_roots(&alg_product, f_coeffs, m, n);
+        let mut alt_y = algebraic_square_roots(&alg_product, &working_f, &working_m, n);
+            // Apply same non-monic adjustment to Couveignes roots
+            if is_nonmonic {
+                let k = dependency.len();
+                let half_k = k / 2;
+                if k % 2 == 0 && half_k > 0 {
+                    if let Ok(ad_inv) = ad.clone().pow_mod(&Integer::from(half_k), n).unwrap().invert(n) {
+                        for (y, _) in alt_y.iter_mut() {
+                            *y = Integer::from(&*y * &ad_inv) % n;
+                            if *y < 0 { *y += n; }
+                        }
+                    }
+                }
+            }
         if !alt_y.is_empty() {
             if let Some(g) = try_gcds(&alt_y) {
                 return (Some(g), None);
@@ -1352,6 +1486,98 @@ mod tests {
             "f should be irreducible (no roots) mod {}",
             p
         );
+    }
+
+    #[test]
+    fn test_scale_to_monic() {
+        // f(x) = 60*x^3 + 5*x^2 + 3*x + 7
+        // g(y) = y^3 + 5*y^2 + 180*y + 25200
+        let f = vec![
+            Integer::from(7),
+            Integer::from(3),
+            Integer::from(5),
+            Integer::from(60),
+        ];
+        let g = scale_to_monic(&f);
+        assert_eq!(g.len(), 4);
+        assert_eq!(g[0], Integer::from(25200)); // 7 * 60^2
+        assert_eq!(g[1], Integer::from(180)); // 3 * 60
+        assert_eq!(g[2], Integer::from(5)); // 5 * 1
+        assert_eq!(g[3], Integer::from(1)); // monic
+
+        // Verify: g(ad*α) = ad^{d-1} * f(α) for a concrete α
+        // α = 2: f(2) = 60*8 + 5*4 + 3*2 + 7 = 480+20+6+7 = 513
+        // θ = 60*2 = 120: g(120) = 120^3 + 5*120^2 + 180*120 + 25200
+        //                        = 1728000 + 72000 + 21600 + 25200 = 1846800
+        // ad^{d-1} * f(α) = 3600 * 513 = 1846800 ✓
+        let alpha = 2i64;
+        let f_alpha: i64 = 60 * 8 + 5 * 4 + 3 * 2 + 7;
+        assert_eq!(f_alpha, 513);
+        let theta = 60 * alpha;
+        let g_theta: i64 = theta.pow(3) + 5 * theta.pow(2) + 180 * theta + 25200;
+        assert_eq!(g_theta, 3600 * f_alpha);
+    }
+
+    #[test]
+    fn test_scale_to_monic_degree2() {
+        // f(x) = 3*x^2 + 2*x + 5
+        // g(y) = y^2 + 2*y + 15
+        let f = vec![Integer::from(5), Integer::from(2), Integer::from(3)];
+        let g = scale_to_monic(&f);
+        assert_eq!(g[0], Integer::from(15)); // 5 * 3
+        assert_eq!(g[1], Integer::from(2)); // 2 * 1
+        assert_eq!(g[2], Integer::from(1)); // monic
+    }
+
+    #[test]
+    fn test_nf_element_from_ab_scaled() {
+        let ad = Integer::from(60);
+        let elem = nf_element_from_ab_scaled(7, 3, 3, &ad);
+        assert_eq!(elem.len(), 3);
+        assert_eq!(elem[0], Integer::from(420)); // 7 * 60
+        assert_eq!(elem[1], Integer::from(-3));
+        assert_eq!(elem[2], Integer::from(0));
+    }
+
+    #[test]
+    fn test_nonmonic_newton_sqrt() {
+        // Test that sqrt works with a non-monic polynomial via scaling.
+        // f(x) = 2*x^3 + x + 1 (leading coeff = 2)
+        // g(y) = y^3 + 4*y + 4 (scaled monic: g[0] = 1*4=4, g[1] = 1*2=2... wait)
+        // Actually: g[i] = f[i] * ad^{d-1-i}
+        // g[0] = 1 * 2^2 = 4, g[1] = 1 * 2^1 = 2, g[2] = 0, g[3] = 1
+        // g(y) = y^3 + 2y + 4
+        let f = vec![
+            Integer::from(1),
+            Integer::from(1),
+            Integer::from(0),
+            Integer::from(2),
+        ];
+        let g = scale_to_monic(&f);
+        assert_eq!(g, vec![Integer::from(4), Integer::from(2), Integer::from(0), Integer::from(1)]);
+
+        // Build a known square in Z[θ]/(g)
+        let gamma = vec![Integer::from(3), Integer::from(1), Integer::from(-1)];
+        let product = nf_multiply(&gamma, &gamma, &g);
+
+        // Verify Newton sqrt recovers ±γ
+        let m = Integer::from(5);
+        let n = Integer::from(100003);
+        let results = algebraic_sqrt_newton(&product, &g, &m, &n);
+        assert!(!results.is_empty(), "Newton sqrt should find root for non-monic scaled poly");
+
+        let mut gamma_at_m = Integer::from(0);
+        let mut m_pow = Integer::from(1);
+        for c in &gamma {
+            gamma_at_m += Integer::from(c * &m_pow);
+            m_pow *= &m;
+        }
+        let expected = Integer::from(&gamma_at_m % &n);
+        let expected = if expected < 0 { expected + &n } else { expected };
+        let expected_neg = Integer::from(&n - &expected);
+
+        let found = results.iter().any(|(y, _)| *y == expected || *y == expected_neg);
+        assert!(found, "Newton sqrt should return ±γ(m) mod N for scaled poly");
     }
 
     #[test]
