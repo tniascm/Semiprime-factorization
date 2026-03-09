@@ -214,13 +214,12 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
 
     let mut last_result = None;
 
-    // Use direct base-m variant selection (variant 0, 1, 2, ...).
-    // Murphy E-based polyselect is available via select_best_polynomial()
-    // but is not yet calibrated for small factor bases (c30-c45).
-    // Enable with RUST_NFS_POLYSELECT=murphy env var when ready.
+    // Murphy E-based polyselect sweeps over leading coefficients and picks
+    // the polynomial with the best Murphy E-value. Disable with
+    // RUST_NFS_POLYSELECT=basem to fall back to monic base-m selection.
     let use_murphy = std::env::var("RUST_NFS_POLYSELECT")
-        .map(|v| v == "murphy")
-        .unwrap_or(false);
+        .map(|v| v != "basem")
+        .unwrap_or(true);
 
     let variant_polys: Vec<(u32, Option<gnfs::types::PolynomialPair>)> = if use_murphy {
         let admax: u64 = std::env::var("RUST_NFS_ADMAX")
@@ -228,7 +227,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         let ad_incr: u64 = std::env::var("RUST_NFS_AD_INCR")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(20);
         let ropteffort: f64 = std::env::var("RUST_NFS_ROPTEFFORT")
-            .ok().and_then(|s| s.parse().ok()).unwrap_or(0.1);
+            .ok().and_then(|s| s.parse().ok()).unwrap_or(1.0);
         let ranked = gnfs::polyselect::select_best_polynomial(
             n, params.degree, admax, ad_incr, ropteffort,
             max_variants as usize, params.lim0,
@@ -550,6 +549,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             );
             params.mfb1 = min_mfb1;
         }
+        // Keep sieve threshold in sync with bumped mfb so 2LP candidates
+        // survive the sieve and reach cofactoring.
+        params.sieve_mfb0 = params.mfb0;
+        params.sieve_mfb1 = params.mfb1;
     }
 
     // --- Stage 1: Polynomial Selection ---
@@ -803,10 +806,19 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             let mut sets_count = 0usize;
             let mut current_sets = None;
             if partial_merge_2lp {
-                let (sets, _) =
-                    crate::partial_merge::merge_relations_2lp(&filtered, partial_merge_max_sets);
-                sets_count = sets.len();
-                current_sets = Some(sets);
+                // Skip expensive merge when filtered count is clearly insufficient.
+                // set_rows <= filtered, so if filtered < est_dense_cols, merging
+                // cannot produce enough set-rows. Just use filtered.len() as upper-bound estimate.
+                if filtered.len() >= est_dense_cols || force_stop || near_q_window_cap || at_q_window_cap {
+                    let (sets, _) =
+                        crate::partial_merge::merge_relations_2lp(&filtered, partial_merge_max_sets);
+                    sets_count = sets.len();
+                    current_sets = Some(sets);
+                } else {
+                    // Conservative estimate — will always fail the active_rows >= needed check,
+                    // which correctly causes the sieve to continue.
+                    sets_count = filtered.len();
+                }
             }
             filter_time_ms += filter_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -1105,6 +1117,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // factors using BigInt norms and gnfs's per-(prime,root) decomposition.
     // This avoids u64 overflow in algebraic norm computation and ensures
     // correct ideal-level factorization.
+    let remap_start = std::time::Instant::now();
     let (gnfs_rels, remap_source_indices, remap_stats) = remap_hybrid(
         &filtered,
         &rat_fb,
@@ -1130,7 +1143,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         remap_stats.kept_relations as f64 / filtered.len() as f64
     };
-    eprintln!("  LA: {} relations after hybrid remap", gnfs_rels.len());
+    let remap_ms = remap_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  LA: {} relations after hybrid remap in {:.0}ms", gnfs_rels.len(), remap_ms);
     if !filtered.is_empty() {
         eprintln!(
             "  LA: remap keep ratio {}/{} ({:.1}%)",
@@ -1139,6 +1153,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             (gnfs_rels.len() as f64) * 100.0 / (filtered.len() as f64)
         );
     }
+    let partial_remap_start = std::time::Instant::now();
     let (partial_sets_remapped, partial_sets_dropped_remap, partial_sets_recomputed) =
         remap_partial_sets_from_sources(
             &filtered,
@@ -1207,6 +1222,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         alg_pairs + alg_hd + alg_bad
     );
 
+    let partial_remap_ms = partial_remap_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  LA: partial remap {:.0}ms", partial_remap_ms);
+
+    let matrix_build_start = std::time::Instant::now();
     let sparse_premerge = std::env::var("RUST_NFS_SPARSE_PREMERGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
@@ -1461,6 +1480,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         );
         (m, nc, row_sources, "direct", 0usize, layout)
     };
+    let matrix_build_ms = matrix_build_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  LA: matrix build {:.0}ms ({} x {})", matrix_build_ms, matrix_raw.len(), ncols_raw);
+
+    let compact_start = std::time::Instant::now();
     result.viability.matrix_mode = matrix_mode.to_string();
     result.viability.set_rows_matrix = matrix_set_rows;
     result.viability.matrix_rows_pre_compact = matrix_raw.len();
@@ -1544,6 +1567,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_post_singleton = zero_cols_dropped_post_singleton;
     result.viability.zero_cols_dropped_total = dropped_cols + zero_cols_dropped_post_singleton;
 
+    let compact_ms = compact_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  LA: compact+prune {:.0}ms -> {} x {}", compact_ms, matrix.len(), ncols);
+
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
     result.viability.final_rows = result.matrix_rows;
@@ -1584,12 +1610,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(20_000);
+    let ge_start = std::time::Instant::now();
     let mut ge_deps = if matrix.len() > bw_threshold {
         gnfs::linalg::find_dependencies_with_preelim_bw(&matrix, ncols)
     } else {
         gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols)
     };
+    let ge_ms = ge_start.elapsed().as_secs_f64() * 1000.0;
     let ge_deps_total = ge_deps.len();
+    eprintln!("  LA: GE+preelim {:.0}ms -> {} basis deps", ge_ms, ge_deps_total);
     let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -1630,7 +1659,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(42);
+    let rand_start = std::time::Instant::now();
     let deps = gnfs::linalg::randomize_dependencies(&ge_deps, n_random, k, dep_seed);
+    let rand_ms = rand_start.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("  LA: randomize_deps {:.0}ms (n_random={}, k={}) -> {} total deps", rand_ms, n_random, k, deps.len());
     result.dependencies_found = deps.len();
     result.viability.deps_found = result.dependencies_found;
 
