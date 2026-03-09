@@ -966,9 +966,20 @@ fn scatter_bucket_updates_fk(
     let mut x = start_i_pos;
     let mut ic = start_ic;
 
+    // Precompute single-comparison thresholds for a_ok/b_ok.
+    // The partial-GCD guarantees u_a and u_b have opposite signs.
+    // When u < 0: only the lower bound can be violated (ic + u >= -half_width).
+    // When u > 0: only the upper bound can be violated (ic + u < half_width).
+    // The dead-zone check + a_ok/b_ok selection guarantees ic stays in
+    // [-half_width, half_width) throughout the walk, so emit bounds checks
+    // are redundant.
+    let a_thresh = if u_a < 0 { -half_width - u_a } else { half_width - u_a };
+    let b_thresh = if u_b < 0 { -half_width - u_b } else { half_width - u_b };
+    let u_a_neg = u_a < 0;
+
     while x < total_area {
-        // Emit bucket update if position is valid and coprime.
-        if x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+        // Emit bucket update if position is coprime.
+        if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
             let gpos = x as usize;
             buckets.push(
                 gpos >> LOG_BUCKET_REGION,
@@ -979,15 +990,18 @@ fn scatter_bucket_updates_fk(
             );
         }
 
-        let a_ok = (ic + u_a) >= -half_width && (ic + u_a) < half_width;
-        let b_ok = (ic + u_b) >= -half_width && (ic + u_b) < half_width;
+        // Single-comparison a_ok/b_ok: opposite-sign u vectors mean only
+        // one side of the bounds can be violated per vector.
+        let (a_ok, b_ok) = if u_a_neg {
+            (ic >= a_thresh, ic < b_thresh)
+        } else {
+            (ic < a_thresh, ic >= b_thresh)
+        };
 
         if a_ok && b_ok {
-            // Both valid: advance by inc_a (smaller), emit that position,
-            // then advance by inc_diff to reach inc_b's target.
             x += inc_a;
             ic += u_a;
-            if x < total_area && x >= 0 && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+            if x < total_area && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
                 let gpos = x as usize;
                 buckets.push(
                     gpos >> LOG_BUCKET_REGION,
@@ -1006,8 +1020,6 @@ fn scatter_bucket_updates_fk(
             x += inc_b;
             ic += u_b;
         } else {
-            // Dead zone: use sum vector (step + warp).
-            // The dead-zone check above guarantees this keeps ic in bounds.
             x += inc_sum;
             ic += u_sum;
         }
