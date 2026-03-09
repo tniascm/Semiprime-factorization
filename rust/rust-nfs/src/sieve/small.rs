@@ -200,14 +200,7 @@ pub fn small_sieve_region(
 
         let p = entry.p as usize;
 
-        // Compute first hit position in the full sieve row.
-        // j can be negative; we need (root_i * j) mod p with proper unsigned handling.
         let j_mod_p = ((j as i64).rem_euclid(p as i64)) as u64;
-        // Congruences are in i-coordinates (i in [-I, I)); map to row index
-        // k=i+I by adding half_i before reducing modulo p.
-        // All values fit in u64: p < bucket_thresh, root_i < p, j_mod_p < p,
-        // half_i <= sieve_width/2, so root_i * j_mod_p < p^2 which is well
-        // within u64 range for any realistic sieve parameters.
         let start_in_row = ((half_i as u64 + entry.root_i * j_mod_p)
             % entry.p) as usize;
 
@@ -215,9 +208,8 @@ pub fn small_sieve_region(
         let first_hit = if start_in_row >= region_start {
             start_in_row
         } else {
-            // Advance from start_in_row to the first position >= region_start.
             let gap = region_start - start_in_row;
-            let steps = (gap + p - 1) / p; // ceiling division
+            let steps = (gap + p - 1) / p;
             start_in_row + steps * p
         };
 
@@ -230,6 +222,110 @@ pub fn small_sieve_region(
                 let cell = sieve.get_unchecked_mut(local);
                 *cell = cell.saturating_sub(logp);
             }
+            pos += p;
+        }
+    }
+}
+
+/// SIMD pattern sieve for tiny primes (p=2,3,5,7) on aarch64.
+///
+/// Pre-computes p different 16-byte patterns (one for each possible alignment
+/// of the stride-p hits within a 16-byte chunk), then sweeps through the sieve
+/// with NEON vqsubq_u8 (saturating byte-wise subtraction, 16 bytes at a time).
+///
+/// Only processes from `local_start` onward — bytes before the first hit are
+/// not touched.
+#[cfg(target_arch = "aarch64")]
+fn small_sieve_simd(sieve: &mut [u8], p: usize, logp: u8, local_start: usize, region_len: usize) {
+    use std::arch::aarch64::*;
+
+    if local_start >= region_len {
+        return;
+    }
+
+    // Build p patterns, one for each possible offset within a 16-byte chunk.
+    // Pattern with offset `off` has logp at positions k where k % p == off.
+    let mut patterns_raw = [[0u8; 16]; 8];
+    for offset in 0..p {
+        for k in 0..16 {
+            if k % p == offset {
+                patterns_raw[offset][k] = logp;
+            }
+        }
+    }
+
+    unsafe {
+        let mut patterns = [vdupq_n_u8(0); 8];
+        for i in 0..p {
+            patterns[i] = vld1q_u8(patterns_raw[i].as_ptr());
+        }
+
+        let ptr = sieve.as_mut_ptr();
+        // As we advance 16 bytes, the hit alignment shifts backward by 16 mod p.
+        // The offset increases by (p - 16%p) % p to compensate.
+        let offset_step = (p - (16 % p)) % p;
+
+        // Handle the first partial chunk (before the first aligned boundary
+        // after local_start) with scalar to avoid subtracting before first_hit.
+        let first_full_chunk = (local_start + 15) / 16; // ceiling division
+        let simd_start = first_full_chunk * 16;
+
+        // Scalar for positions local_start..min(simd_start, region_len)
+        let scalar_end = simd_start.min(region_len);
+        let mut pos = local_start;
+        while pos < scalar_end {
+            let cell = sieve.get_unchecked_mut(pos);
+            *cell = cell.saturating_sub(logp);
+            pos += p;
+        }
+
+        if simd_start >= region_len {
+            return;
+        }
+
+        // For the SIMD region, hits are at local_start, local_start+p, local_start+2p, ...
+        // In chunk c (starting at byte c*16), a hit falls at position (local_start % p)
+        // relative to the chunk's alignment with stride p.
+        // Offset for chunk at simd_start: the first hit at or after simd_start is at
+        // some position h. Within that chunk, h - simd_start gives the byte offset.
+        // The pattern offset = h % p, but we need it relative to the chunk boundary.
+        // Since the pattern has logp where k % p == offset, the right offset for
+        // a chunk starting at byte `base` is: (local_start - base) % p, adjusted
+        // to be in [0, p).
+        let mut current_offset = if simd_start >= local_start {
+            // (local_start - simd_start) mod p, but we need the positive representative
+            (p - ((simd_start - local_start) % p)) % p
+        } else {
+            local_start % p
+        };
+
+        let n_chunks = (region_len - simd_start) / 16;
+
+        for c in 0..n_chunks {
+            let chunk_ptr = ptr.add(simd_start + c * 16);
+            let val = vld1q_u8(chunk_ptr);
+            let pat = *patterns.get_unchecked(current_offset);
+            let result = vqsubq_u8(val, pat);
+            vst1q_u8(chunk_ptr, result);
+            current_offset += offset_step;
+            if current_offset >= p {
+                current_offset -= p;
+            }
+        }
+
+        // Handle remaining bytes after the last full SIMD chunk.
+        let remainder_start = simd_start + n_chunks * 16;
+        // Find first hit in remainder.
+        let mut pos = if local_start >= remainder_start {
+            local_start
+        } else {
+            let gap = remainder_start - local_start;
+            let steps = (gap + p - 1) / p;
+            local_start + steps * p
+        };
+        while pos < region_len {
+            let cell = sieve.get_unchecked_mut(pos);
+            *cell = cell.saturating_sub(logp);
             pos += p;
         }
     }
