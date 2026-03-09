@@ -4,6 +4,7 @@ pub mod arith;
 pub mod cofactor;
 pub mod factorbase;
 pub mod filter;
+pub mod gpu;
 pub mod lp_key;
 pub mod params;
 pub mod partial_merge;

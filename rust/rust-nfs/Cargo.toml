@@ -9,9 +9,15 @@ gnfs = { path = "../gnfs" }
 rug = { version = "1", features = ["integer", "rand"] }
 rayon = "1.10"
 rand = "0.8"
+crossbeam-channel = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.29.0"
+objc = "0.2.7"
+block = "0.1.6"
 
 [profile.release]
 lto = "fat"
