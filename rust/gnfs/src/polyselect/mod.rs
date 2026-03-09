@@ -280,6 +280,108 @@ fn g_to_i64(poly: &PolynomialPair) -> Vec<i64> {
         .collect()
 }
 
+#[allow(dead_code)]
+/// Translate polynomial: compute f(x + k) using Horner's shift algorithm.
+///
+/// Coefficients stored low-degree first: [c0, c1, ..., cd].
+/// The translation preserves f(m) = N with new m' = m - k.
+fn translate_polynomial(f: &[i64], k: i64) -> Vec<i64> {
+    if k == 0 {
+        return f.to_vec();
+    }
+    let d = f.len() - 1;
+    let mut result = f.to_vec();
+    // Taylor shift algorithm: compute f(x+k) in-place.
+    // Outer loop from d-1 down to 0, inner loop from j to d-1.
+    for j in (0..d).rev() {
+        for i in j..d {
+            let product = (result[i + 1] as i128) * (k as i128);
+            let sum = (result[i] as i128) + product;
+            if sum > i64::MAX as i128 || sum < i64::MIN as i128 {
+                return f.to_vec(); // overflow — return untranslated
+            }
+            result[i] = sum as i64;
+        }
+    }
+    result
+}
+
+#[allow(dead_code)]
+/// Translate linear polynomial g(x) = g0 + g1*x by k: g(x+k) = (g0 + g1*k) + g1*x.
+fn translate_g(g: &[i64], k: i64) -> Vec<i64> {
+    if g.len() != 2 || k == 0 {
+        return g.to_vec();
+    }
+    vec![g[0] + g[1] * k, g[1]]
+}
+
+#[allow(dead_code)]
+/// L2 norm of polynomial at given skewness: sum c_i^2 * s^{2(i - d/2)}.
+/// Lower is better (smaller norms → higher smoothness probability).
+fn l2_skew_norm(f: &[i64], skewness: f64) -> f64 {
+    let d = f.len() - 1;
+    let half_d = d as f64 / 2.0;
+    let mut sum = 0.0;
+    for (i, &c) in f.iter().enumerate() {
+        let s_pow = skewness.powf(i as f64 - half_d);
+        sum += (c as f64 * s_pow) * (c as f64 * s_pow);
+    }
+    sum
+}
+
+#[allow(dead_code)]
+/// Find the best translation k for a polynomial to balance norms.
+///
+/// For degree d, the ideal translation zeroes c_{d-1}: k_opt = -c_{d-1} / (d * c_d).
+/// We search around that point using the cheap L2 skew-norm as objective.
+fn optimize_translation(
+    f: &[i64],
+    g: &[i64],
+    _bf: f64,
+    _bg: f64,
+    _alpha_bound: u64,
+) -> (Vec<i64>, Vec<i64>, i64) {
+    let d = f.len() - 1;
+    if d < 2 || f[d] == 0 {
+        return (f.to_vec(), g.to_vec(), 0);
+    }
+
+    // Optimal k to zero c_{d-1}
+    let k_center_f = -(f[d - 1] as f64) / (d as f64 * f[d] as f64);
+    let k_center = k_center_f.round() as i64;
+
+    // Narrow search: ±20 around the analytically optimal point.
+    let search_half = 20i64;
+
+    let skew_orig = murphy_e::optimal_skewness(f);
+    let mut best_score = l2_skew_norm(f, skew_orig);
+    let mut best_f = f.to_vec();
+    let mut best_g = g.to_vec();
+    let mut best_k = 0i64;
+
+    for k in (k_center - search_half)..=(k_center + search_half) {
+        if k == 0 {
+            continue;
+        }
+        let f_t = translate_polynomial(f, k);
+        // Overflow check
+        if f_t == f.to_vec() {
+            continue;
+        }
+        let g_t = translate_g(g, k);
+        let skew = murphy_e::optimal_skewness(&f_t);
+        let score = l2_skew_norm(&f_t, skew);
+        if score < best_score {
+            best_score = score;
+            best_f = f_t;
+            best_g = g_t;
+            best_k = k;
+        }
+    }
+
+    (best_f, best_g, best_k)
+}
+
 fn rebuild_poly_with_coeffs(
     original: &PolynomialPair,
     new_f_coeffs: &[i64],
@@ -289,6 +391,30 @@ fn rebuild_poly_with_coeffs(
     let g0: Integer = original.g_coeffs_str[0].parse().unwrap();
     let g1: Integer = original.g_coeffs_str[1].parse().unwrap();
     let m: Integer = original.m_str.parse().unwrap();
+    PolynomialPair::new(&coeffs, &g0, &g1, &m, n)
+}
+
+#[allow(dead_code)]
+/// Build a PolynomialPair from explicit f and g coefficient arrays.
+/// g is linear [g0, g1], m = -g0/g1 (when g1=1, m = -g0).
+fn rebuild_poly_with_g(
+    f_coeffs: &[i64],
+    g_coeffs: &[i64],
+    n: &Integer,
+) -> PolynomialPair {
+    let coeffs: Vec<Integer> = f_coeffs.iter().map(|&c| Integer::from(c)).collect();
+    let g0 = Integer::from(g_coeffs[0]);
+    let g1 = if g_coeffs.len() > 1 {
+        Integer::from(g_coeffs[1])
+    } else {
+        Integer::from(1)
+    };
+    // m = -g0 / g1 (for g1=1, m = -g0)
+    let m = if g1 == 1 {
+        Integer::from(-g_coeffs[0])
+    } else {
+        Integer::from(-g_coeffs[0]) / &g1
+    };
     PolynomialPair::new(&coeffs, &g0, &g1, &m, n)
 }
 
@@ -426,5 +552,100 @@ mod tests {
             m_pow *= &m;
         }
         assert_eq!(val, n, "Best polynomial must satisfy f(m) = N");
+    }
+
+    #[test]
+    fn test_translate_polynomial_identity() {
+        let f = vec![5i64, 3, 1]; // x^2 + 3x + 5
+        let f_t = translate_polynomial(&f, 0);
+        assert_eq!(f_t, f);
+    }
+
+    #[test]
+    fn test_translate_polynomial_quadratic() {
+        // f(x) = x^2 + 3x + 5 = [5, 3, 1], k=2
+        // f(x+2) = (x+2)^2 + 3(x+2) + 5 = x^2 + 7x + 15
+        let f = vec![5i64, 3, 1];
+        let f_t = translate_polynomial(&f, 2);
+        assert_eq!(f_t, vec![15, 7, 1]);
+    }
+
+    #[test]
+    fn test_translate_polynomial_cubic() {
+        // f(x) = x^3 = [0, 0, 0, 1], k=1
+        // f(x+1) = (x+1)^3 = x^3 + 3x^2 + 3x + 1
+        let f = vec![0i64, 0, 0, 1];
+        let f_t = translate_polynomial(&f, 1);
+        assert_eq!(f_t, vec![1, 3, 3, 1]);
+    }
+
+    #[test]
+    fn test_translate_polynomial_preserves_evaluation() {
+        // f(x) = 2x^3 - 5x^2 + 3x + 7
+        let f = vec![7i64, 3, -5, 2];
+        let k = 3i64;
+        let f_t = translate_polynomial(&f, k);
+        // f(10) should equal f_t(10 - k) = f_t(7)
+        let eval_f_10: i64 = f.iter().enumerate().map(|(i, &c)| c * 10i64.pow(i as u32)).sum();
+        let eval_ft_7: i64 = f_t.iter().enumerate().map(|(i, &c)| c * 7i64.pow(i as u32)).sum();
+        assert_eq!(eval_f_10, eval_ft_7, "f(10) must equal f_translated(7)");
+    }
+
+    #[test]
+    fn test_translate_g() {
+        let g = vec![-100i64, 1]; // g(x) = x - 100
+        let g_t = translate_g(&g, 5);
+        // g(x+5) = (x+5) - 100 = x - 95
+        assert_eq!(g_t, vec![-95, 1]);
+    }
+
+    #[test]
+    fn test_optimize_translation_improves_or_matches() {
+        let n = Integer::from_str_radix("684217602914977371691118975023", 10).unwrap();
+        let poly = select_polynomial_with_ad(&n, 3, 900).unwrap();
+        let f = poly_to_i64(&poly);
+        let g = g_to_i64(&poly);
+        let bf = 30000.0;
+        let bg = 30000.0;
+
+        let skew_before = murphy_e::optimal_skewness(&f);
+        let e_before = murphy_e::murphy_e(&f, &g, skew_before, bf, bg, 200);
+
+        let (f_opt, g_opt, _k) = optimize_translation(&f, &g, bf, bg, 200);
+        let skew_after = murphy_e::optimal_skewness(&f_opt);
+        let e_after = murphy_e::murphy_e(&f_opt, &g_opt, skew_after, bf, bg, 200);
+
+        assert!(
+            e_after >= e_before * 0.99,
+            "Translation should not significantly worsen E: {:.6e} -> {:.6e}",
+            e_before,
+            e_after
+        );
+    }
+
+    #[test]
+    fn test_translated_polynomial_satisfies_fm_eq_n() {
+        let n = Integer::from_str_radix("684217602914977371691118975023", 10).unwrap();
+        let poly = select_polynomial_with_ad(&n, 3, 900).unwrap();
+        let f = poly_to_i64(&poly);
+        let g = g_to_i64(&poly);
+
+        let (f_opt, g_opt, _k) = optimize_translation(&f, &g, 30000.0, 30000.0, 200);
+
+        // Verify: the translated polynomial still satisfies Res(f,g) ≡ 0 mod N.
+        // For g(x) = g0 + g1*x with g1=1: f(-g0) should ≡ 0 (mod N).
+        let m_new = -g_opt[0]; // g1=1, so m = -g0
+        let mut val = Integer::from(0);
+        let mut m_pow = Integer::from(1);
+        let m_int = Integer::from(m_new);
+        for &c in &f_opt {
+            val += Integer::from(c) * &m_pow;
+            m_pow *= &m_int;
+        }
+        assert_eq!(
+            Integer::from(&val % &n),
+            0,
+            "Translated f(m') must be 0 mod N"
+        );
     }
 }
