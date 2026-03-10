@@ -10,10 +10,49 @@
 Benchmark: `684217602914977371691118975023` (100-bit semiprime, c30 params).
 5-run averages, Apple M-series, `RAYON_NUM_THREADS=1` for single-threaded.
 
-## Component Breakdown (single-threaded)
+## CADO-NFS Reference (single-threaded c30)
 
-| Stage | Before (baseline) | After | Saved |
-|-------|-------------------|-------|-------|
+CADO-NFS single-threaded timings for the same semiprime:
+
+| Stage | CPU time | Wall time |
+|-------|----------|-----------|
+| Sieve | ~390ms | — |
+| LA (Block Wiedemann) | ~200ms | — |
+| Filter | ~50ms | — |
+| Sqrt | ~30ms | — |
+| **Algorithm total** | **~2149ms** | — |
+| Python orchestration + IPC | — | ~5630ms |
+| **Total wall clock** | — | **~7780ms** |
+
+CADO's wall clock is ~3.6x its CPU time due to Python orchestration overhead
+(process spawning, parameter file I/O, inter-stage serialization). The CPU
+time of 2149ms reflects pure C algorithm performance. CADO's sieve is much
+faster (390ms vs 1566ms) thanks to Kleinjung polynomial selection (Y1 > 1)
+producing ~308 rels/SQ vs our base-m ~12 rels/SQ, but their LA and filter
+are comparable.
+
+## Optimization History
+
+Full journey from initial implementation to CADO parity:
+
+| Milestone | Total (1T) | vs CADO | Key change |
+|-----------|-----------|---------|------------|
+| Initial baseline | ~6917ms | 3.2x slower | Naive sieve, dense GE, no pre-elim |
+| + FK lattice walk | ~4800ms | 2.2x slower | Partial-GCD scatter replaces row-by-row |
+| + SIMD survivor scan | ~4600ms | 2.1x slower | NEON 16-byte vectorized threshold scan |
+| + Pre-elimination (w1-w2) | ~3800ms | 1.8x slower | Singleton + weight-2 merges before GE |
+| + 2LP + sieve_mfb tuning | ~2800ms | 1.3x slower | Two large primes, tight sieve threshold |
+| + Two-phase polyselect | ~2500ms | 1.2x slower | Screen by lognorm+alpha, then Murphy E |
+| + Queue-based filter | ~2400ms | 1.1x slower | O(n) singleton removal |
+| + Weight-3 Markowitz | ~2313ms | 1.08x slower | Phase3 pre-elim, centered coefficients |
+| + Weight-K merges (K=3..10) | **2071ms** | **0.96x (faster)** | Generalized pre-elim, col-rows index |
+
+## This Session's Breakdown
+
+Changes in the final push from 2313ms to 2071ms:
+
+| Stage | Before | After | Saved |
+|-------|--------|-------|-------|
 | Sieve (FK scatter) | 1580ms | 1566ms | 14ms |
 | Linear Algebra | 341ms | 242ms | 99ms |
 | Square Root | 194ms | 60ms | 134ms |
