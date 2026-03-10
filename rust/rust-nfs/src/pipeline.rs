@@ -1983,6 +1983,98 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         (intersection, union)
     }
 
+    // Parallel first batch: try the first N deps simultaneously before
+    // entering the sequential diversity-aware scheduler. In MT mode this
+    // exploits available cores to cut sqrt latency when a factor is found
+    // within the first few attempts (the common case for c30).
+    let par_sqrt_batch = std::env::var("RUST_NFS_SQRT_PAR_BATCH")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(rayon::current_num_threads().min(8).max(1));
+    if par_sqrt_batch > 1 && !untried_pool.is_empty() && result.factor.is_none() {
+        let batch_size = par_sqrt_batch.min(untried_pool.len()).min(max_deps_to_try);
+        // Take the first batch_size candidates (already sorted by weight)
+        let batch_indices: Vec<usize> = untried_pool.iter().take(batch_size)
+            .filter(|&&idx| {
+                let cand = &useful_deps[idx];
+                let exp_len = cand.expanded.as_ref().map(|e| e.len()).unwrap_or(0);
+                exp_len >= degree
+            })
+            .copied()
+            .collect();
+        if batch_indices.len() > 1 {
+            use rayon::prelude::*;
+            use std::sync::atomic::{AtomicBool, Ordering};
+            let found = AtomicBool::new(false);
+            let batch_results: Vec<(usize, Option<Integer>, Option<gnfs::sqrt::FactorFailure>)> =
+                batch_indices.par_iter()
+                    .filter_map(|&cand_idx| {
+                        if found.load(Ordering::Relaxed) {
+                            return None;
+                        }
+                        let cand = &useful_deps[cand_idx];
+                        let dep_expanded = cand.expanded.as_deref()?;
+                        let (factor_opt, failure) = gnfs::sqrt::extract_factor_diagnostic_fast(
+                            &gnfs_rels,
+                            dep_expanded,
+                            &f_coeffs_big,
+                            &m_big,
+                            n,
+                            &rat_fb.primes,
+                        );
+                        if factor_opt.is_some() {
+                            found.store(true, Ordering::Relaxed);
+                        }
+                        Some((cand_idx, factor_opt, failure))
+                    })
+                    .collect();
+
+            // Process results in order
+            let mut batch_found = false;
+            for (cand_idx, factor_opt, failure) in &batch_results {
+                deps_tried += 1;
+                // Remove from pool
+                if let Some(pos) = untried_pool.iter().position(|&x| x == *cand_idx) {
+                    untried_pool.swap_remove(pos);
+                }
+                if let Some(ref factor) = factor_opt {
+                    if Integer::from(n % factor) == 0 && *factor > 1 && *factor < *n {
+                        result.factor = Some(factor.to_string());
+                        result.sqrt_attempts_tried = deps_tried;
+                        result.sqrt_factor_attempt = Some(deps_tried);
+                        result.sqrt_ms = sqrt_start.elapsed().as_secs_f64() * 1000.0;
+                        eprintln!(
+                            "  sqrt: factor found in parallel batch ({} deps tried) in {:.0}ms: {}",
+                            deps_tried,
+                            result.sqrt_ms,
+                            result.factor.as_ref().unwrap()
+                        );
+                        batch_found = true;
+                        break;
+                    }
+                }
+                match failure {
+                    Some(gnfs::sqrt::FactorFailure::RationalNotSquare) => {
+                        fail_rat_not_square += 1;
+                    }
+                    Some(gnfs::sqrt::FactorFailure::AlgebraicNotSquare) => {
+                        fail_alg_not_square += 1;
+                    }
+                    Some(gnfs::sqrt::FactorFailure::TrivialGcd) => {
+                        fail_trivial_gcd += 1;
+                    }
+                    None => {}
+                }
+            }
+            if batch_found {
+                // Skip the main tier loop
+                result.sqrt_fail_rat_not_square = fail_rat_not_square;
+                result.sqrt_fail_alg_not_square = fail_alg_not_square;
+                result.sqrt_fail_trivial_gcd = fail_trivial_gcd;
+            }
+        }
+    }
+
     // Outer loop replaces dep_len_tiers: we pick the best dep out of all allowed by tiers
     for (tier_idx, tier_cap) in dep_len_tiers.iter().enumerate() {
         if deps_tried >= max_deps_to_try || result.factor.is_some() {
