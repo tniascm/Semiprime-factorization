@@ -736,7 +736,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(30usize);
-    let quad_chars = gnfs::arith::select_quad_char_primes(&f_coeffs_i64, &gnfs_fb.primes, qc_count);
+    let quad_chars = select_quad_char_primes_fast(&f_coeffs_i64, &gnfs_fb.primes, qc_count);
     let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
@@ -2400,6 +2400,61 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         eprintln!("  timing-json: {}", timings.to_json());
     }
     result
+}
+
+/// Fast quadratic character prime selection using Cantor-Zassenhaus root finding.
+///
+/// Replaces `gnfs::arith::select_quad_char_primes` which uses O(p) brute-force
+/// root finding and sieves all primes to 1M. This version:
+/// 1. Starts searching from above the FB max (skips ~3000 FB primes)
+/// 2. Uses Cantor-Zassenhaus O(d² log p) root finding
+/// 3. Uses trial-division primality (p < 50K, so sqrt(p) < 224)
+fn select_quad_char_primes_fast(
+    f_coeffs: &[i64],
+    fb_primes: &[u64],
+    count: usize,
+) -> gnfs::arith::QuadCharSet {
+    if count == 0 {
+        return gnfs::arith::QuadCharSet {
+            primes: Vec::new(),
+            roots: Vec::new(),
+        };
+    }
+
+    let fb_max = fb_primes.last().copied().unwrap_or(2);
+    let mut result = gnfs::arith::QuadCharSet {
+        primes: Vec::with_capacity(count),
+        roots: Vec::with_capacity(count),
+    };
+
+    // Start from the first odd number above fb_max
+    let mut candidate = if fb_max % 2 == 0 { fb_max + 1 } else { fb_max + 2 };
+
+    while result.primes.len() < count {
+        if is_prime_trial(candidate) {
+            let roots = crate::factorbase::find_roots_mod_p(f_coeffs, candidate);
+            if !roots.is_empty() {
+                result.primes.push(candidate);
+                result.roots.push(roots[0]);
+            }
+        }
+        candidate += 2;
+    }
+
+    result
+}
+
+/// Simple trial-division primality test, sufficient for p < 10^9.
+fn is_prime_trial(n: u64) -> bool {
+    if n < 2 { return false; }
+    if n < 4 { return true; }
+    if n % 2 == 0 || n % 3 == 0 { return false; }
+    let mut i = 5u64;
+    while i * i <= n {
+        if n % i == 0 || n % (i + 2) == 0 { return false; }
+        i += 6;
+    }
+    true
 }
 
 fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
