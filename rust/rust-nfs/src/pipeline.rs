@@ -24,6 +24,7 @@ pub struct NfsResult {
     pub dependencies_found: usize,
     pub sqrt_attempts_tried: usize,
     pub sqrt_factor_attempt: Option<usize>,
+    pub polyselect_ms: f64,
     pub sieve_ms: f64,
     pub filter_ms: f64,
     pub la_ms: f64,
@@ -221,6 +222,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         .map(|v| v != "basem")
         .unwrap_or(true);
 
+    let polyselect_start = std::time::Instant::now();
     let variant_polys: Vec<(u32, Option<gnfs::types::PolynomialPair>)> = if use_murphy {
         let admax: u64 = std::env::var("RUST_NFS_ADMAX")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(5000);
@@ -240,6 +242,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
     } else {
         (0..max_variants).map(|i| (variant_start + i, None)).collect()
     };
+    let polyselect_ms = polyselect_start.elapsed().as_secs_f64() * 1000.0;
 
     for (try_idx, (variant_id, pre_poly)) in variant_polys.iter().enumerate() {
         if try_idx > 0 {
@@ -248,7 +251,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
                 try_idx + 1, variant_polys.len()
             );
         }
-        let result = factor_nfs_inner(n, params, *variant_id, pre_poly.as_ref());
+        let result = factor_nfs_inner(n, params, *variant_id, pre_poly.as_ref(), polyselect_ms);
         if let Some(logger) = run_logger.as_mut() {
             logger.log_variant(*variant_id, &result);
         }
@@ -435,7 +438,7 @@ impl RunLogger {
 }
 
 /// Inner NFS pipeline with a specific polynomial variant.
-fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Option<&gnfs::types::PolynomialPair>) -> NfsResult {
+fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Option<&gnfs::types::PolynomialPair>, ext_polyselect_ms: f64) -> NfsResult {
     let start = std::time::Instant::now();
     let mut result = NfsResult {
         n: n.to_string(),
@@ -447,6 +450,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         dependencies_found: 0,
         sqrt_attempts_tried: 0,
         sqrt_factor_attempt: None,
+        polyselect_ms: 0.0,
         sieve_ms: 0.0,
         filter_ms: 0.0,
         la_ms: 0.0,
@@ -470,6 +474,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let emit_timing_json = std::env::var("RUST_NFS_TIMING_JSON")
         .map(|v| v == "1").unwrap_or(false);
     let mut timings = PipelineTimings::new();
+    if ext_polyselect_ms > 0.0 {
+        timings.add(StageResult {
+            name: "polyselect".to_string(),
+            total_ms: ext_polyselect_ms,
+            sub_stages: vec![],
+            timed_out: false,
+        });
+    }
+    result.polyselect_ms = ext_polyselect_ms;
     // Suppress unused-variable warnings until timeout checks are wired in.
     let _ = (sieve_timeout_ms, la_timeout_ms, sqrt_timeout_ms, total_timeout_ms);
 
@@ -682,7 +695,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let startup_ms = start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("  startup: FB construction in {:.0}ms", startup_ms);
     timings.add(StageResult {
-        name: "polyselect".to_string(),
+        name: "fb_init".to_string(),
         total_ms: startup_ms,
         sub_stages: vec![],
         timed_out: false,
@@ -2323,6 +2336,7 @@ fn fallback_result(n: &Integer, factor: Integer, total_ms: f64) -> NfsResult {
         dependencies_found: 0,
         sqrt_attempts_tried: 0,
         sqrt_factor_attempt: None,
+        polyselect_ms: 0.0,
         sieve_ms: 0.0,
         filter_ms: 0.0,
         la_ms: 0.0,
