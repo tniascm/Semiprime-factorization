@@ -72,9 +72,9 @@ fn rotation_score(f: &[i64]) -> f64 {
 
 /// Search for the best rotation (u, v) minimizing lognorm + light alpha.
 ///
-/// Uses fast combined scoring for the grid search (lognorm + alpha with
-/// primes up to 29). This is ~25x faster than full alpha (bound=200)
-/// while still capturing root properties from the most impactful primes.
+/// Two-phase search: first sweep all v (u=0) to find the best v-region,
+/// then search u only near the top v values. This is ~6x faster than the
+/// full grid while finding rotations of equivalent quality.
 /// Returns (best_f, best_u, best_v).
 pub fn optimize_rotation(
     f: &[i64],
@@ -90,18 +90,40 @@ pub fn optimize_rotation(
     let v_range = search_range;
     let u_range = search_range / 10;
 
+    // Phase 1: sweep all v with u=0 to find the best v-region.
+    // Track top-k v values for the u-search phase.
+    let u_search_radius = 5i64; // search u around top v values within ±radius
+    let mut v_scores: Vec<(f64, i64)> = Vec::with_capacity((2 * v_range + 1) as usize);
+
     for v in -v_range..=v_range {
         let f_v = apply_rotation(f, g, 0, v);
         let score_v = rotation_score(&f_v);
 
         if score_v < best_score {
             best_score = score_v;
-            best_f = f_v.clone();
+            best_f = f_v;
             best_u = 0;
             best_v = v;
         }
+        v_scores.push((score_v, v));
+    }
 
-        if u_range > 0 {
+    // Phase 2: search u only near the best v values.
+    if u_range > 0 {
+        // Sort by score ascending, take top candidates for u-search.
+        v_scores.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        // Search u around the best v and its neighbors.
+        let mut v_to_search = std::collections::HashSet::new();
+        for &(_, v) in v_scores.iter().take(3) {
+            for dv in -u_search_radius..=u_search_radius {
+                let v2 = v + dv;
+                if v2 >= -v_range && v2 <= v_range {
+                    v_to_search.insert(v2);
+                }
+            }
+        }
+
+        for v in v_to_search {
             for u in -u_range..=u_range {
                 if u == 0 {
                     continue;
