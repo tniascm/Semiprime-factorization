@@ -1176,7 +1176,7 @@ pub fn find_dependencies_with_preelim_max(
     // instead of O(history_len) HashSet operations per dependency.
     let map_start = std::time::Instant::now();
     let ge_histories_br: Vec<BitRow> = ge_rows
-        .iter()
+        .par_iter()
         .map(|&r| {
             let mut br = BitRow::new(nrows);
             for &idx in &history[r] {
