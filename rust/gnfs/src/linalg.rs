@@ -295,81 +295,100 @@ pub fn randomize_dependencies(
         })
         .collect();
 
-    let mut all_deps = basis_deps.to_vec();
-    // Track seen deps via hash for O(1) dedup instead of O(n) linear scan
-    let mut seen_hashes: HashSet<u64> = HashSet::with_capacity(n + n_random);
-    for br in &basis_bits {
-        let mut h = 0xcbf29ce484222325u64; // FNV-1a offset basis
-        for &w in &br.bits {
-            h ^= w;
-            h = h.wrapping_mul(0x100000001b3); // FNV prime
-        }
-        seen_hashes.insert(h);
-    }
-    let mut rng_state = seed;
     // Important: never choose all basis vectors every time, otherwise for small
     // nullspaces (n <= k) randomization collapses to one repeated dependency.
     let k_eff = k.clamp(2, n - 1);
 
-    // Reusable buffer for XOR combination
-    let mut combined = BitRow::new(universe);
+    // Parallel generation: split work into chunks with distinct seeds.
+    // Each chunk generates candidates independently, then we dedup globally.
+    let n_chunks = rayon::current_num_threads().max(1);
+    let chunk_size = (n_random + n_chunks - 1) / n_chunks;
 
-    for _ in 0..n_random {
-        // Simple LCG for deterministic PRNG.
-        // Randomize subset size in [2, k_eff] to increase diversity.
-        rng_state = rng_state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        let target_k = if k_eff > 2 {
-            2 + ((rng_state >> 17) as usize % (k_eff - 1))
-        } else {
-            2
-        };
-
-        // Choose target_k distinct basis indices
-        let mut chosen_count = 0usize;
-        let mut chosen_mask = BitRow::new(n);
-        while chosen_count < target_k {
-            rng_state = rng_state
+    let chunk_results: Vec<Vec<(u64, Vec<usize>)>> = (0..n_chunks)
+        .into_par_iter()
+        .map(|chunk_idx| {
+            let chunk_start = chunk_idx * chunk_size;
+            let chunk_end = (chunk_start + chunk_size).min(n_random);
+            if chunk_start >= n_random {
+                return Vec::new();
+            }
+            // Derive per-chunk seed from global seed + chunk index
+            let mut rng_state = seed
                 .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            let idx = (rng_state >> 33) as usize % n;
-            if !chosen_mask.get(idx) {
-                chosen_mask.set(idx);
-                chosen_count += 1;
-            }
-        }
+                .wrapping_add(chunk_idx as u64 * 0x9e3779b97f4a7c15);
 
-        // XOR of the chosen basis vectors using BitRow — O(nwords) per XOR
-        for w in combined.bits.iter_mut() {
-            *w = 0;
-        }
-        for (basis_idx, basis_br) in basis_bits.iter().enumerate() {
-            if chosen_mask.get(basis_idx) {
-                combined.xor_with(basis_br);
-            }
-        }
+            let mut results = Vec::with_capacity(chunk_end - chunk_start);
+            let mut combined = BitRow::new(universe);
 
-        // Count set bits to check >= 3
-        let popcount: u32 = combined.bits.iter().map(|w| w.count_ones()).sum();
-        if popcount >= 3 {
-            // Hash-based dedup: O(1) instead of O(n) linear scan
-            let mut h = 0xcbf29ce484222325u64;
-            for &w in &combined.bits {
-                h ^= w;
-                h = h.wrapping_mul(0x100000001b3);
-            }
-            if seen_hashes.insert(h) {
-                // Extract indices from BitRow
-                let mut dep = Vec::with_capacity(popcount as usize);
-                for (wi, &word) in combined.bits.iter().enumerate() {
-                    let mut w = word;
-                    while w != 0 {
-                        let bit = w.trailing_zeros();
-                        dep.push(wi * 64 + bit as usize);
-                        w &= w - 1;
+            for _ in chunk_start..chunk_end {
+                rng_state = rng_state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                let target_k = if k_eff > 2 {
+                    2 + ((rng_state >> 17) as usize % (k_eff - 1))
+                } else {
+                    2
+                };
+
+                let mut chosen_count = 0usize;
+                let mut chosen_mask = BitRow::new(n);
+                while chosen_count < target_k {
+                    rng_state = rng_state
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    let idx = (rng_state >> 33) as usize % n;
+                    if !chosen_mask.get(idx) {
+                        chosen_mask.set(idx);
+                        chosen_count += 1;
                     }
                 }
+
+                for w in combined.bits.iter_mut() {
+                    *w = 0;
+                }
+                for (basis_idx, basis_br) in basis_bits.iter().enumerate() {
+                    if chosen_mask.get(basis_idx) {
+                        combined.xor_with(basis_br);
+                    }
+                }
+
+                let popcount: u32 = combined.bits.iter().map(|w| w.count_ones()).sum();
+                if popcount >= 3 {
+                    let mut h = 0xcbf29ce484222325u64;
+                    for &w in &combined.bits {
+                        h ^= w;
+                        h = h.wrapping_mul(0x100000001b3);
+                    }
+                    let mut dep = Vec::with_capacity(popcount as usize);
+                    for (wi, &word) in combined.bits.iter().enumerate() {
+                        let mut w = word;
+                        while w != 0 {
+                            let bit = w.trailing_zeros();
+                            dep.push(wi * 64 + bit as usize);
+                            w &= w - 1;
+                        }
+                    }
+                    results.push((h, dep));
+                }
+            }
+            results
+        })
+        .collect();
+
+    // Merge: dedup across all chunks using hash set
+    let mut all_deps = basis_deps.to_vec();
+    let mut seen_hashes: HashSet<u64> = HashSet::with_capacity(n + n_random);
+    for br in &basis_bits {
+        let mut h = 0xcbf29ce484222325u64;
+        for &w in &br.bits {
+            h ^= w;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        seen_hashes.insert(h);
+    }
+    for chunk in chunk_results {
+        for (h, dep) in chunk {
+            if seen_hashes.insert(h) {
                 all_deps.push(dep);
             }
         }
