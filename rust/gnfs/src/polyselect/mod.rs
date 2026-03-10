@@ -6,6 +6,7 @@ pub use alpha::murphy_alpha;
 
 use crate::arith::nth_root;
 use crate::types::PolynomialPair;
+use rayon::prelude::*;
 use rug::ops::Pow;
 use rug::Integer;
 
@@ -226,7 +227,7 @@ pub fn select_best_polynomial(
     // Phase 1: Score all candidates by (lognorm + alpha) — no rotation.
     //   Alpha (root properties) is cheap; rotation is expensive.
     // Phase 2: Full rotation + Murphy E for top candidates only.
-    let phase2_keep = 100.max(nrkeep * 10);
+    let phase2_keep = 50.max(nrkeep * 10);
     let mut phase1: Vec<(f64, Vec<i64>, Vec<i64>, PolynomialPair)> = Vec::new();
 
     // Monic variants
@@ -242,20 +243,23 @@ pub fn select_best_polynomial(
         phase1.push((score, f_i64, g_i64, poly));
     }
 
-    // Non-monic: sweep ad values
-    let mut ad = incr;
-    while ad <= admax {
-        if let Some(poly) = select_polynomial_with_ad(n, degree, ad) {
+    // Non-monic: sweep ad values (parallel)
+    let ad_values: Vec<u64> = (1..=admax / incr).map(|i| i * incr).collect();
+    let nonmonic: Vec<_> = ad_values
+        .par_iter()
+        .filter_map(|&ad| {
+            let poly = select_polynomial_with_ad(n, degree, ad)?;
             let f_i64 = poly_to_i64(&poly);
             let g_i64 = g_to_i64(&poly);
-            if !f_i64.is_empty() {
-                let skew = murphy_e::optimal_skewness(&f_i64);
-                let score = combined_size_score(&f_i64, skew, alpha_bound);
-                phase1.push((score, f_i64, g_i64, poly));
+            if f_i64.is_empty() {
+                return None;
             }
-        }
-        ad += incr;
-    }
+            let skew = murphy_e::optimal_skewness(&f_i64);
+            let score = combined_size_score(&f_i64, skew, alpha_bound);
+            Some((score, f_i64, g_i64, poly))
+        })
+        .collect();
+    phase1.extend(nonmonic);
 
     let total_candidates = phase1.len();
 
@@ -265,32 +269,34 @@ pub fn select_best_polynomial(
         phase1.truncate(phase2_keep);
     }
 
-    // Phase 2: Full rotation + Murphy E
-    let mut candidates: Vec<(f64, PolynomialPair)> = Vec::new();
+    // Phase 2: Full rotation + Murphy E (parallel)
+    let candidates: Vec<(f64, PolynomialPair)> = phase1
+        .par_iter()
+        .map(|(_, f_i64, g_i64, poly)| {
+            let is_monic = f_i64.last().map(|&c| c == 1).unwrap_or(false);
 
-    for (_, f_i64, g_i64, poly) in &phase1 {
-        let is_monic = f_i64.last().map(|&c| c == 1).unwrap_or(false);
+            let final_f = if !is_monic && rotation_range > 0 && g_i64.len() == 2 {
+                let (rotated, _, _) =
+                    rotation::optimize_rotation(f_i64, g_i64, rotation_range, alpha_bound);
+                rotated
+            } else {
+                f_i64.clone()
+            };
 
-        let final_f = if !is_monic && rotation_range > 0 && g_i64.len() == 2 {
-            let (rotated, _, _) =
-                rotation::optimize_rotation(f_i64, g_i64, rotation_range, alpha_bound);
-            rotated
-        } else {
-            f_i64.clone()
-        };
+            let skew = murphy_e::optimal_skewness(&final_f);
+            let e = murphy_e::murphy_e(&final_f, g_i64, skew, bf, bg, alpha_bound);
 
-        let skew = murphy_e::optimal_skewness(&final_f);
-        let e = murphy_e::murphy_e(&final_f, g_i64, skew, bf, bg, alpha_bound);
-
-        let final_poly = if !is_monic {
-            rebuild_poly_with_coeffs(poly, &final_f, n)
-        } else {
-            poly.clone()
-        };
-        candidates.push((e, final_poly));
-    }
+            let final_poly = if !is_monic {
+                rebuild_poly_with_coeffs(poly, &final_f, n)
+            } else {
+                poly.clone()
+            };
+            (e, final_poly)
+        })
+        .collect();
 
     // Sort by Murphy E (descending — higher is better)
+    let mut candidates = candidates;
     candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     candidates.truncate(nrkeep);
 
