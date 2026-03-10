@@ -206,11 +206,11 @@ pub fn find_dependencies_max(
         // Use split_at_mut to borrow pivot immutably while mutating lower rows,
         // avoiding per-pivot clone of pivot_data and pivot_hist.
         let remaining = nrows - pivot_row - 1;
-        if remaining > 128 {
-            let (upper_m, lower_m) = matrix.split_at_mut(pivot_row + 1);
-            let (upper_h, lower_h) = history.split_at_mut(pivot_row + 1);
-            let pivot_data = &upper_m[pivot_row];
-            let pivot_hist = &upper_h[pivot_row];
+        let (upper_m, lower_m) = matrix.split_at_mut(pivot_row + 1);
+        let (upper_h, lower_h) = history.split_at_mut(pivot_row + 1);
+        let pivot_data = &upper_m[pivot_row];
+        let pivot_hist = &upper_h[pivot_row];
+        if remaining > 128 && rayon::current_num_threads() > 1 {
             lower_m
                 .par_iter_mut()
                 .zip(lower_h.par_iter_mut())
@@ -221,12 +221,10 @@ pub fn find_dependencies_max(
                     }
                 });
         } else {
-            let pivot_data = matrix[pivot_row].clone();
-            let pivot_hist = history[pivot_row].clone();
-            for r in (pivot_row + 1)..nrows {
-                if matrix[r].get(col) {
-                    matrix[r].xor_with(&pivot_data);
-                    history[r].xor_with(&pivot_hist);
+            for (row, hist) in lower_m.iter_mut().zip(lower_h.iter_mut()) {
+                if row.get(col) {
+                    row.xor_with(pivot_data);
+                    hist.xor_with(pivot_hist);
                 }
             }
         }
