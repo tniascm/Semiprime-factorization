@@ -101,7 +101,48 @@ log_i=8, sieve_width=512, max_j=256
 bucket_thresh=256, qmin=50000, qrange=1000
 ```
 
-## Remaining Gaps
+## Scaling: c45 and c60 Readiness
+
+| Aspect | c30 | c45 | c60 |
+|--------|-----|-----|-----|
+| Parameters defined | Yes | Yes | No (falls back to c45) |
+| Sieve tested | Yes | Yes | No |
+| LA (dense GE) | Yes | Yes | Yes (up to ~20k rows) |
+| LA (Block Wiedemann) | Yes | Yes | Yes (auto above 20k rows) |
+| Cofactoring (u128) | N/A | Yes | Yes |
+| Full pipeline success | High | Partial | Untested |
+
+### c45: Works, polynomial quality issue
+
+Parameters tuned (degree=4, lim0=55k, lim1=65k, lpb0=18, lpb1=19, log_i=10).
+Benchmark on 148-bit semiprime: ~61s total (56.9s sieve, 3.5s LA, 1.2s sqrt).
+All subsystems functional. Known issue: some polynomial variants hit 200
+trivial GCDs in sqrt — a poly selection quality problem, not infrastructure.
+
+### c60: Infrastructure ready, needs setup
+
+- No `c60()` parameter set — defaults to c45 (degree 4 vs needed 5-6)
+- Block Wiedemann implemented and auto-activates above 20k rows
+- u128 cofactoring handles larger algebraic norms
+- Would run but with wrong polynomial degree and untuned sieve area
+
+**To enable c60:**
+1. Add `c60()` to `params.rs` (degree 5-6, lim ~200k+, lpb 22-24, log_i 11-12)
+2. Validate polynomial selection for degree 5-6
+3. Test and benchmark full pipeline
+
+### Optimizations are size-independent
+
+All key optimizations scale to any input size — none are c30-specific:
+
+- FK lattice walk: parameterized by sieve_width/half_i
+- Pre-elimination (phases 1-4): driven by matrix structure, not input size
+- 2LP merge + sieve_mfb tuning: ratio-based (2/3 of mfb)
+- Block Wiedemann: sparse SpMV, O(n²) for large matrices
+- SIMD survivor scan: operates on any sieve region size
+- Queue-based filter: O(n) regardless of relation count
+
+## Remaining Gaps (c30)
 
 - **Polynomial quality**: Base-m with Y1=1 yields ~12 rels/SQ vs CADO's Kleinjung (Y1>1) ~308 rels/SQ. Compensated by 2LP but produces larger matrices.
 - **Scatter phase**: 1566ms (75% of sieve) is still the dominant cost. FK walk is efficient but per-prime partial-GCD overhead adds up for ~6000 large primes per SQ.
