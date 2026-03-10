@@ -775,7 +775,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v > 0.0)
-        .unwrap_or(0.25f64);
+        .unwrap_or(1.0f64);
     let rel_target_min = std::env::var("RUST_NFS_REL_TARGET_MIN")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
