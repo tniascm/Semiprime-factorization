@@ -172,6 +172,9 @@ pub fn precompute_small_sieve_alg(
 /// `start = (root_i * j_unsigned) mod p`. We then stride at step `p`,
 /// subtracting `logp` at each hit using saturating subtraction (no underflow).
 ///
+/// On aarch64, tiny primes (p ≤ 7) use NEON SIMD (16 bytes/op) for ~8-16x speedup
+/// since these primes produce the most hits per region.
+///
 /// The `region_start` and `region_len` parameters allow sieving a sub-region of the
 /// full sieve row (useful when the sieve is processed in bucket-sized chunks).
 /// The `sieve` slice corresponds to positions `[region_start, region_start + region_len)`.
@@ -212,6 +215,15 @@ pub fn small_sieve_region(
             let steps = (gap + p - 1) / p;
             start_in_row + steps * p
         };
+
+        let local_start = first_hit.saturating_sub(region_start);
+
+        // Use SIMD for tiny primes (p <= 7) on aarch64.
+        #[cfg(target_arch = "aarch64")]
+        if p <= 7 {
+            small_sieve_simd(sieve, p, logp, local_start, region_len);
+            continue;
+        }
 
         // Stride through the region using unchecked access (hot path).
         let mut pos = first_hit;
