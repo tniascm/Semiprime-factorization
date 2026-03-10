@@ -42,23 +42,6 @@ pub fn apply_bucket_updates(sieve: &mut [u8], updates: &[BucketUpdate]) {
     }
 }
 
-/// Apply updates from a `SingleBucketVec` to a sieve array.
-///
-/// Each update is `(global_pos, logp)` where `global_pos` indexes directly
-/// into the sieve array. This avoids the packed-struct field extraction and
-/// bucket-position masking of the multi-bucket path.
-#[inline(always)]
-pub fn apply_single_bucket_updates(sieve: &mut [u8], updates: &[(u32, u8)]) {
-    for &(pos, logp) in updates {
-        let pos = pos as usize;
-        debug_assert!(pos < sieve.len());
-        unsafe {
-            let cell = sieve.get_unchecked_mut(pos);
-            *cell = cell.saturating_sub(logp);
-        }
-    }
-}
-
 /// Scan sieve arrays for survivors.
 ///
 /// A survivor is a position where BOTH rational and algebraic sieve values
@@ -240,48 +223,6 @@ mod tests {
         let updates = vec![BucketUpdate { pos: 3, logp: 20 }];
         apply_bucket_updates(&mut sieve, &updates);
         assert_eq!(sieve[3], 0); // saturates at 0, doesn't wrap
-    }
-
-    #[test]
-    fn test_apply_single_bucket_updates() {
-        let mut sieve = vec![100u8; 10];
-        let updates: Vec<(u32, u8)> = vec![(2, 10), (5, 20), (2, 15)];
-        apply_single_bucket_updates(&mut sieve, &updates);
-        assert_eq!(sieve[2], 75); // 100 - 10 - 15
-        assert_eq!(sieve[5], 80); // 100 - 20
-        assert_eq!(sieve[0], 100); // untouched
-    }
-
-    #[test]
-    fn test_apply_single_bucket_updates_saturates() {
-        let mut sieve = vec![5u8; 10];
-        let updates: Vec<(u32, u8)> = vec![(3, 20)];
-        apply_single_bucket_updates(&mut sieve, &updates);
-        assert_eq!(sieve[3], 0); // saturates at 0, doesn't wrap
-    }
-
-    #[test]
-    fn test_single_bucket_matches_multi_bucket() {
-        // Apply the same updates via both paths and verify identical results.
-        let mut sieve_multi = vec![200u8; 20];
-        let mut sieve_single = vec![200u8; 20];
-
-        let bucket_updates = vec![
-            BucketUpdate { pos: 0, logp: 10 },
-            BucketUpdate { pos: 5, logp: 30 },
-            BucketUpdate { pos: 12, logp: 15 },
-            BucketUpdate { pos: 5, logp: 25 },
-            BucketUpdate { pos: 19, logp: 50 },
-        ];
-        let single_updates: Vec<(u32, u8)> = bucket_updates
-            .iter()
-            .map(|u| (u.position() as u32, u.log_prime()))
-            .collect();
-
-        apply_bucket_updates(&mut sieve_multi, &bucket_updates);
-        apply_single_bucket_updates(&mut sieve_single, &single_updates);
-
-        assert_eq!(sieve_multi, sieve_single);
     }
 
     #[test]
