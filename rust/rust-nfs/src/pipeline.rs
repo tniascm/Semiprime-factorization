@@ -10,6 +10,7 @@ use rug::ops::Pow;
 use rug::Integer;
 
 use crate::params::NfsParams;
+use crate::timing::{PipelineTimings, StageResult};
 
 /// Result of the full NFS pipeline.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -458,6 +459,21 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         viability: ViabilityStats::default(),
     };
 
+    // --- Observability: timeout and timing configuration ---
+    let sieve_timeout_ms: Option<u64> = std::env::var("RUST_NFS_SIEVE_TIMEOUT_MS")
+        .ok().and_then(|s| s.parse().ok());
+    let la_timeout_ms: Option<u64> = std::env::var("RUST_NFS_LA_TIMEOUT_MS")
+        .ok().and_then(|s| s.parse().ok());
+    let sqrt_timeout_ms: Option<u64> = std::env::var("RUST_NFS_SQRT_TIMEOUT_MS")
+        .ok().and_then(|s| s.parse().ok());
+    let total_timeout_ms: Option<u64> = std::env::var("RUST_NFS_TOTAL_TIMEOUT_MS")
+        .ok().and_then(|s| s.parse().ok());
+    let emit_timing_json = std::env::var("RUST_NFS_TIMING_JSON")
+        .map(|v| v == "1").unwrap_or(false);
+    let mut timings = PipelineTimings::new();
+    // Suppress unused-variable warnings until timeout checks are wired in.
+    let _ = (sieve_timeout_ms, la_timeout_ms, sqrt_timeout_ms, total_timeout_ms);
+
     // Optional runtime parameter overrides for reproducible tuning experiments.
     let mut params = params.clone();
     let partial_merge_2lp = std::env::var("RUST_NFS_PARTIAL_MERGE_2LP")
@@ -666,6 +682,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     }
     let startup_ms = start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("  startup: FB construction in {:.0}ms", startup_ms);
+    timings.add(StageResult {
+        name: "polyselect".to_string(),
+        total_ms: startup_ms,
+        sub_stages: vec![],
+        timed_out: false,
+    });
 
     let mut all_sieve_relations = Vec::new();
     let mut total_sieve_ms = 0.0;
@@ -1077,6 +1099,17 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     }
 
     result.sieve_ms = total_sieve_ms;
+    timings.add(StageResult {
+        name: "sieve".to_string(),
+        total_ms: total_sieve_ms,
+        sub_stages: vec![
+            ("bucket_setup".to_string(), total_bucket_setup_ms),
+            ("region_scan".to_string(), total_region_scan_ms),
+            ("cofactor".to_string(), total_cofactor_ms),
+            ("root_enum".to_string(), total_root_enum_ms),
+        ],
+        timed_out: false,
+    });
     result.relations_found = all_sieve_relations.len();
     result.viability.raw_relations = result.relations_found;
     eprintln!(
@@ -1104,6 +1137,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // --- Stage 3 & 4: Filtering & Linear Algebra ---
     let filtered = final_filtered;
     result.filter_ms = filter_time_ms;
+    timings.add(StageResult {
+        name: "filter".to_string(),
+        total_ms: filter_time_ms,
+        sub_stages: vec![],
+        timed_out: false,
+    });
     result.relations_after_filter = filtered.len();
     result.viability.filtered_relations = filtered.len();
     eprintln!(
@@ -1679,6 +1718,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.deps_found = result.dependencies_found;
 
     result.la_ms = la_start.elapsed().as_secs_f64() * 1000.0;
+    timings.add(StageResult {
+        name: "la".to_string(),
+        total_ms: result.la_ms,
+        sub_stages: vec![],
+        timed_out: false,
+    });
     eprintln!(
         "  LA: {} deps ({} GE used / {} GE total + {} random, xor_k={}, seed={}) in {:.0}ms",
         deps.len(),
@@ -2231,7 +2276,20 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
 
     result.sqrt_attempts_tried = deps_tried;
 
+    // Capture sqrt timing (already set by success or failure path above).
+    timings.add(StageResult {
+        name: "sqrt".to_string(),
+        total_ms: result.sqrt_ms,
+        sub_stages: vec![],
+        timed_out: false,
+    });
+
     result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
+    timings.set_total(result.total_ms);
+    eprintln!("  timing: {}", timings.summary_line());
+    if emit_timing_json {
+        eprintln!("  timing-json: {}", timings.to_json());
+    }
     result
 }
 

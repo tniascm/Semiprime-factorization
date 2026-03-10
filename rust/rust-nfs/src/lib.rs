@@ -10,6 +10,7 @@ pub mod partial_merge;
 pub mod pipeline;
 pub mod relation;
 pub mod sieve;
+pub mod timing;
 
 pub use params::NfsParams;
 pub use relation::Relation;
