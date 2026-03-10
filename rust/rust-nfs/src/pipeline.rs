@@ -1702,11 +1702,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let default_n_random = if sqrt_success_mode {
         ge_deps.len().clamp(4_000, 20_000)
     } else if ge_deps.len() < 200 {
-        4_000
+        2_000
     } else if ge_deps.len() < 1_000 {
-        3_000
-    } else {
         1_000
+    } else {
+        500
     };
     let n_random = std::env::var("RUST_NFS_DEP_RANDOM_COUNT")
         .ok()
@@ -2850,66 +2850,78 @@ fn build_matrix_from_sets_lp_resolved(
     let qc_base = alg_base + alg_pair_count + alg_hd_count;
     let ncols = qc_base + n_qc;
 
-    let mut rel_flip_cols: Vec<Vec<usize>> = Vec::with_capacity(rels.len());
-    for rel in rels {
-        let mut cols: Vec<usize> = Vec::new();
-        if let Some(sq) = rel.special_q {
-            if let Ok(idx) = sq_pairs.binary_search(&sq) {
-                cols.push(idx);
+    use rayon::prelude::*;
+    let rel_flip_cols: Vec<Vec<usize>> = rels
+        .par_iter()
+        .map(|rel| {
+            let mut cols: Vec<usize> = Vec::new();
+            if let Some(sq) = rel.special_q {
+                if let Ok(idx) = sq_pairs.binary_search(&sq) {
+                    cols.push(idx);
+                }
             }
-        }
-        if rel.rational_sign_negative {
-            cols.push(sign_rat_col);
-        }
-        for &(idx, exp) in &rel.rational_factors {
-            if exp % 2 == 1 {
-                cols.push(rat_base + idx as usize);
+            if rel.rational_sign_negative {
+                cols.push(sign_rat_col);
             }
-        }
-        if rel.algebraic_sign_negative {
-            cols.push(sign_alg_col);
-        }
-        for &(idx, exp) in &rel.algebraic_factors {
-            if exp % 2 == 1 {
-                cols.push(alg_base + idx as usize);
+            for &(idx, exp) in &rel.rational_factors {
+                if exp % 2 == 1 {
+                    cols.push(rat_base + idx as usize);
+                }
             }
-        }
-        for (i, (&q, &r)) in quad_chars
-            .primes
-            .iter()
-            .zip(quad_chars.roots.iter())
-            .enumerate()
-        {
-            let q_i = q as i128;
-            let val = (rel.a as i128 - rel.b as i128 * r as i128).rem_euclid(q_i) as u64;
-            if val == 0 {
-                continue;
+            if rel.algebraic_sign_negative {
+                cols.push(sign_alg_col);
             }
-            let ls = gnfs::arith::legendre_symbol(val, q);
-            if ls == q - 1 {
-                cols.push(qc_base + i);
+            for &(idx, exp) in &rel.algebraic_factors {
+                if exp % 2 == 1 {
+                    cols.push(alg_base + idx as usize);
+                }
             }
-        }
-        rel_flip_cols.push(cols);
-    }
+            for (i, (&q, &r)) in quad_chars
+                .primes
+                .iter()
+                .zip(quad_chars.roots.iter())
+                .enumerate()
+            {
+                let q_i = q as i128;
+                let val = (rel.a as i128 - rel.b as i128 * r as i128).rem_euclid(q_i) as u64;
+                if val == 0 {
+                    continue;
+                }
+                let ls = gnfs::arith::legendre_symbol(val, q);
+                if ls == q - 1 {
+                    cols.push(qc_base + i);
+                }
+            }
+            cols
+        })
+        .collect();
+
+    let results: Vec<Option<(gnfs::types::BitRow, Vec<usize>)>> = set_rows
+        .par_iter()
+        .map(|set| {
+            if set.is_empty() {
+                return None;
+            }
+            let mut row = gnfs::types::BitRow::new(ncols);
+            for &ri in set {
+                if ri >= rel_flip_cols.len() {
+                    continue;
+                }
+                for &col in &rel_flip_cols[ri] {
+                    row.flip(col);
+                }
+            }
+            Some((row, set.clone()))
+        })
+        .collect();
 
     let mut matrix: Vec<gnfs::types::BitRow> = Vec::with_capacity(set_rows.len());
     let mut kept_sets: Vec<Vec<usize>> = Vec::with_capacity(set_rows.len());
-    for set in set_rows {
-        if set.is_empty() {
-            continue;
+    for item in results {
+        if let Some((row, set)) = item {
+            matrix.push(row);
+            kept_sets.push(set);
         }
-        let mut row = gnfs::types::BitRow::new(ncols);
-        for &ri in set {
-            if ri >= rel_flip_cols.len() {
-                continue;
-            }
-            for &col in &rel_flip_cols[ri] {
-                row.flip(col);
-            }
-        }
-        matrix.push(row);
-        kept_sets.push(set.clone());
     }
 
     (matrix, ncols, kept_sets)
@@ -3613,11 +3625,7 @@ fn remap_hybrid(
         .map(|(i, &p)| (p, i))
         .collect();
 
-    let mut result = Vec::with_capacity(relations.len());
-    let mut source_indices = Vec::with_capacity(relations.len());
-    let mut stats = RemapHybridStats::default();
     let mut root_multiplicity_cache = HashMap::<(u64, u64), u8>::new();
-    let mut hensel_lift_cache = HashMap::<(u64, u64, u8), Integer>::new();
 
     for (prime_idx, &p) in gnfs_fb.primes.iter().enumerate() {
         for &r in &gnfs_fb.algebraic_roots[prime_idx] {
@@ -3626,209 +3634,248 @@ fn remap_hybrid(
         }
     }
 
-    for (rel_idx, rel) in relations.iter().enumerate() {
-        // Rational factors are already indexed by rat_fb and can be used as-is.
-        let new_rat_factors = rel.rational_factors.clone();
+    // Process relations in parallel using rayon fold for per-thread hensel caches
+    use rayon::prelude::*;
 
-        // Algebraic factors are indexed by alg_fb prime index. Remap those prime
-        // exponents to gnfs flat (pair/HD) algebraic columns without re-factoring
-        // the full norm (which can overflow u64 for c45).
-        let mut alg_pair_factors: Vec<(u32, u8)> = Vec::new();
-        let mut invalid_reason: Option<&str> = None;
+    type RemapItem = (usize, gnfs::types::Relation);
+    type RemapInvalid = (usize, &'static str, Option<HdResidualSample>);
+    type FoldAcc = (Vec<RemapItem>, Vec<RemapInvalid>, HashMap<(u64, u64, u8), Integer>);
 
-        for &(alg_idx, total_exp) in &rel.algebraic_factors {
-            let prime = match alg_fb.primes.get(alg_idx as usize) {
-                Some(&p) => p,
-                None => {
-                    invalid_reason = Some("bad_fb_idx");
-                    break;
-                }
-            };
+    let (items, invalids, _) = relations
+        .par_iter()
+        .enumerate()
+        .fold(
+            || -> FoldAcc {
+                (Vec::new(), Vec::new(), HashMap::new())
+            },
+            |(mut items, mut invalids, mut hensel_lift_cache), (rel_idx, rel)| {
+                let new_rat_factors = rel.rational_factors.clone();
 
-            let gnfs_pi = match prime_to_gnfs.get(&prime) {
-                Some(&pi) => pi,
-                None => {
-                    stats.skipped_unmapped += 1;
-                    invalid_reason = Some("unmapped");
-                    break;
-                }
-            };
+                let mut alg_pair_factors: Vec<(u32, u8)> = Vec::new();
+                let mut invalid_reason: Option<&'static str> = None;
+                let mut hd_sample: Option<HdResidualSample> = None;
 
-            let roots = &gnfs_fb.algebraic_roots[gnfs_pi];
-            let pair_base = gnfs_fb.pair_offset(gnfs_pi);
+                for &(alg_idx, total_exp) in &rel.algebraic_factors {
+                    let prime = match alg_fb.primes.get(alg_idx as usize) {
+                        Some(&p) => p,
+                        None => {
+                            invalid_reason = Some("bad_fb_idx");
+                            break;
+                        }
+                    };
 
-            let mut root_exp_sum = 0u8;
-            for (root_idx, &r) in roots.iter().enumerate() {
-                let val_i128 = rel.a as i128 - rel.b as i128 * r as i128;
-                let root_mult = root_multiplicity_cache
-                    .get(&(prime, r))
-                    .copied()
-                    .unwrap_or(1);
-                let e = if root_mult == 1 && rel.b % prime != 0 {
-                    p_valuation_a_minus_br_hensel(
-                        rel.a,
-                        rel.b,
-                        prime,
-                        r,
-                        total_exp,
-                        f_coeffs_big,
-                        &mut hensel_lift_cache,
-                    )
-                    .unwrap_or_else(|| p_adic_val_i128(val_i128, prime))
-                } else {
-                    p_adic_val_i128(val_i128, prime)
-                };
-                if e > 0 {
-                    alg_pair_factors.push(((pair_base + root_idx) as u32, e));
-                    root_exp_sum = root_exp_sum.saturating_add(e);
-                }
-            }
+                    let gnfs_pi = match prime_to_gnfs.get(&prime) {
+                        Some(&pi) => pi,
+                        None => {
+                            invalid_reason = Some("unmapped");
+                            break;
+                        }
+                    };
 
-            if root_exp_sum < total_exp {
-                let residual = total_exp - root_exp_sum;
-                let hd_degree = degree.saturating_sub(roots.len());
-                let residual_divisible = hd_degree > 0 && (residual as usize) % hd_degree == 0;
-                let repeated_roots: Vec<u64> = roots
-                    .iter()
-                    .copied()
-                    .filter(|&r| {
-                        root_multiplicity_cache
+                    let roots = &gnfs_fb.algebraic_roots[gnfs_pi];
+                    let pair_base = gnfs_fb.pair_offset(gnfs_pi);
+
+                    let mut root_exp_sum = 0u8;
+                    for (root_idx, &r) in roots.iter().enumerate() {
+                        let val_i128 = rel.a as i128 - rel.b as i128 * r as i128;
+                        let root_mult = root_multiplicity_cache
                             .get(&(prime, r))
                             .copied()
-                            .unwrap_or(1)
-                            > 1
-                    })
-                    .collect();
-                if repeated_roots.len() == 1 {
-                    if let Some(&bad_off) = bad_root_offsets.get(&(prime, repeated_roots[0])) {
-                        let bad_flat_idx = gnfs_fb.algebraic_pair_count()
-                            + gnfs_fb.higher_degree_ideal_count(degree)
-                            + bad_off;
-                        alg_pair_factors.push((bad_flat_idx as u32, residual));
-                        continue;
+                            .unwrap_or(1);
+                        let e = if root_mult == 1 && rel.b % prime != 0 {
+                            p_valuation_a_minus_br_hensel(
+                                rel.a,
+                                rel.b,
+                                prime,
+                                r,
+                                total_exp,
+                                f_coeffs_big,
+                                &mut hensel_lift_cache,
+                            )
+                            .unwrap_or_else(|| p_adic_val_i128(val_i128, prime))
+                        } else {
+                            p_adic_val_i128(val_i128, prime)
+                        };
+                        if e > 0 {
+                            alg_pair_factors.push(((pair_base + root_idx) as u32, e));
+                            root_exp_sum = root_exp_sum.saturating_add(e);
+                        }
                     }
-                }
-                if hd_degree == 0 || !residual_divisible {
-                    // Genuine ideal-decomposition inconsistency: the cofactored
-                    // v_p(F(a,b)) can't be split into first-degree + HD ideals.
-                    // Skip this relation.
-                    if stats.hd_residual_samples.len() < hd_residual_sample_limit {
-                        let root_multiplicities: Vec<u8> = roots
+
+                    if root_exp_sum < total_exp {
+                        let residual = total_exp - root_exp_sum;
+                        let hd_degree = degree.saturating_sub(roots.len());
+                        let residual_divisible = hd_degree > 0 && (residual as usize) % hd_degree == 0;
+                        let repeated_roots: Vec<u64> = roots
                             .iter()
-                            .map(|&r| {
+                            .copied()
+                            .filter(|&r| {
                                 root_multiplicity_cache
                                     .get(&(prime, r))
                                     .copied()
                                     .unwrap_or(1)
+                                    > 1
                             })
                             .collect();
-                        stats.hd_residual_samples.push(HdResidualSample {
-                            a: rel.a,
-                            b: rel.b,
-                            prime,
-                            roots: roots.clone(),
-                            root_multiplicities: root_multiplicities.clone(),
-                            total_exp,
-                            root_exp_sum,
-                            residual,
-                            hd_degree,
-                            has_repeated_root: root_multiplicities.iter().any(|&m| m > 1),
-                            residual_divisible,
-                        });
+                        if repeated_roots.len() == 1 {
+                            if let Some(&bad_off) = bad_root_offsets.get(&(prime, repeated_roots[0])) {
+                                let bad_flat_idx = gnfs_fb.algebraic_pair_count()
+                                    + gnfs_fb.higher_degree_ideal_count(degree)
+                                    + bad_off;
+                                alg_pair_factors.push((bad_flat_idx as u32, residual));
+                                continue;
+                            }
+                        }
+                        if hd_degree == 0 || !residual_divisible {
+                            if hd_residual_sample_limit > 0 {
+                                let root_multiplicities: Vec<u8> = roots
+                                    .iter()
+                                    .map(|&r| {
+                                        root_multiplicity_cache
+                                            .get(&(prime, r))
+                                            .copied()
+                                            .unwrap_or(1)
+                                    })
+                                    .collect();
+                                hd_sample = Some(HdResidualSample {
+                                    a: rel.a,
+                                    b: rel.b,
+                                    prime,
+                                    roots: roots.clone(),
+                                    root_multiplicities: root_multiplicities.clone(),
+                                    total_exp,
+                                    root_exp_sum,
+                                    residual,
+                                    hd_degree,
+                                    has_repeated_root: root_multiplicities.iter().any(|&m| m > 1),
+                                    residual_divisible,
+                                });
+                            }
+                            invalid_reason = Some("hd_residual");
+                            break;
+                        }
+
+                        let hd_exp = (residual as usize / hd_degree) as u8;
+                        match gnfs_fb.hd_offset(gnfs_pi, degree) {
+                            Some(hd_off) => {
+                                let hd_flat_idx = gnfs_fb.algebraic_pair_count() + hd_off;
+                                alg_pair_factors.push((hd_flat_idx as u32, hd_exp));
+                            }
+                            None => {
+                                invalid_reason = Some("hd_offset_missing");
+                                break;
+                            }
+                        }
                     }
-                    invalid_reason = Some("hd_residual");
-                    break;
                 }
 
-                let hd_exp = (residual as usize / hd_degree) as u8;
-                match gnfs_fb.hd_offset(gnfs_pi, degree) {
-                    Some(hd_off) => {
-                        let hd_flat_idx = gnfs_fb.algebraic_pair_count() + hd_off;
-                        alg_pair_factors.push((hd_flat_idx as u32, hd_exp));
-                    }
-                    None => {
-                        invalid_reason = Some("hd_offset_missing");
-                        break;
-                    }
+                if let Some(reason) = invalid_reason {
+                    invalids.push((rel_idx, reason, hd_sample));
+                    return (items, invalids, hensel_lift_cache);
                 }
-            }
-        }
 
-        if let Some(reason) = invalid_reason {
-            match reason {
-                "bad_fb_idx" => stats.invalid_bad_fb_idx += 1,
-                "unmapped" => {}
-                "hd_residual" => stats.invalid_hd_residual += 1,
-                "hd_offset_missing" => stats.invalid_hd_offset_missing += 1,
-                "root_exp_zero" => stats.invalid_root_exp_zero += 1,
-                _ => {}
-            }
-            continue;
-        }
-
-        let (rat_lp, alg_lp) = if !rel.lp_keys.is_empty() {
-            let mut rat_lps: Vec<u64> = Vec::new();
-            let mut alg_lps: Vec<(u64, u64)> = Vec::new();
-            for key in &rel.lp_keys {
-                match *key {
-                    crate::lp_key::LpKey::Rational(p) => rat_lps.push(p),
-                    crate::lp_key::LpKey::Algebraic(p, r) => alg_lps.push((p, r)),
-                }
-            }
-            rat_lps.sort_unstable();
-            rat_lps.dedup();
-            alg_lps.sort_unstable();
-            alg_lps.dedup();
-            (
-                if rat_lps.len() == 1 {
-                    Some(rat_lps[0])
+                let (rat_lp, alg_lp) = if !rel.lp_keys.is_empty() {
+                    let mut rat_lps: Vec<u64> = Vec::new();
+                    let mut alg_lps: Vec<(u64, u64)> = Vec::new();
+                    for key in &rel.lp_keys {
+                        match *key {
+                            crate::lp_key::LpKey::Rational(p) => rat_lps.push(p),
+                            crate::lp_key::LpKey::Algebraic(p, r) => alg_lps.push((p, r)),
+                        }
+                    }
+                    rat_lps.sort_unstable();
+                    rat_lps.dedup();
+                    alg_lps.sort_unstable();
+                    alg_lps.dedup();
+                    (
+                        if rat_lps.len() == 1 {
+                            Some(rat_lps[0])
+                        } else {
+                            None
+                        },
+                        if alg_lps.len() == 1 {
+                            Some(alg_lps[0])
+                        } else {
+                            None
+                        },
+                    )
                 } else {
-                    None
-                },
-                if alg_lps.len() == 1 {
-                    Some(alg_lps[0])
-                } else {
-                    None
-                },
-            )
-        } else {
-            // Legacy fallback
-            let rat_lp = (rel.rat_cofactor > 1).then_some(rel.rat_cofactor);
-            let alg_lp = if rel.alg_cofactor > 1 {
-                match compute_alg_lp_ideal(rel.a, rel.b, rel.alg_cofactor) {
-                    Some(v) => Some(v),
-                    None => {
-                        stats.invalid_legacy_lp += 1;
-                        continue;
-                    }
-                }
-            } else {
-                None
-            };
-            (rat_lp, alg_lp)
-        };
+                    let rat_lp = (rel.rat_cofactor > 1).then_some(rel.rat_cofactor);
+                    let alg_lp = if rel.alg_cofactor > 1 {
+                        match compute_alg_lp_ideal(rel.a, rel.b, rel.alg_cofactor) {
+                            Some(v) => Some(v),
+                            None => {
+                                invalids.push((rel_idx, "legacy_lp", None));
+                                return (items, invalids, hensel_lift_cache);
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    (rat_lp, alg_lp)
+                };
 
-        // Recompute signs from actual norms.
-        let rat_norm_val = rel.a as i128 - (rel.b as i128) * (m as i128);
-        let rational_sign_negative = rat_norm_val < 0;
-        let algebraic_sign_negative = eval_f_homogeneous_bigint(rel.a, rel.b, f_coeffs_big) < 0;
+                let rat_norm_val = rel.a as i128 - (rel.b as i128) * (m as i128);
+                let rational_sign_negative = rat_norm_val < 0;
+                let algebraic_sign_negative = eval_f_homogeneous_bigint(rel.a, rel.b, f_coeffs_big) < 0;
 
-        result.push(gnfs::types::Relation {
-            a: rel.a,
-            b: rel.b,
-            rational_factors: new_rat_factors,
-            algebraic_factors: alg_pair_factors,
-            rational_sign_negative,
-            algebraic_sign_negative,
-            special_q: if ignore_special_q {
-                None
-            } else {
-                rel.special_q
+                items.push((rel_idx, gnfs::types::Relation {
+                    a: rel.a,
+                    b: rel.b,
+                    rational_factors: new_rat_factors,
+                    algebraic_factors: alg_pair_factors,
+                    rational_sign_negative,
+                    algebraic_sign_negative,
+                    special_q: if ignore_special_q {
+                        None
+                    } else {
+                        rel.special_q
+                    },
+                    rat_lp,
+                    alg_lp,
+                }));
+                (items, invalids, hensel_lift_cache)
             },
-            rat_lp,
-            alg_lp,
-        });
-        source_indices.push(rel_idx);
+        )
+        .reduce(
+            || (Vec::new(), Vec::new(), HashMap::new()),
+            |(mut a_items, mut a_inv, a_cache), (b_items, b_inv, _b_cache)| {
+                a_items.extend(b_items);
+                a_inv.extend(b_inv);
+                (a_items, a_inv, a_cache)
+            },
+        );
+
+    // Sort by original index to preserve deterministic ordering
+    let mut items = items;
+    items.sort_unstable_by_key(|(idx, _)| *idx);
+
+    let mut result = Vec::with_capacity(items.len());
+    let mut source_indices = Vec::with_capacity(items.len());
+    for (idx, rel) in items {
+        result.push(rel);
+        source_indices.push(idx);
+    }
+
+    // Aggregate stats from invalids
+    let mut stats = RemapHybridStats::default();
+    for (_, reason, sample) in invalids {
+        match reason {
+            "bad_fb_idx" => stats.invalid_bad_fb_idx += 1,
+            "unmapped" => stats.skipped_unmapped += 1,
+            "hd_residual" => {
+                stats.invalid_hd_residual += 1;
+                if let Some(s) = sample {
+                    if stats.hd_residual_samples.len() < hd_residual_sample_limit {
+                        stats.hd_residual_samples.push(s);
+                    }
+                }
+            }
+            "hd_offset_missing" => stats.invalid_hd_offset_missing += 1,
+            "root_exp_zero" => stats.invalid_root_exp_zero += 1,
+            "legacy_lp" => stats.invalid_legacy_lp += 1,
+            _ => {}
+        }
     }
 
     stats.kept_relations = result.len();
