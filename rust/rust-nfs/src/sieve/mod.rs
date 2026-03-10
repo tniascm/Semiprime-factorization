@@ -21,11 +21,11 @@ use crate::relation::Relation;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-use self::bucket::{BucketArray, BucketUpdate, BUCKET_REGION, LOG_BUCKET_REGION};
+use self::bucket::{BucketStorage, BUCKET_REGION};
 use self::lattice::{reduce_qlattice, QLattice};
 // norm functions are used via direct inline computation in the sieve loop;
 // the module is re-exported for external use.
-use self::region::{apply_bucket_updates, pos_to_ij, scan_survivors};
+use self::region::{apply_bucket_updates, apply_single_bucket_updates, pos_to_ij, scan_survivors};
 use self::small::{precompute_small_sieve_alg, precompute_small_sieve_rat, small_sieve_region};
 
 /// Result of sieving: relations + timing breakdown.
@@ -210,8 +210,8 @@ pub fn sieve_specialq(
             .copied()
             .map_init(
                 || {
-                    let rat_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
-                    let alg_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
+                    let rat_buckets = BucketStorage::new(n_buckets.max(1), updates_per_bucket);
+                    let alg_buckets = BucketStorage::new(n_buckets.max(1), updates_per_bucket);
                     let rat_sieve = vec![0u8; BUCKET_REGION];
                     let alg_sieve = vec![0u8; BUCKET_REGION];
                     let survivors = Vec::with_capacity(1024);
@@ -290,7 +290,7 @@ pub fn sieve_specialq(
                                 alg_fb.log_p[fb_idx],
                                 &qlat,
                                 params.log_i,
-                                &mut *alg_buckets,
+                                alg_buckets,
                                 sieve_width,
                                 max_j,
                                 half_i,
@@ -309,7 +309,7 @@ pub fn sieve_specialq(
                             rat_fb.log_p[fb_idx],
                             &qlat,
                             params.log_i,
-                            &mut *rat_buckets,
+                            rat_buckets,
                             sieve_width,
                             max_j,
                             half_i,
@@ -326,6 +326,10 @@ pub fn sieve_specialq(
                     let rat_bound = ((params.sieve_mfb0 as f64) * scale).min(255.0) as u8;
                     let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
                     let d = f_coeffs.len().saturating_sub(1);
+
+                    // Single-bucket fast path: when total_sieve_area fits in
+                    // one bucket region, skip bucket-index dispatch during apply.
+                    let is_single_bucket = matches!(rat_buckets, BucketStorage::Single(_));
 
                     for bucket_idx in 0..n_buckets {
                         let region_start = bucket_idx * BUCKET_REGION;
@@ -435,10 +439,34 @@ pub fn sieve_specialq(
                         }
 
                         let t_ba = std::time::Instant::now();
-                        let rat_updates = rat_buckets.updates_for_bucket(bucket_idx);
-                        let alg_updates = alg_buckets.updates_for_bucket(bucket_idx);
-                        apply_bucket_updates(&mut rat_sieve[..region_len], rat_updates);
-                        apply_bucket_updates(&mut alg_sieve[..region_len], alg_updates);
+
+                        if is_single_bucket {
+                            // Single-bucket fast path: apply (global_pos, logp)
+                            // directly without per-update bucket dispatch.
+                            if let BucketStorage::Single(sv) = &*rat_buckets {
+                                apply_single_bucket_updates(
+                                    &mut rat_sieve[..region_len], sv.updates(),
+                                );
+                            }
+                            if let BucketStorage::Single(sv) = &*alg_buckets {
+                                apply_single_bucket_updates(
+                                    &mut alg_sieve[..region_len], sv.updates(),
+                                );
+                            }
+                        } else {
+                            if let BucketStorage::Multi(ba) = &*rat_buckets {
+                                apply_bucket_updates(
+                                    &mut rat_sieve[..region_len],
+                                    ba.updates_for_bucket(bucket_idx),
+                                );
+                            }
+                            if let BucketStorage::Multi(ba) = &*alg_buckets {
+                                apply_bucket_updates(
+                                    &mut alg_sieve[..region_len],
+                                    ba.updates_for_bucket(bucket_idx),
+                                );
+                            }
+                        }
 
                         let survivor_positions = scan_survivors(
                             &rat_sieve[..region_len],
@@ -695,7 +723,7 @@ fn scatter_bucket_updates_for_prime(
     logp: u8,
     qlat: &QLattice,
     log_i: u32,
-    buckets: &mut BucketArray,
+    buckets: &mut BucketStorage,
     sieve_width: usize,
     max_j: usize,
     half_i: i64,
@@ -711,13 +739,7 @@ fn scatter_bucket_updates_for_prime(
                 let row_base = j * sieve_width;
                 for i_pos in 0..sieve_width {
                     let global_pos = row_base + i_pos;
-                    buckets.push(
-                        global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                            logp,
-                        },
-                    );
+                    buckets.push_at(global_pos, logp);
                 }
             }
             return;
@@ -740,13 +762,7 @@ fn scatter_bucket_updates_for_prime(
             if (start_mod_p as usize) < sieve_width {
                 let global_pos = j * sieve_width + start_mod_p as usize;
                 if (global_pos & even_mask) != 0 {
-                    buckets.push(
-                        global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                            logp,
-                        },
-                    );
+                    buckets.push_at(global_pos, logp);
                 }
             }
             start_mod_p += step;
@@ -760,13 +776,7 @@ fn scatter_bucket_updates_for_prime(
             while i_pos < sieve_width {
                 let global_pos = row_base + i_pos;
                 if (global_pos & even_mask) != 0 {
-                    buckets.push(
-                        global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
-                            logp,
-                        },
-                    );
+                    buckets.push_at(global_pos, logp);
                 }
                 i_pos += p_usize;
             }
@@ -807,7 +817,7 @@ fn scatter_bucket_updates_fk(
     logp: u8,
     qlat: &QLattice,
     log_i: u32,
-    buckets: &mut BucketArray,
+    buckets: &mut BucketStorage,
     sieve_width: usize,
     max_j: usize,
     half_i: i64,
@@ -978,16 +988,9 @@ fn scatter_bucket_updates_fk(
     let u_a_neg = u_a < 0;
 
     while x < total_area {
-        // Emit bucket update if position is coprime.
+        // Emit bucket update if position is coprime and in bounds.
         if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-            let gpos = x as usize;
-            buckets.push(
-                gpos >> LOG_BUCKET_REGION,
-                BucketUpdate {
-                    pos: (gpos & (BUCKET_REGION - 1)) as u16,
-                    logp,
-                },
-            );
+            buckets.push_at(x as usize, logp);
         }
 
         // Single-comparison a_ok/b_ok: opposite-sign u vectors mean only
@@ -1002,14 +1005,7 @@ fn scatter_bucket_updates_fk(
             x += inc_a;
             ic += u_a;
             if x < total_area && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-                let gpos = x as usize;
-                buckets.push(
-                    gpos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
-                        logp,
-                    },
-                );
+                buckets.push_at(x as usize, logp);
             }
             x += inc_diff;
             ic += u_diff;
@@ -1353,13 +1349,11 @@ mod tests {
             a1: 1,
             b1: 0,
         };
-        let mut buckets = BucketArray::new(1, 64);
+        let mut buckets = BucketStorage::new(1, 64);
         scatter_bucket_updates_for_prime(5, 0, 7, &qlat, 4, &mut buckets, 8, 10, 4);
 
-        let updates = buckets.updates_for_bucket(0);
         // denom == 0 and numer != 0 => every p-th row is hit in full.
-        assert_eq!(updates.len(), 16);
-        assert!(updates.iter().all(|u| u.log_prime() == 7));
+        assert_eq!(buckets.total_updates(), 16);
     }
 
     #[test]
@@ -1467,14 +1461,23 @@ mod tests {
     // FK scatter comparison tests
     // -----------------------------------------------------------------------
 
-    /// Extract the set of global positions from a BucketArray (across all buckets).
-    fn extract_positions(buckets: &BucketArray) -> Vec<usize> {
+    /// Extract the set of global positions from a BucketStorage.
+    fn extract_positions(buckets: &BucketStorage) -> Vec<usize> {
         let mut positions = Vec::new();
-        for b in 0..buckets.n_buckets() {
-            let updates = buckets.updates_for_bucket(b);
-            for u in updates {
-                let global = (b << LOG_BUCKET_REGION) | (u.position() as usize);
-                positions.push(global);
+        match buckets {
+            BucketStorage::Single(sv) => {
+                for &(pos, _logp) in sv.updates() {
+                    positions.push(pos as usize);
+                }
+            }
+            BucketStorage::Multi(ba) => {
+                for b in 0..ba.n_buckets() {
+                    let updates = ba.updates_for_bucket(b);
+                    for u in updates {
+                        let global = (b << bucket::LOG_BUCKET_REGION) | (u.position() as usize);
+                        positions.push(global);
+                    }
+                }
             }
         }
         positions.sort();
@@ -1498,12 +1501,12 @@ mod tests {
         // Generous capacity
         let cap = (total_area / (p as usize).max(1) + 1) * 2 + 256;
 
-        let mut buckets_old = BucketArray::new(n_buckets, cap.max(16));
+        let mut buckets_old = BucketStorage::new(n_buckets, cap.max(16));
         scatter_bucket_updates_for_prime(
             p, root, logp, qlat, log_i, &mut buckets_old, sieve_width, max_j, half_i,
         );
 
-        let mut buckets_fk = BucketArray::new(n_buckets, cap.max(16));
+        let mut buckets_fk = BucketStorage::new(n_buckets, cap.max(16));
         scatter_bucket_updates_fk(
             p, root, logp, qlat, log_i, &mut buckets_fk, sieve_width, max_j, half_i,
         );

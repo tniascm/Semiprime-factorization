@@ -152,6 +152,106 @@ impl BucketArray {
     }
 }
 
+/// Lightweight single-bucket accumulator — avoids BucketArray indirection
+/// when `n_buckets == 1`.
+///
+/// Instead of computing bucket indices and masking positions, updates are
+/// pushed as `(global_pos, logp)` pairs into a flat `Vec`. When applying
+/// updates, positions are used directly as sieve-array indices, saving the
+/// `>> LOG_BUCKET_REGION` and `& (BUCKET_REGION - 1)` operations per update.
+pub struct SingleBucketVec {
+    updates: Vec<(u32, u8)>,
+}
+
+impl SingleBucketVec {
+    /// Create a new single-bucket accumulator with pre-allocated capacity.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            updates: Vec::with_capacity(capacity),
+        }
+    }
+
+    /// Push a sieve update. Hot path — inlined for zero overhead.
+    #[inline(always)]
+    pub fn push(&mut self, global_pos: u32, logp: u8) {
+        self.updates.push((global_pos, logp));
+    }
+
+    /// Number of accumulated updates.
+    pub fn len(&self) -> usize {
+        self.updates.len()
+    }
+
+    /// Borrow the raw update slice for direct application.
+    pub fn updates(&self) -> &[(u32, u8)] {
+        &self.updates
+    }
+
+    /// Clear all updates for reuse with the next special-q.
+    pub fn clear(&mut self) {
+        self.updates.clear();
+    }
+}
+
+/// Abstraction over single-bucket and multi-bucket storage.
+///
+/// When `n_buckets == 1`, the `Single` variant avoids per-update bucket-index
+/// computation and position masking. The `Multi` variant delegates to the
+/// full `BucketArray` for the general case.
+pub enum BucketStorage {
+    Multi(BucketArray),
+    Single(SingleBucketVec),
+}
+
+impl BucketStorage {
+    /// Create storage appropriate for the given bucket count.
+    pub fn new(n_buckets: usize, updates_per_bucket: usize) -> Self {
+        if n_buckets == 1 {
+            BucketStorage::Single(SingleBucketVec::new(updates_per_bucket))
+        } else {
+            BucketStorage::Multi(BucketArray::new(n_buckets, updates_per_bucket))
+        }
+    }
+
+    /// Push a sieve update at the given global position.
+    ///
+    /// For `Single`: stores `(global_pos, logp)` directly.
+    /// For `Multi`: computes bucket index and masked position.
+    #[inline(always)]
+    pub fn push_at(&mut self, global_pos: usize, logp: u8) {
+        match self {
+            BucketStorage::Single(sv) => {
+                sv.push(global_pos as u32, logp);
+            }
+            BucketStorage::Multi(ba) => {
+                ba.push(
+                    global_pos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+            }
+        }
+    }
+
+    /// Clear all updates for reuse.
+    pub fn clear(&mut self) {
+        match self {
+            BucketStorage::Single(sv) => sv.clear(),
+            BucketStorage::Multi(ba) => ba.clear(),
+        }
+    }
+
+    /// Total number of accumulated updates.
+    pub fn total_updates(&self) -> usize {
+        match self {
+            BucketStorage::Single(sv) => sv.len(),
+            BucketStorage::Multi(ba) => ba.total_updates(),
+        }
+    }
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -264,5 +364,103 @@ mod tests {
         ba.push(0, BucketUpdate { pos: 1, logp: 1 });
         // Third push should panic via debug_assert: capacity is 2.
         ba.push(0, BucketUpdate { pos: 2, logp: 1 });
+    }
+
+    // --- SingleBucketVec tests ---
+
+    #[test]
+    fn test_single_bucket_push_and_read() {
+        let mut sv = SingleBucketVec::new(100);
+        sv.push(10, 5);
+        sv.push(20, 3);
+        sv.push(15, 7);
+
+        assert_eq!(sv.len(), 3);
+        let updates = sv.updates();
+        assert_eq!(updates[0], (10, 5));
+        assert_eq!(updates[1], (20, 3));
+        assert_eq!(updates[2], (15, 7));
+    }
+
+    #[test]
+    fn test_single_bucket_clear() {
+        let mut sv = SingleBucketVec::new(100);
+        sv.push(10, 5);
+        sv.clear();
+        assert_eq!(sv.len(), 0);
+        assert!(sv.updates().is_empty());
+    }
+
+    #[test]
+    fn test_single_bucket_reuse() {
+        let mut sv = SingleBucketVec::new(50);
+        for i in 0..50u32 {
+            sv.push(i, 1);
+        }
+        assert_eq!(sv.len(), 50);
+        sv.clear();
+        assert_eq!(sv.len(), 0);
+
+        for i in 0..30u32 {
+            sv.push(i * 2, 2);
+        }
+        assert_eq!(sv.len(), 30);
+    }
+
+    // --- BucketStorage tests ---
+
+    #[test]
+    fn test_bucket_storage_single_path() {
+        let mut bs = BucketStorage::new(1, 100);
+        assert!(matches!(bs, BucketStorage::Single(_)));
+
+        bs.push_at(42, 5);
+        bs.push_at(100, 3);
+        assert_eq!(bs.total_updates(), 2);
+
+        // Verify stored values
+        if let BucketStorage::Single(sv) = &bs {
+            assert_eq!(sv.updates()[0], (42, 5));
+            assert_eq!(sv.updates()[1], (100, 3));
+        }
+
+        bs.clear();
+        assert_eq!(bs.total_updates(), 0);
+    }
+
+    #[test]
+    fn test_bucket_storage_multi_path() {
+        let mut bs = BucketStorage::new(4, 100);
+        assert!(matches!(bs, BucketStorage::Multi(_)));
+
+        bs.push_at(10, 5);
+        assert_eq!(bs.total_updates(), 1);
+
+        bs.clear();
+        assert_eq!(bs.total_updates(), 0);
+    }
+
+    #[test]
+    fn test_bucket_storage_multi_distributes_correctly() {
+        // 2 buckets, BUCKET_REGION = 65536
+        let mut bs = BucketStorage::new(2, 100);
+        // Position in first bucket (< 65536)
+        bs.push_at(100, 5);
+        // Position in second bucket (>= 65536)
+        bs.push_at(65536 + 200, 3);
+
+        if let BucketStorage::Multi(ba) = &bs {
+            let b0 = ba.updates_for_bucket(0);
+            assert_eq!(b0.len(), 1);
+            assert_eq!(b0[0].position(), 100);
+            assert_eq!(b0[0].log_prime(), 5);
+
+            let b1 = ba.updates_for_bucket(1);
+            assert_eq!(b1.len(), 1);
+            assert_eq!(b1[0].position(), 200);
+            assert_eq!(b1[0].log_prime(), 3);
+        } else {
+            panic!("Expected Multi variant");
+        }
     }
 }
