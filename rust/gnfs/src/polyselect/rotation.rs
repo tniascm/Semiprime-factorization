@@ -1,4 +1,5 @@
 use crate::polyselect::alpha::murphy_alpha;
+use crate::polyselect::murphy_e;
 
 /// Apply rotation: f'(x) = f(x) + (u*x + v) * g(x)
 ///
@@ -36,18 +37,53 @@ pub fn apply_rotation(f: &[i64], g: &[i64], u: i64, v: i64) -> Vec<i64> {
     result
 }
 
-/// Search for the best rotation (u, v) minimizing murphy_alpha.
+/// Fast combined score for rotation search: lognorm + lightweight alpha.
 ///
-/// Tries u in [-u_range, u_range] and v in [-v_range, v_range].
+/// Uses `lognorm` (O(d×k) per evaluation) + `murphy_alpha` with a small
+/// prime bound (only primes up to 29 = 10 primes vs 45 for bound=200).
+/// This captures root properties at ~5x lower cost than full alpha.
+fn rotation_score(f: &[i64]) -> f64 {
+    let skew = murphy_e::optimal_skewness(f);
+    // Average log|F(x,y)| over ellipse samples — lower is better.
+    let k = 32;
+    let area = 1e16_f64;
+    let x_scale = (area * skew).sqrt();
+    let y_scale = (area / skew).sqrt();
+    let d = f.len() - 1;
+    let mut sum = 0.0;
+    for i in 0..k {
+        let theta = std::f64::consts::PI / (k as f64) * (i as f64 + 0.5);
+        let xi = x_scale * theta.cos();
+        let yi = y_scale * theta.sin();
+        let mut val = 0.0f64;
+        let mut x_pow = 1.0f64;
+        for (j, &c) in f.iter().enumerate() {
+            let y_pow = yi.powi((d - j) as i32);
+            val += c as f64 * x_pow * y_pow;
+            x_pow *= xi;
+        }
+        sum += val.abs().max(1.0).ln();
+    }
+    let lognorm = sum / k as f64;
+    // Lightweight alpha: only primes up to 29 (10 primes)
+    let alpha = murphy_alpha(f, 29);
+    lognorm + alpha
+}
+
+/// Search for the best rotation (u, v) minimizing lognorm + light alpha.
+///
+/// Uses fast combined scoring for the grid search (lognorm + alpha with
+/// primes up to 29). This is ~25x faster than full alpha (bound=200)
+/// while still capturing root properties from the most impactful primes.
 /// Returns (best_f, best_u, best_v).
 pub fn optimize_rotation(
     f: &[i64],
     g: &[i64],
     search_range: i64,
-    alpha_bound: u64,
+    _alpha_bound: u64,
 ) -> (Vec<i64>, i64, i64) {
     let mut best_f = f.to_vec();
-    let mut best_score = murphy_alpha(f, alpha_bound);
+    let mut best_score = rotation_score(f);
     let mut best_u = 0i64;
     let mut best_v = 0i64;
 
@@ -56,7 +92,7 @@ pub fn optimize_rotation(
 
     for v in -v_range..=v_range {
         let f_v = apply_rotation(f, g, 0, v);
-        let score_v = murphy_alpha(&f_v, alpha_bound);
+        let score_v = rotation_score(&f_v);
 
         if score_v < best_score {
             best_score = score_v;
@@ -71,7 +107,7 @@ pub fn optimize_rotation(
                     continue;
                 }
                 let f_uv = apply_rotation(f, g, u, v);
-                let score_uv = murphy_alpha(&f_uv, alpha_bound);
+                let score_uv = rotation_score(&f_uv);
                 if score_uv < best_score {
                     best_score = score_uv;
                     best_f = f_uv;

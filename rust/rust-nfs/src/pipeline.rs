@@ -212,7 +212,6 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
             return result;
         }
     }
-
     let mut last_result = None;
 
     // Murphy E-based polyselect sweeps over leading coefficients and picks

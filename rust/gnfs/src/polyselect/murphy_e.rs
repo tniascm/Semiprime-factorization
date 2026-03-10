@@ -16,7 +16,7 @@ pub fn murphy_e(
     bg: f64,
     alpha_bound: u64,
 ) -> f64 {
-    let k = 1000;
+    let k = 100;
     let area = 1e16_f64;
 
     let x_scale = (area * skewness).sqrt();
