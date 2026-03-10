@@ -37,7 +37,7 @@ impl NfsParams {
             sieve_mfb1: 18,
             log_i: 8,
             qmin: 50_000,
-            qrange: 1_000,
+            qrange: 500,
             rels_wanted: 30_000,
         }
     }
