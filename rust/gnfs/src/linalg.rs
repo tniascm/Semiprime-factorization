@@ -236,8 +236,14 @@ pub fn find_dependencies_max(
 
     // Extract dependencies: zero rows whose history has ≥2 original rows.
     // Use word-level bit traversal for O(set_bits) extraction instead of O(nrows).
+    // When rows >> cols, all columns find pivots during GE, so all excess rows
+    // become zero-row dependencies. Limit extraction to dep_limit to avoid
+    // unnecessary work in downstream map-back.
     let mut deps = Vec::new();
     for r in 0..nrows {
+        if deps.len() >= dep_limit {
+            break;
+        }
         if matrix[r].is_zero() {
             let mut dep = Vec::new();
             for (wi, &word) in history[r].bits.iter().enumerate() {
@@ -1175,17 +1181,30 @@ pub fn find_dependencies_with_preelim_max(
     eprintln!("  pre-elim: GE {:.0}ms -> {} deps from {} rows", ge_inner_ms, compact_deps.len(), compact_nrows);
 
     // Map compact row indices back to original row indices via history.
-    // Pre-convert Vec<usize> histories to BitRow for O(nwords) XOR combining
-    // instead of O(history_len) HashSet operations per dependency.
+    // Only build BitRow histories for rows actually referenced by compact_deps
+    // to avoid O(ge_rows) work when dep_limit << ge_rows.
     let map_start = std::time::Instant::now();
-    let ge_histories_br: Vec<BitRow> = ge_rows
-        .par_iter()
-        .map(|&r| {
-            let mut br = BitRow::new(nrows);
-            for &idx in &history[r] {
-                br.flip(idx);
+    let mut referenced_rows: Vec<bool> = vec![false; ge_rows.len()];
+    for cdep in &compact_deps {
+        for &ci in cdep {
+            if ci < referenced_rows.len() {
+                referenced_rows[ci] = true;
             }
-            br
+        }
+    }
+    let ge_histories_br: Vec<Option<BitRow>> = ge_rows
+        .par_iter()
+        .enumerate()
+        .map(|(idx, &r)| {
+            if referenced_rows[idx] {
+                let mut br = BitRow::new(nrows);
+                for &orig in &history[r] {
+                    br.flip(orig);
+                }
+                Some(br)
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -1194,7 +1213,9 @@ pub fn find_dependencies_with_preelim_max(
         .filter_map(|cdep| {
             let mut combined = BitRow::new(nrows);
             for &ci in cdep {
-                combined.xor_with(&ge_histories_br[ci]);
+                if let Some(ref br) = ge_histories_br[ci] {
+                    combined.xor_with(br);
+                }
             }
             // Extract set bits via word-level traversal.
             let mut dep = Vec::new();
