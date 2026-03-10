@@ -1661,15 +1661,20 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(20_000);
+    let max_deps: Option<usize> = std::env::var("RUST_NFS_MAX_DEPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&v| v > 0)
+        .or(Some(64));
     let ge_start = std::time::Instant::now();
     let mut ge_deps = if matrix.len() > bw_threshold {
-        gnfs::linalg::find_dependencies_with_preelim_bw(&matrix, ncols)
+        gnfs::linalg::find_dependencies_with_preelim_bw_max(&matrix, ncols, max_deps)
     } else {
-        gnfs::linalg::find_dependencies_with_preelim(&matrix, ncols)
+        gnfs::linalg::find_dependencies_with_preelim_max(&matrix, ncols, max_deps)
     };
     let ge_ms = ge_start.elapsed().as_secs_f64() * 1000.0;
     let ge_deps_total = ge_deps.len();
-    eprintln!("  LA: GE+preelim {:.0}ms -> {} basis deps", ge_ms, ge_deps_total);
+    eprintln!("  LA: GE+preelim {:.0}ms -> {} basis deps (max_deps={:?})", ge_ms, ge_deps_total, max_deps);
     let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())

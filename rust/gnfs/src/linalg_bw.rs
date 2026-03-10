@@ -692,6 +692,19 @@ pub fn find_dependencies_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
 /// Runs the same singleton/weight-2 pre-elimination as `find_dependencies_with_preelim`,
 /// then uses Block Wiedemann instead of dense GE on the compacted matrix.
 pub fn find_dependencies_with_preelim_bw(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
+    find_dependencies_with_preelim_bw_max(rows, ncols, None)
+}
+
+/// Pre-elimination + Block Wiedemann with optional dependency limit.
+///
+/// `max_deps` is accepted for API symmetry with the GE variant but is
+/// currently ignored — Block Wiedemann inherently produces a fixed number
+/// of kernel vectors determined by the block size.
+pub fn find_dependencies_with_preelim_bw_max(
+    rows: &[BitRow],
+    ncols: usize,
+    _max_deps: Option<usize>,
+) -> Vec<Vec<usize>> {
     let pr = pre_eliminate(rows, ncols);
 
     if pr.compact_matrix.is_empty() || pr.compact_ncols == 0 {

@@ -4,7 +4,10 @@ use crate::arith::QuadCharSet;
 use crate::types::BitRow;
 use rayon::prelude::*;
 
-pub use crate::linalg_bw::{find_dependencies_bw, find_dependencies_with_preelim_bw};
+pub use crate::linalg_bw::{
+    find_dependencies_bw, find_dependencies_with_preelim_bw,
+    find_dependencies_with_preelim_bw_max,
+};
 
 /// Build the GF(2) exponent matrix from relations.
 ///
@@ -142,10 +145,25 @@ pub fn build_matrix(
 /// Uses BitRow-based history tracking (O(nrows/64) per XOR) instead of Vec<usize>
 /// (O(n) per symmetric difference), which is critical for performance on large matrices.
 pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
+    find_dependencies_max(rows, ncols, None)
+}
+
+/// Gaussian elimination over GF(2) with optional early exit.
+///
+/// When `max_deps` is `Some(limit)`, the function stops processing pivot
+/// columns once `limit` dependencies have been found, avoiding unnecessary
+/// work when only a small number of dependencies are needed (e.g., for sqrt).
+pub fn find_dependencies_max(
+    rows: &[BitRow],
+    ncols: usize,
+    max_deps: Option<usize>,
+) -> Vec<Vec<usize>> {
     let nrows = rows.len();
     if nrows == 0 || ncols == 0 {
         return vec![];
     }
+
+    let dep_limit = max_deps.unwrap_or(usize::MAX);
 
     let mut matrix: Vec<BitRow> = rows.to_vec();
     let mut history: Vec<BitRow> = (0..nrows)
@@ -157,6 +175,7 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
         .collect();
 
     let mut pivot_row = 0;
+    let mut deps_found = 0usize;
     for col in 0..ncols {
         let mut found = None;
         for r in pivot_row..nrows {
@@ -168,7 +187,14 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
 
         let pr = match found {
             Some(r) => r,
-            None => continue,
+            None => {
+                // No pivot found for this column — it contributes a dependency.
+                deps_found += 1;
+                if deps_found >= dep_limit {
+                    break;
+                }
+                continue;
+            }
         };
 
         if pr != pivot_row {
@@ -180,7 +206,7 @@ pub fn find_dependencies(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
         let remaining = nrows - pivot_row - 1;
         let pivot_data = matrix[pivot_row].clone();
         let pivot_hist = history[pivot_row].clone();
-        if remaining > 512 {
+        if remaining > 128 {
             // Parallel path: use rayon for large remaining row counts.
             let (_, lower_matrix) = matrix.split_at_mut(pivot_row + 1);
             let (_, lower_history) = history.split_at_mut(pivot_row + 1);
@@ -374,6 +400,19 @@ pub fn randomize_dependencies(
 /// This can dramatically reduce matrix size for NFS matrices where large-prime
 /// columns are naturally sparse.
 pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<usize>> {
+    find_dependencies_with_preelim_max(rows, ncols, None)
+}
+
+/// Pre-elimination + dense GE with optional early exit on dependency count.
+///
+/// Behaves identically to [`find_dependencies_with_preelim`] when `max_deps`
+/// is `None`. When `Some(limit)`, the inner GE call stops after finding
+/// `limit` dependencies (minus any already found during pre-elimination).
+pub fn find_dependencies_with_preelim_max(
+    rows: &[BitRow],
+    ncols: usize,
+    max_deps: Option<usize>,
+) -> Vec<Vec<usize>> {
     let nrows = rows.len();
     if nrows == 0 || ncols == 0 {
         return vec![];
@@ -1106,9 +1145,10 @@ pub fn find_dependencies_with_preelim(rows: &[BitRow], ncols: usize) -> Vec<Vec<
     eprintln!("  pre-elim: compact {:.0}ms ({} x {}, ge_rows={}, zero_deps={})",
         compact_ms, compact_nrows, compact_ncols, ge_rows.len(), deps.len());
 
-    // Run dense GE on the compacted matrix.
+    // Run dense GE on the compacted matrix, subtracting pre-elim deps from budget.
     let ge_inner_start = std::time::Instant::now();
-    let compact_deps = find_dependencies(&compact_matrix, compact_ncols);
+    let remaining_budget = max_deps.map(|limit| limit.saturating_sub(deps.len()));
+    let compact_deps = find_dependencies_max(&compact_matrix, compact_ncols, remaining_budget);
     let ge_inner_ms = ge_inner_start.elapsed().as_secs_f64() * 1000.0;
     eprintln!("  pre-elim: GE {:.0}ms -> {} deps from {} rows", ge_inner_ms, compact_deps.len(), compact_nrows);
 
