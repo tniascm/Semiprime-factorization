@@ -905,7 +905,7 @@ pub fn find_dependencies_with_preelim_max(
     let phase4_max_col_weight: usize = std::env::var("RUST_NFS_PREELIM_MAXCOLWEIGHT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(10);
+        .unwrap_or(15);
     let mut phase4_merges = 0usize;
     // Flat storage for column→rows index: col_rows_flat[col_rows_offset[c]..] holds
     // up to phase4_max_col_weight row indices for column c.

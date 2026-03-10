@@ -204,7 +204,15 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         .filter(|&v| v > 0)
         .unwrap_or(170u32);
 
-    if fallback_enabled && fallback_first && n.significant_bits() <= fallback_max_bits {
+    // Only try Pollard-rho first for small numbers (< 80 bits).
+    // For c30+ (100+ bits with balanced factors), rho needs O(2^25) steps
+    // which exceeds the 200ms time limit, wasting time on every attempt.
+    let rho_first_max_bits = std::env::var("RUST_NFS_RHO_FIRST_MAX_BITS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(80u32);
+    if fallback_enabled && fallback_first && n.significant_bits() <= rho_first_max_bits {
         if let Some((factor, fallback_ms)) = try_pollard_rho_factor(n) {
             let result = fallback_result(n, factor, fallback_ms);
             if let Some(logger) = run_logger.as_mut() {
@@ -1702,9 +1710,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let default_n_random = if sqrt_success_mode {
         ge_deps.len().clamp(4_000, 20_000)
     } else if ge_deps.len() < 200 {
-        2_000
+        500
     } else if ge_deps.len() < 1_000 {
-        1_000
+        500
     } else {
         500
     };
