@@ -170,12 +170,56 @@ impl BitRow {
     }
 
     pub fn xor_with(&mut self, other: &BitRow) {
-        for (a, b) in self.bits.iter_mut().zip(other.bits.iter()) {
-            *a ^= *b;
-        }
+        let len = self.bits.len().min(other.bits.len());
+        let a = &mut self.bits[..len];
+        let b = &other.bits[..len];
+        xor_slice(a, b);
     }
 
     pub fn is_zero(&self) -> bool {
         self.bits.iter().all(|&w| w == 0)
+    }
+}
+
+/// XOR `src` into `dst` element-wise. Uses NEON on aarch64.
+#[inline]
+fn xor_slice(dst: &mut [u64], src: &[u64]) {
+    #[cfg(target_arch = "aarch64")]
+    {
+        xor_slice_neon(dst, src);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        for (a, b) in dst.iter_mut().zip(src.iter()) {
+            *a ^= *b;
+        }
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline]
+fn xor_slice_neon(dst: &mut [u64], src: &[u64]) {
+    use core::arch::aarch64::*;
+    let len = dst.len().min(src.len());
+
+    // Process 4 u64s (256 bits) at a time using pairs of 128-bit NEON ops
+    let chunks4 = len / 4;
+    let dp = dst.as_mut_ptr();
+    let sp = src.as_ptr();
+    unsafe {
+        for i in 0..chunks4 {
+            let off = i * 4;
+            let a0 = vld1q_u64(dp.add(off));
+            let b0 = vld1q_u64(sp.add(off));
+            let a1 = vld1q_u64(dp.add(off + 2));
+            let b1 = vld1q_u64(sp.add(off + 2));
+            vst1q_u64(dp.add(off), veorq_u64(a0, b0));
+            vst1q_u64(dp.add(off + 2), veorq_u64(a1, b1));
+        }
+    }
+
+    // Handle remaining elements
+    for i in (chunks4 * 4)..len {
+        dst[i] ^= src[i];
     }
 }
