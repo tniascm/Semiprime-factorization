@@ -27,16 +27,16 @@ impl NfsParams {
         Self {
             name: "c30",
             degree: 3,
-            lim0: 30_000,
-            lim1: 30_000,
-            lpb0: 17,
-            lpb1: 17,
-            mfb0: 18,
-            mfb1: 18,
+            lim0: 20_000,
+            lim1: 20_000,
+            lpb0: 18,
+            lpb1: 18,
+            mfb0: 20,
+            mfb1: 20,
             sieve_mfb0: 18,
             sieve_mfb1: 18,
             log_i: 8,
-            qmin: 50_000,
+            qmin: 30_000,
             qrange: 500,
             rels_wanted: 30_000,
         }
@@ -141,17 +141,17 @@ mod tests {
     fn test_params_c30() {
         let p = NfsParams::c30();
         assert_eq!(p.degree, 3);
-        assert_eq!(p.large_prime_bound_0(), 131_072);
+        assert_eq!(p.large_prime_bound_0(), 262_144);
         assert_eq!(p.sieve_half_width(), 256);
     }
 
     #[test]
-    fn test_c30_matches_cado() {
+    fn test_c30_matches_tuned() {
         let p = NfsParams::c30();
         assert_eq!(p.log_i, 8);
-        assert_eq!(p.lim0, 30_000);
-        assert_eq!(p.lpb0, 17);
-        assert_eq!(p.mfb0, 18);
+        assert_eq!(p.lim0, 20_000);
+        assert_eq!(p.lpb0, 18);
+        assert_eq!(p.mfb0, 20);
     }
 
     #[test]
