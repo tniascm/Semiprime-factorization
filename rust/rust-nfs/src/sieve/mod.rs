@@ -151,6 +151,9 @@ pub fn sieve_specialq(
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(16usize);
+    let verbose_sq = std::env::var("RUST_NFS_VERBOSE_SQ")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     let q_end = q_start + q_range;
     let sq_primes: Vec<u64> = sieve_primes(q_end)
@@ -574,6 +577,21 @@ pub fn sieve_specialq(
                     }
 
                     let cofact_elapsed = cofact_start.elapsed().as_nanos() as u64;
+
+                    if verbose_sq {
+                        let sq_ms = sieve_start.elapsed().as_secs_f64() * 1000.0;
+                        let n_rels = local_rels.len();
+                        let rels_per_sec = if sq_ms > 0.0 {
+                            n_rels as f64 / (sq_ms / 1000.0)
+                        } else {
+                            0.0
+                        };
+                        eprintln!(
+                            "  sq={}: {} rels in {:.1}ms ({:.1} rels/s)",
+                            q, n_rels, sq_ms, rels_per_sec
+                        );
+                    }
+
                     (
                         local_rels,
                         local_survivors,
