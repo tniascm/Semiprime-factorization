@@ -1125,6 +1125,16 @@ fn scatter_bucket_updates_fk_batch(
 
     // --- Phase 1: compute FK walk parameters for all primes ---
     for &(p, root, logp) in entries {
+        // Pre-filter: primes below sieve_width will have |centered r'| < half_width,
+        // so partial-GCD won't iterate and FK walk falls back anyway.
+        // Skip the FK setup overhead and go directly to row-by-row scatter.
+        if p < sieve_width as u64 {
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            continue;
+        }
+
         // Root transform
         let r_prime = match transform_root(p, root, qlat) {
             Err(_) => {
