@@ -393,7 +393,8 @@ impl RunLogger {
             "GNFS_TRY_COUVEIGNES_ON_TRIVIAL": std::env::var("GNFS_TRY_COUVEIGNES_ON_TRIVIAL").ok(),
             "GNFS_TRY_NEG_M": std::env::var("GNFS_TRY_NEG_M").ok(),
             "GNFS_NF_ELEMENT_MODE": std::env::var("GNFS_NF_ELEMENT_MODE").ok(),
-            "GNFS_SQRT_RELAX_EXACT": std::env::var("GNFS_SQRT_RELAX_EXACT").ok()
+            "GNFS_SQRT_RELAX_EXACT": std::env::var("GNFS_SQRT_RELAX_EXACT").ok(),
+            "RUST_NFS_VERBOSE_SQ": std::env::var("RUST_NFS_VERBOSE_SQ").ok()
         });
         let run_cfg = serde_json::json!({
             "n": n_str,
