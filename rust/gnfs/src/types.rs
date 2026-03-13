@@ -61,10 +61,14 @@ impl PolynomialPair {
         result
     }
 
-    /// Evaluate g(a, b) = a - b*m (rational norm, from g(x) = x - m).
+    /// Evaluate homogeneous g(a, b) = g1*a + g0*b (rational norm).
+    ///
+    /// For monic polynomials (g1=1, g0=-m), this gives a - b*m.
+    /// For Kleinjung non-monic (g1=ad, g0=-m), this gives ad*a - b*m.
     pub fn eval_g(&self, a: i64, b: u64) -> Integer {
-        let m = self.m();
-        Integer::from(a) - Integer::from(b) * m
+        let g0 = self.g0();
+        let g1 = self.g1();
+        Integer::from(a) * g1 + Integer::from(b) * g0
     }
 }
 
