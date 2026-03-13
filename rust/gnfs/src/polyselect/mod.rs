@@ -9,6 +9,7 @@ use crate::types::PolynomialPair;
 use rayon::prelude::*;
 use rug::ops::Pow;
 use rug::Integer;
+use std::collections::BTreeSet;
 
 /// Choose polynomial degree based on digit count of N.
 pub fn choose_degree(digits: u32) -> u32 {
@@ -201,6 +202,57 @@ fn build_poly_from_remainder(
     Some(PolynomialPair::new(&coeffs, &neg_m, &Integer::from(1), m, n))
 }
 
+/// Generate Kleinjung-style leading coefficients: products of small primes.
+///
+/// Kleinjung's key insight is that `ad` values with many small prime factors
+/// produce polynomials with better root properties (lower alpha) because:
+/// 1. Each small prime p dividing ad gives a projective root of f mod p.
+/// 2. More roots mod small primes = more smooth algebraic norms = faster sieve.
+///
+/// We generate all products of primes up to `prime_bound` that don't exceed `admax`,
+/// then also include a linear sweep for coverage.
+fn generate_kleinjung_ad_values(admax: u64, incr: u64) -> Vec<u64> {
+    let mut ad_set = BTreeSet::new();
+
+    // Phase 1: Highly composite ad values (products of small primes).
+    // Use primes up to 23 (first 9 primes). For c30-c45, this gives
+    // hundreds of candidates with excellent root properties.
+    let small_primes: &[u64] = &[2, 3, 5, 7, 11, 13, 17, 19, 23];
+
+    // Generate all products of these primes up to admax using BFS.
+    let mut products = vec![1u64];
+    for &p in small_primes {
+        let mut new_products = Vec::new();
+        for &prod in &products {
+            let mut val = prod;
+            loop {
+                val = match val.checked_mul(p) {
+                    Some(v) if v <= admax => v,
+                    _ => break,
+                };
+                new_products.push(val);
+            }
+        }
+        products.extend(new_products);
+    }
+    for &v in &products {
+        if v > 1 {
+            ad_set.insert(v);
+        }
+    }
+
+    // Phase 2: Linear sweep to ensure broad coverage.
+    // Every `incr`-th value that is NOT already a small-prime product.
+    for i in 1..=admax / incr.max(1) {
+        let v = i * incr;
+        if v <= admax {
+            ad_set.insert(v);
+        }
+    }
+
+    ad_set.into_iter().collect()
+}
+
 /// Select the best polynomial for N by searching over leading coefficients
 /// and applying root optimization.
 ///
@@ -243,8 +295,8 @@ pub fn select_best_polynomial(
         phase1.push((score, f_i64, g_i64, poly));
     }
 
-    // Non-monic: sweep ad values (parallel)
-    let ad_values: Vec<u64> = (1..=admax / incr).map(|i| i * incr).collect();
+    // Non-monic: Kleinjung-style ad sweep (highly composite + linear coverage)
+    let ad_values = generate_kleinjung_ad_values(admax, incr);
     let nonmonic: Vec<_> = ad_values
         .par_iter()
         .filter_map(|&ad| {
@@ -269,25 +321,39 @@ pub fn select_best_polynomial(
         phase1.truncate(phase2_keep);
     }
 
-    // Phase 2: Full rotation + Murphy E (parallel)
+    // Phase 2: Translation + Rotation + Murphy E (parallel)
+    //
+    // Kleinjung's optimization pipeline:
+    //   1. Translation: shift f(x) -> f(x+k) to zero c_{d-1} (reduces L2 norm)
+    //   2. Rotation: add (u*x + v)*g(x) to f(x) (preserves f(m)=N since g(m)=0)
+    //   3. Score with full Murphy E
     let candidates: Vec<(f64, PolynomialPair)> = phase1
         .par_iter()
         .map(|(_, f_i64, g_i64, poly)| {
             let is_monic = f_i64.last().map(|&c| c == 1).unwrap_or(false);
 
-            let final_f = if !is_monic && rotation_range > 0 && g_i64.len() == 2 {
-                let (rotated, _, _) =
-                    rotation::optimize_rotation(f_i64, g_i64, rotation_range, alpha_bound);
-                rotated
+            let (opt_f, opt_g) = if !is_monic && g_i64.len() == 2 {
+                // Step 1: Translation to reduce c_{d-1}
+                let (trans_f, trans_g, _k) =
+                    optimize_translation(f_i64, g_i64, bf, bg, alpha_bound);
+
+                // Step 2: Rotation
+                if rotation_range > 0 {
+                    let (rotated, _, _) =
+                        rotation::optimize_rotation(&trans_f, &trans_g, rotation_range, alpha_bound);
+                    (rotated, trans_g)
+                } else {
+                    (trans_f, trans_g)
+                }
             } else {
-                f_i64.clone()
+                (f_i64.clone(), g_i64.clone())
             };
 
-            let skew = murphy_e::optimal_skewness(&final_f);
-            let e = murphy_e::murphy_e(&final_f, g_i64, skew, bf, bg, alpha_bound);
+            let skew = murphy_e::optimal_skewness(&opt_f);
+            let e = murphy_e::murphy_e(&opt_f, &opt_g, skew, bf, bg, alpha_bound);
 
             let final_poly = if !is_monic {
-                rebuild_poly_with_coeffs(poly, &final_f, n)
+                rebuild_poly_with_g(&opt_f, &opt_g, n)
             } else {
                 poly.clone()
             };
@@ -364,7 +430,6 @@ fn g_to_i64(poly: &PolynomialPair) -> Vec<i64> {
         .collect()
 }
 
-#[allow(dead_code)]
 /// Translate polynomial: compute f(x + k) using Horner's shift algorithm.
 ///
 /// Coefficients stored low-degree first: [c0, c1, ..., cd].
@@ -390,7 +455,6 @@ fn translate_polynomial(f: &[i64], k: i64) -> Vec<i64> {
     result
 }
 
-#[allow(dead_code)]
 /// Translate linear polynomial g(x) = g0 + g1*x by k: g(x+k) = (g0 + g1*k) + g1*x.
 fn translate_g(g: &[i64], k: i64) -> Vec<i64> {
     if g.len() != 2 || k == 0 {
@@ -399,7 +463,6 @@ fn translate_g(g: &[i64], k: i64) -> Vec<i64> {
     vec![g[0] + g[1] * k, g[1]]
 }
 
-#[allow(dead_code)]
 /// L2 norm of polynomial at given skewness: sum c_i^2 * s^{2(i - d/2)}.
 /// Lower is better (smaller norms → higher smoothness probability).
 fn l2_skew_norm(f: &[i64], skewness: f64) -> f64 {
@@ -413,7 +476,6 @@ fn l2_skew_norm(f: &[i64], skewness: f64) -> f64 {
     sum
 }
 
-#[allow(dead_code)]
 /// Find the best translation k for a polynomial to balance norms.
 ///
 /// For degree d, the ideal translation zeroes c_{d-1}: k_opt = -c_{d-1} / (d * c_d).
@@ -478,7 +540,6 @@ fn rebuild_poly_with_coeffs(
     PolynomialPair::new(&coeffs, &g0, &g1, &m, n)
 }
 
-#[allow(dead_code)]
 /// Build a PolynomialPair from explicit f and g coefficient arrays.
 /// g is linear [g0, g1], m = -g0/g1 (when g1=1, m = -g0).
 fn rebuild_poly_with_g(
