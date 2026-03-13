@@ -412,6 +412,57 @@ fn find_irreducible_prime(f_coeffs: &[i64], bound: u64, prefer_3mod4: bool) -> O
     None
 }
 
+/// Like find_irreducible_prime but accepts Integer coefficients.
+/// Reduces f mod p before checking roots and irreducibility, so it works
+/// correctly even when coefficients overflow i64 (e.g., monic-scaled polynomials).
+fn find_irreducible_prime_int(
+    f_coeffs: &[Integer],
+    bound: u64,
+    prefer_3mod4: bool,
+) -> Option<u64> {
+    use crate::arith::sieve_primes;
+    let d = f_coeffs.len() - 1;
+    let primes = sieve_primes(bound);
+
+    for &p in &primes {
+        if p < 3 {
+            continue;
+        }
+        if prefer_3mod4 && p % 4 != 3 {
+            continue;
+        }
+
+        // Reduce f coefficients mod p
+        let p_int = Integer::from(p);
+        let f_mod_p: Vec<i64> = f_coeffs
+            .iter()
+            .map(|c| {
+                let r = Integer::from(c % &p_int);
+                let r = if r < 0 { r + &p_int } else { r };
+                r.to_i64().unwrap_or(0)
+            })
+            .collect();
+
+        let roots = crate::arith::find_polynomial_roots_mod_p(&f_mod_p, p);
+        if d <= 3 {
+            if roots.is_empty() {
+                return Some(p);
+            }
+        } else {
+            if roots.is_empty() {
+                let has_small_factors = crate::arith::has_factor_degree_le_2(&f_mod_p, p);
+                if !has_small_factors {
+                    if d == 4 {
+                        return Some(p);
+                    }
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Compute algebraic square root via Newton's method with an irreducible prime.
 ///
 /// Given P(α) in Z[α]/(f) that is a perfect square, finds γ with γ² = P exactly.
@@ -429,24 +480,22 @@ fn algebraic_sqrt_newton(
         return vec![];
     }
 
-    let f_i64: Option<Vec<i64>> = f_coeffs.iter().map(|c| c.to_i64()).collect();
-    let f_i64 = match f_i64 {
-        Some(v) => v,
-        None => return vec![],
-    };
-
     // For odd degree, prefer p ≡ 3 mod 4 (simple sqrt formula)
     let prefer_3mod4 = d % 2 == 1;
-    let p = match find_irreducible_prime(&f_i64, 500_000, prefer_3mod4) {
+    let p = match find_irreducible_prime_int(f_coeffs, 500_000, prefer_3mod4) {
         Some(p) => p,
         None => return vec![],
     };
     let p_int = Integer::from(p);
 
-    // Reduce f and P to F_p coefficients
-    let f_fp: Vec<u64> = f_i64
+    // Reduce f and P to F_p coefficients (handles arbitrary-size Integer coefficients)
+    let f_fp: Vec<u64> = f_coeffs
         .iter()
-        .map(|&c| ((c as i128).rem_euclid(p as i128)) as u64)
+        .map(|c| {
+            let r = Integer::from(c % &p_int);
+            let r = if r < 0 { r + &p_int } else { r };
+            r.to_u64().unwrap_or(0)
+        })
         .collect();
     let p_fp: Vec<u64> = product
         .iter()
