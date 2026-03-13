@@ -26,6 +26,10 @@ pub struct NfsResult {
     pub sqrt_factor_attempt: Option<usize>,
     pub polyselect_ms: f64,
     pub sieve_ms: f64,
+    pub sieve_setup_ms: f64,
+    pub sieve_scan_ms: f64,
+    pub sieve_cofactor_ms: f64,
+    pub sieve_rels_per_sq: f64,
     pub filter_ms: f64,
     pub la_ms: f64,
     pub sqrt_ms: f64,
@@ -460,6 +464,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         sqrt_factor_attempt: None,
         polyselect_ms: 0.0,
         sieve_ms: 0.0,
+        sieve_setup_ms: 0.0,
+        sieve_scan_ms: 0.0,
+        sieve_cofactor_ms: 0.0,
+        sieve_rels_per_sq: 0.0,
         filter_ms: 0.0,
         la_ms: 0.0,
         sqrt_ms: 0.0,
@@ -1136,6 +1144,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     }
 
     result.sieve_ms = total_sieve_ms;
+    result.sieve_setup_ms = total_root_enum_ms + total_bucket_setup_ms;
+    result.sieve_scan_ms = total_region_scan_ms;
+    result.sieve_cofactor_ms = total_cofactor_ms;
+    result.sieve_rels_per_sq = if total_special_qs > 0 {
+        all_sieve_relations.len() as f64 / total_special_qs as f64
+    } else {
+        0.0
+    };
     timings.add(StageResult {
         name: "sieve".to_string(),
         total_ms: total_sieve_ms,
@@ -2518,6 +2534,10 @@ fn fallback_result(n: &Integer, factor: Integer, total_ms: f64) -> NfsResult {
         sqrt_factor_attempt: None,
         polyselect_ms: 0.0,
         sieve_ms: 0.0,
+        sieve_setup_ms: 0.0,
+        sieve_scan_ms: 0.0,
+        sieve_cofactor_ms: 0.0,
+        sieve_rels_per_sq: 0.0,
         filter_ms: 0.0,
         la_ms: 0.0,
         sqrt_ms: 0.0,
