@@ -179,6 +179,137 @@ fn fp_pow(base: &[u64], exp: &Integer, f: &[u64], p: u64) -> Vec<u64> {
     result
 }
 
+/// Compute sqrt(a) in F_{p^d} = F_p[x]/(f(x)).
+///
+/// Uses (q+1)/4 exponentiation when q = p^d ≡ 3 mod 4,
+/// otherwise falls back to Tonelli-Shanks in the extension field.
+fn fp_sqrt(a: &[u64], pd: &Integer, f: &[u64], p: u64, d: usize) -> Option<Vec<u64>> {
+    let pd_mod4 = Integer::from(pd % 4u32);
+    if pd_mod4 == 3 {
+        // Simple case: sqrt = a^{(p^d + 1)/4}
+        let sqrt_exp = Integer::from(pd + 1) / 4;
+        Some(fp_pow(a, &sqrt_exp, f, p))
+    } else {
+        // Tonelli-Shanks in F_{p^d}
+        fp_tonelli_shanks_ext(a, pd, f, p, d)
+    }
+}
+
+/// Tonelli-Shanks algorithm in the extension field F_{p^d}.
+///
+/// Finds s such that s^2 = a in F_{p^d}, where the group order is p^d - 1.
+/// Works for any p^d (including p^d ≡ 1 mod 4).
+fn fp_tonelli_shanks_ext(
+    a: &[u64],
+    pd: &Integer,
+    f: &[u64],
+    p: u64,
+    d: usize,
+) -> Option<Vec<u64>> {
+    // Factor p^d - 1 = q * 2^s where q is odd
+    let mut q = Integer::from(pd - 1);
+    let mut s: u32 = 0;
+    while q.is_even() {
+        q >>= 1;
+        s += 1;
+    }
+
+    if s == 0 {
+        // p^d is even, shouldn't happen for odd prime p
+        return None;
+    }
+
+    if s == 1 {
+        // p^d ≡ 3 mod 4: sqrt = a^{(p^d + 1)/4}
+        let sqrt_exp = Integer::from(pd + 1) / 4;
+        return Some(fp_pow(a, &sqrt_exp, f, p));
+    }
+
+    // Find a quadratic non-residue z in F_{p^d}
+    // Try small elements: x, x+1, x+2, ... (as polynomials in F_{p^d})
+    let euler_exp = Integer::from(pd - 1) / 2;
+    let neg_one = {
+        let mut v = vec![0u64; d];
+        v[0] = p - 1;
+        v
+    };
+
+    let mut z = Vec::new();
+    // Try random-ish elements. Start with x (the generator of the extension).
+    for trial in 0..1000u64 {
+        let candidate = if trial == 0 {
+            // Try x (the polynomial variable, a natural non-residue candidate)
+            let mut v = vec![0u64; d];
+            if d > 1 {
+                v[1] = 1;
+            } else {
+                v[0] = 2; // fallback for d=1
+            }
+            v
+        } else {
+            // Try (trial + x) or just constants
+            let mut v = vec![0u64; d];
+            v[0] = trial % p;
+            if d > 1 && trial >= p {
+                v[1] = (trial / p) % p;
+            }
+            v
+        };
+
+        // Check if candidate is a QNR: candidate^{(p^d-1)/2} == -1
+        let test = fp_pow(&candidate, &euler_exp, f, p);
+        if test == neg_one {
+            z = candidate;
+            break;
+        }
+    }
+    if z.is_empty() {
+        return None; // Failed to find QNR (extremely unlikely)
+    }
+
+    // Initialize
+    let mut m_val = s;
+    let mut c = fp_pow(&z, &q, f, p);
+    let mut t = fp_pow(a, &q, f, p);
+    let q_plus_1_half = Integer::from(&q + 1) / 2;
+    let mut r = fp_pow(a, &q_plus_1_half, f, p);
+
+    let one = {
+        let mut v = vec![0u64; d];
+        v[0] = 1;
+        v
+    };
+
+    loop {
+        if t == one {
+            return Some(r);
+        }
+
+        // Find the smallest i such that t^{2^i} = 1
+        let mut i = 0u32;
+        let mut temp = t.clone();
+        loop {
+            i += 1;
+            temp = fp_multiply(&temp, &temp, f, p);
+            if temp == one {
+                break;
+            }
+            if i >= m_val {
+                return None; // a is not a QR
+            }
+        }
+
+        // Update: b = c^{2^{m-i-1}}, r = r*b, t = t*b^2, c = b^2
+        let power = 1u64 << (m_val - i - 1);
+        let b = fp_pow(&c, &Integer::from(power), f, p);
+        let b_sq = fp_multiply(&b, &b, f, p);
+        r = fp_multiply(&r, &b, f, p);
+        t = fp_multiply(&t, &b_sq, f, p);
+        c = b_sq;
+        m_val = i;
+    }
+}
+
 /// Multiply two polynomials in (Z/mZ)[x]/(f(x)) where f is monic of degree d.
 fn nf_multiply_mod(a: &[Integer], b: &[Integer], f: &[Integer], m: &Integer) -> Vec<Integer> {
     let d = f.len() - 1;
@@ -345,14 +476,17 @@ fn algebraic_sqrt_newton(
         return vec![]; // P is not a QR in F_{p^d}
     }
 
-    // Compute S₀ = P^{(p^d + 1)/4} in F_{p^d} (valid when p^d ≡ 3 mod 4)
-    let sqrt_exp = Integer::from(&pd + 1) / 4;
-    let s0 = fp_pow(&p_fp, &sqrt_exp, &f_fp, p);
+    // Compute S₀ = sqrt(P) in F_{p^d}
+    let s0 = fp_sqrt(&p_fp, &pd, &f_fp, p, d);
+    let s0 = match s0 {
+        Some(s) => s,
+        None => return vec![], // sqrt computation failed
+    };
 
     // Verify S₀² ≡ P mod (f, p)
     let s0_sq = fp_multiply(&s0, &s0, &f_fp, p);
     if s0_sq != p_fp {
-        return vec![]; // sqrt computation failed
+        return vec![]; // sqrt verification failed
     }
 
     // Compute R₀ = S₀^{-1} = S₀^{p^d - 2} in F_{p^d}
