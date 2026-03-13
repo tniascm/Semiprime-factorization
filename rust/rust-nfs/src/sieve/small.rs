@@ -101,6 +101,70 @@ pub fn precompute_small_sieve_rat(
     entries
 }
 
+/// Precompute small sieve entries for the rational side with general g(x) = g1*x + g0.
+///
+/// The homogeneous rational polynomial is `G(a,b) = g1*a + g0*b`.
+/// In q-lattice coordinates: `a = a0*i + a1*j`, `b = b0*i + b1*j`, so
+/// `G(i,j) = (g1*a0 + g0*b0)*i + (g1*a1 + g0*b1)*j`.
+///
+/// Hit condition: `p | G(i,j)`, giving
+/// `i === -(g1*a1 + g0*b1) * (g1*a0 + g0*b0)^{-1} * j (mod p)`.
+///
+/// When `g1=1, g0=-m`, this reduces to the original `precompute_small_sieve_rat`.
+pub fn precompute_small_sieve_rat_g(
+    primes: &[u64],
+    log_p: &[u8],
+    g0: i64,
+    g1: i64,
+    qlat: &QLattice,
+) -> Vec<SmallSieveEntry> {
+    assert_eq!(primes.len(), log_p.len());
+
+    let mut entries = Vec::with_capacity(primes.len());
+
+    for (idx, &p) in primes.iter().enumerate() {
+        if p == 0 {
+            continue;
+        }
+        let p_i128 = p as i128;
+
+        // denom = (g1*a0 + g0*b0) mod p
+        let denom =
+            (((g1 as i128) * (qlat.a0 as i128) + (g0 as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
+
+        // numer = -(g1*a1 + g0*b1) mod p
+        let numer =
+            ((-((g1 as i128) * (qlat.a1 as i128) + (g0 as i128) * (qlat.b1 as i128))) % p_i128 + p_i128) % p_i128;
+
+        if denom == 0 {
+            let projective_row_period = if numer == 0 { 1 } else { p };
+            entries.push(SmallSieveEntry {
+                p,
+                logp: log_p[idx],
+                projective_row_period,
+                root_i: 0,
+            });
+            continue;
+        }
+
+        let inv = match mod_inverse(denom as u64, p) {
+            Some(v) => v,
+            None => continue,
+        };
+
+        let root_i = ((numer as u128 * inv as u128) % p as u128) as u64;
+
+        entries.push(SmallSieveEntry {
+            p,
+            logp: log_p[idx],
+            projective_row_period: 0,
+            root_i,
+        });
+    }
+
+    entries
+}
+
 /// Precompute small sieve entries for the algebraic side.
 ///
 /// For each `(prime, root)` pair: the algebraic polynomial has root `r` mod `p`

@@ -12,7 +12,7 @@ pub mod norm;
 pub mod region;
 pub mod small;
 
-use crate::arith::sieve_primes;
+use crate::arith::{mod_inverse, sieve_primes};
 use crate::cofactor::{self, CofactResult, CofactorConfig};
 use crate::factorbase::{self, FactorBase};
 use crate::lp_key::LpKey;
@@ -26,7 +26,7 @@ use self::lattice::{reduce_qlattice, QLattice};
 // norm functions are used via direct inline computation in the sieve loop;
 // the module is re-exported for external use.
 use self::region::{apply_bucket_updates, pos_to_ij, scan_survivors};
-use self::small::{precompute_small_sieve_alg, precompute_small_sieve_rat, small_sieve_region};
+use self::small::{precompute_small_sieve_alg, precompute_small_sieve_rat_g, small_sieve_region};
 
 /// Result of sieving: relations + timing breakdown.
 #[derive(Debug, Clone)]
@@ -57,9 +57,13 @@ pub struct SieveResult {
 ///   2. For each FB prime: reduce p-lattice, scatter bucket updates
 ///   3. For each bucket region: init norms, apply updates, scan survivors
 ///   4. Cofactorize survivors
+///
+/// The rational polynomial is `g(x) = g1*x + g0`, so
+/// `g(a,b) = g1*a + g0*b`. For monic polynomials, `g1=1, g0=-m`.
+/// For non-monic Kleinjung polynomials, `g1=ad, g0=-m`.
 pub fn sieve_specialq(
     f_coeffs: &[i64],
-    m: u64,
+    _m: u64,
     rat_fb: &FactorBase,
     alg_fb: &FactorBase,
     params: &NfsParams,
@@ -67,6 +71,8 @@ pub fn sieve_specialq(
     q_range: u64,
     max_relations: Option<usize>,
     sq_root_cache: Option<&HashMap<u64, Vec<u64>>>,
+    g0_param: i64,
+    g1_param: i64,
 ) -> SieveResult {
     let start_time = std::time::Instant::now();
 
@@ -82,9 +88,10 @@ pub fn sieve_specialq(
 
     let scale = rat_fb.scale;
 
-    // Rational polynomial: g(x) = x - m, so g1 = 1, g0 = -m
-    let g0 = -(m as f64);
-    let g1 = 1.0f64;
+    // Rational polynomial: g(x) = g1*x + g0
+    // Homogeneous: g(a,b) = g1*a + g0*b
+    let g0 = g0_param as f64;
+    let g1 = g1_param as f64;
 
     // Precompute FB partitions once; q-dependent exclusion is handled in-loop.
     let small_rat_primes_all: Vec<u64> = rat_fb
@@ -132,7 +139,11 @@ pub fn sieve_specialq(
         .enumerate()
         .filter_map(|(idx, &p)| if p >= bucket_thresh { Some(idx) } else { None })
         .collect();
-    let rat_roots_by_index: Vec<u64> = rat_fb.primes.iter().map(|&p| m % p).collect();
+    // Rational roots: for g(x) = g1*x + g0, the root mod p is -g0 * g1^{-1} mod p.
+    // When g1=1 (monic), this simplifies to m mod p.
+    let rat_roots_by_index: Vec<u64> = rat_fb.primes.iter().map(|&p| {
+        compute_rat_root_mod_p(g0_param, g1_param, p)
+    }).collect();
 
     let mut all_relations = Vec::new();
     let mut total_survivors = 0usize;
@@ -255,12 +266,13 @@ pub fn sieve_specialq(
                                 small_rat_logp.push(small_rat_logp_all[idx]);
                             }
                         }
-                        precompute_small_sieve_rat(&small_rat_primes, &small_rat_logp, m, &qlat)
+                        precompute_small_sieve_rat_g(&small_rat_primes, &small_rat_logp, g0_param, g1_param, &qlat)
                     } else {
-                        precompute_small_sieve_rat(
+                        precompute_small_sieve_rat_g(
                             &small_rat_primes_all,
                             &small_rat_logp_all,
-                            m,
+                            g0_param,
+                            g1_param,
                             &qlat,
                         )
                     };
@@ -510,7 +522,7 @@ pub fn sieve_specialq(
                     let cofact_start = std::time::Instant::now();
                     // drain to iterate by value while clearing out the vector for next iteration
                     for (a, b) in survivors_this_sq.drain(..) {
-                        let rat_norm = compute_rat_norm(a, b, m);
+                        let rat_norm = compute_rat_norm_g(a, b, g0_param, g1_param);
                         let Some(alg_norm) = compute_alg_norm(a, b, f_coeffs) else {
                             continue;
                         };
@@ -727,7 +739,7 @@ struct LineSieveRunning {
 /// and no O(FB) scatter setup.
 pub fn line_sieve_specialq(
     f_coeffs: &[i64],
-    m: u64,
+    _m: u64,
     rat_fb: &FactorBase,
     alg_fb: &FactorBase,
     params: &NfsParams,
@@ -735,6 +747,8 @@ pub fn line_sieve_specialq(
     q_range: u64,
     max_relations: Option<usize>,
     sq_root_cache: Option<&HashMap<u64, Vec<u64>>>,
+    g0_param: i64,
+    g1_param: i64,
 ) -> SieveResult {
     let start_time = std::time::Instant::now();
 
@@ -743,9 +757,9 @@ pub fn line_sieve_specialq(
     let max_j = params.sieve_half_width().max(1) as usize;
     let scale = rat_fb.scale;
 
-    // Rational polynomial: g(x) = x - m
-    let g0 = -(m as f64);
-    let g1 = 1.0f64;
+    // Rational polynomial: g(x) = g1*x + g0
+    let g0 = g0_param as f64;
+    let g1 = g1_param as f64;
 
     let d = f_coeffs.len().saturating_sub(1);
 
@@ -864,8 +878,9 @@ pub fn line_sieve_specialq(
                     rat_xformed.clear();
                     for (idx, &p) in rat_fb.primes.iter().enumerate() {
                         if p == q { continue; }
+                        let rat_root = compute_rat_root_mod_p(g0_param, g1_param, p);
                         let entry = transform_root_for_line_sieve(
-                            p, m % p, rat_fb.log_p[idx], &qlat,
+                            p, rat_root, rat_fb.log_p[idx], &qlat,
                         );
                         if entry.projective_row_period != 0 {
                             // Keep projective entries in the static list
@@ -1071,7 +1086,7 @@ pub fn line_sieve_specialq(
                     // 4. Cofactorize survivors
                     let cofact_start = std::time::Instant::now();
                     for &(a, b) in survivors_buf.iter() {
-                        let rat_norm = compute_rat_norm(a, b, m);
+                        let rat_norm = compute_rat_norm_g(a, b, g0_param, g1_param);
                         let Some(alg_norm) = compute_alg_norm(a, b, f_coeffs) else {
                             continue;
                         };
@@ -1987,10 +2002,35 @@ fn log_norm_to_u8(abs_f: f64, scale: f64) -> u8 {
     }
 }
 
-/// Compute |a - b*m| (rational norm).
-fn compute_rat_norm(a: i64, b: u64, m: u64) -> u64 {
-    let val = a as i128 - (b as i128) * (m as i128);
+/// Compute |g1*a + g0*b| (rational norm for general g(x) = g1*x + g0).
+///
+/// For monic polynomials: g1=1, g0=-m, so this gives |a - m*b|.
+/// For Kleinjung polynomials: g1=ad, g0=-m, so this gives |ad*a - m*b|.
+fn compute_rat_norm_g(a: i64, b: u64, g0: i64, g1: i64) -> u64 {
+    let val = (g1 as i128) * (a as i128) + (g0 as i128) * (b as i128);
     val.unsigned_abs() as u64
+}
+
+/// Compute the rational root mod p for the general rational polynomial
+/// g(x) = g1*x + g0.
+///
+/// The root is x = -g0 * g1^{-1} mod p.
+/// When g1=1, this is just m mod p (since g0=-m).
+/// Returns 0 if g1 is not invertible mod p (projective root).
+fn compute_rat_root_mod_p(g0: i64, g1: i64, p: u64) -> u64 {
+    let p_i128 = p as i128;
+    let g1_mod = ((g1 as i128) % p_i128 + p_i128) % p_i128;
+    if g1_mod == 0 {
+        return 0; // projective root
+    }
+    let neg_g0_mod = ((-(g0 as i128)) % p_i128 + p_i128) % p_i128;
+    // Compute g1^{-1} mod p via extended Euclidean
+    let g1_inv = mod_inverse(g1_mod as u64, p);
+    if let Some(inv) = g1_inv {
+        ((neg_g0_mod * inv as i128) % p_i128) as u64
+    } else {
+        0 // g1 not invertible
+    }
 }
 
 /// Compute |F(a, b)| (algebraic norm) using the homogeneous polynomial.
@@ -2153,11 +2193,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compute_rat_norm() {
-        assert_eq!(compute_rat_norm(100, 1, 50), 50); // |100 - 1*50|
-        assert_eq!(compute_rat_norm(-10, 2, 5), 20); // |-10 - 2*5| = 20
-        assert_eq!(compute_rat_norm(0, 1, 5), 5); // |0 - 5| = 5
-        assert_eq!(compute_rat_norm(5, 1, 5), 0); // |5 - 5| = 0
+    fn test_compute_rat_norm_g() {
+        // Monic: g1=1, g0=-m -> |g1*a + g0*b| = |a - m*b|
+        assert_eq!(compute_rat_norm_g(100, 1, -50, 1), 50); // |100 - 1*50|
+        assert_eq!(compute_rat_norm_g(-10, 2, -5, 1), 20); // |-10 - 2*5| = 20
+        assert_eq!(compute_rat_norm_g(0, 1, -5, 1), 5); // |0 - 5| = 5
+        assert_eq!(compute_rat_norm_g(5, 1, -5, 1), 0); // |5 - 5| = 0
+        // Non-monic: g1=2, g0=-50 -> |2*a - 50*b|
+        assert_eq!(compute_rat_norm_g(30, 1, -50, 2), 10); // |2*30 - 50*1| = 10
     }
 
     #[test]
@@ -2213,6 +2256,8 @@ mod tests {
             params.qrange,
             None,
             None,
+            -(m as i64),
+            1,
         );
         // Just check it runs and produces some output
         assert!(result.special_qs_processed > 0);
@@ -2241,6 +2286,8 @@ mod tests {
             params.qrange,
             None,
             None,
+            -(m as i64),
+            1,
         );
         assert!(result.total_ms >= 0.0);
         assert!(result.sieve_ms >= 0.0);
