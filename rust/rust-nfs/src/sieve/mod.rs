@@ -42,6 +42,12 @@ pub struct SieveResult {
     pub region_scan_ms: f64,
     pub sieve_ms: f64,
     pub cofactor_ms: f64,
+    /// Sub-step: time spent in small sieve precomputation (ms).
+    pub small_precomp_ms: f64,
+    /// Sub-step: time spent in FK scatter for algebraic side (ms).
+    pub fk_scatter_alg_ms: f64,
+    /// Sub-step: time spent in FK scatter for rational side (ms).
+    pub fk_scatter_rat_ms: f64,
 }
 
 /// Run the special-q lattice sieve.
@@ -136,6 +142,9 @@ pub fn sieve_specialq(
     let mut total_norm_ns = 0u64;
     let mut total_small_sieve_ns = 0u64;
     let mut total_bucket_apply_ns = 0u64;
+    let mut total_small_precomp_ns = 0u64;
+    let mut total_fk_scatter_alg_ns = 0u64;
+    let mut total_fk_scatter_rat_ns = 0u64;
     let mut sq_count = 0usize;
     let norm_block = std::env::var("RUST_NFS_NORM_BLOCK")
         .ok()
@@ -205,7 +214,7 @@ pub fn sieve_specialq(
     let updates_per_bucket = (est_updates * 2).max(1024);
 
     for chunk in qr_pairs.chunks(batch_size.max(1)) {
-        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64)> = chunk
+        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = chunk
             .par_iter()
             .copied()
             .map_init(
@@ -231,6 +240,7 @@ pub fn sieve_specialq(
                     let qlat = reduce_qlattice(q, r, skewness);
 
                     // 2. Precompute small sieve entries
+                    let t_small_precomp = std::time::Instant::now();
                     let small_rat = if q < bucket_thresh {
                         let mut small_rat_primes = Vec::with_capacity(small_rat_primes_all.len());
                         let mut small_rat_logp = Vec::with_capacity(small_rat_logp_all.len());
@@ -276,8 +286,11 @@ pub fn sieve_specialq(
                         )
                     };
 
+                    let small_precomp_ns = t_small_precomp.elapsed().as_nanos() as u64;
+
                     // 3. Scatter bucket updates
 
+                    let t_fk_alg = std::time::Instant::now();
                     for &fb_idx in &alg_large_indices {
                         let p = alg_fb.primes[fb_idx];
                         if p == q {
@@ -298,6 +311,9 @@ pub fn sieve_specialq(
                         }
                     }
 
+                    let fk_scatter_alg_ns = t_fk_alg.elapsed().as_nanos() as u64;
+
+                    let t_fk_rat = std::time::Instant::now();
                     for &fb_idx in &rat_large_indices {
                         let p = rat_fb.primes[fb_idx];
                         if p == q {
@@ -315,6 +331,7 @@ pub fn sieve_specialq(
                             half_i,
                         );
                     }
+                    let fk_scatter_rat_ns = t_fk_rat.elapsed().as_nanos() as u64;
 
                     let bucket_setup_elapsed = sieve_start.elapsed().as_nanos() as u64;
 
@@ -547,12 +564,15 @@ pub fn sieve_specialq(
                         norm_ns,
                         small_sieve_ns,
                         bucket_apply_ns,
+                        small_precomp_ns,
+                        fk_scatter_alg_ns,
+                        fk_scatter_rat_ns,
                     )
                 },
             )
             .collect();
 
-        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, ss_ns, ba_ns) in chunk_results {
+        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, ss_ns, ba_ns, sp_ns, fk_alg_ns, fk_rat_ns) in chunk_results {
             all_relations.extend(rels);
             total_survivors += survivors;
             total_bucket_setup_ns += bucket_setup_ns;
@@ -561,6 +581,9 @@ pub fn sieve_specialq(
             total_norm_ns += n_ns;
             total_small_sieve_ns += ss_ns;
             total_bucket_apply_ns += ba_ns;
+            total_small_precomp_ns += sp_ns;
+            total_fk_scatter_alg_ns += fk_alg_ns;
+            total_fk_scatter_rat_ns += fk_rat_ns;
         }
 
         if let Some(limit) = max_relations {
@@ -587,6 +610,13 @@ pub fn sieve_specialq(
             total_bucket_apply_ns as f64 / 1_000_000.0,
             total_region_scan_ns as f64 / 1_000_000.0,
         );
+        eprintln!(
+            "  sieve-profile: small_precomp={:.0}ms fk_scatter_alg={:.0}ms fk_scatter_rat={:.0}ms (of setup={:.0}ms)",
+            total_small_precomp_ns as f64 / 1_000_000.0,
+            total_fk_scatter_alg_ns as f64 / 1_000_000.0,
+            total_fk_scatter_rat_ns as f64 / 1_000_000.0,
+            total_bucket_setup_ns as f64 / 1_000_000.0,
+        );
     }
 
     SieveResult {
@@ -601,6 +631,9 @@ pub fn sieve_specialq(
         region_scan_ms: total_region_scan_ns as f64 / 1_000_000.0,
         sieve_ms: (total_bucket_setup_ns + total_region_scan_ns) as f64 / 1_000_000.0,
         cofactor_ms: total_cofact_ns as f64 / 1_000_000.0,
+        small_precomp_ms: total_small_precomp_ns as f64 / 1_000_000.0,
+        fk_scatter_alg_ms: total_fk_scatter_alg_ns as f64 / 1_000_000.0,
+        fk_scatter_rat_ms: total_fk_scatter_rat_ns as f64 / 1_000_000.0,
     }
 }
 
