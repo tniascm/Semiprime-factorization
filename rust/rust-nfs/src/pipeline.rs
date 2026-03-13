@@ -857,6 +857,19 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .filter(|&v| v > 0);
     let mut last_matrix_probe_rows: Option<usize> = None;
 
+    // Line sieve toggle: opt-in via RUST_NFS_LINE_SIEVE=1.
+    // The line sieve processes one row at a time with stride-based
+    // prime subtraction instead of bucket scatter.  Currently ~1.5x
+    // slower than the scatter sieve due to per-row large-prime overhead,
+    // but has better cache locality and may be useful for tuning or
+    // when the scatter sieve's memory footprint is a constraint.
+    let use_line_sieve = std::env::var("RUST_NFS_LINE_SIEVE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if use_line_sieve {
+        eprintln!("  sieve: using line sieve (degree={})", params.degree);
+    }
+
     loop {
         let total_rels = all_sieve_relations.len();
         let at_q_window_cap = max_q_windows.map_or(false, |cap| window >= cap);
@@ -1101,17 +1114,31 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         let remaining_to_target = target_raw_rels
             .saturating_sub(all_sieve_relations.len())
             .max(1usize);
-        let sieve_result = crate::sieve::sieve_specialq(
-            &f_coeffs_i64,
-            m,
-            &rat_fb,
-            &alg_fb,
-            &params,
-            q_start,
-            params.qrange,
-            Some(remaining_to_target),
-            Some(&sq_root_cache),
-        );
+        let sieve_result = if use_line_sieve {
+            crate::sieve::line_sieve_specialq(
+                &f_coeffs_i64,
+                m,
+                &rat_fb,
+                &alg_fb,
+                &params,
+                q_start,
+                params.qrange,
+                Some(remaining_to_target),
+                Some(&sq_root_cache),
+            )
+        } else {
+            crate::sieve::sieve_specialq(
+                &f_coeffs_i64,
+                m,
+                &rat_fb,
+                &alg_fb,
+                &params,
+                q_start,
+                params.qrange,
+                Some(remaining_to_target),
+                Some(&sq_root_cache),
+            )
+        };
 
         all_sieve_relations.extend(sieve_result.relations);
         total_sieve_ms += sieve_result.total_ms;

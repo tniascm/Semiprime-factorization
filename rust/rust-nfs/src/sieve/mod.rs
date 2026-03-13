@@ -674,6 +674,573 @@ pub fn sieve_specialq(
     }
 }
 
+// ===========================================================================
+// Line Sieve: direct per-line sieving (no bucket scatter overhead)
+// ===========================================================================
+
+/// Precomputed per-prime sieve info for the line sieve.
+///
+/// Stores the transformed root in q-lattice (i,j) coordinates so that
+/// for each line j the starting offset can be computed as
+/// `(half_i + root_i * j) mod p`.
+struct LineSieveEntry {
+    p: u64,
+    logp: u8,
+    /// Transformed root in (i,j)-space.  For row j, the first hit in the
+    /// sieve row is at position `(half_i + root_i * j_unsigned) mod p`.
+    root_i: u64,
+    /// Non-zero for projective roots: every `projective_row_period`-th row
+    /// has all positions hit.
+    projective_row_period: u64,
+}
+
+/// Running offset for a single prime across sieve lines.
+///
+/// Instead of computing `(half_i + root_i * j) mod p` from scratch each
+/// line, we maintain a running offset that advances by `step = root_i`
+/// when j increases by 1.  This converts a modular multiply per (prime,
+/// line) pair into a single addition + comparison.
+struct LineSieveRunning {
+    p: u32,
+    logp: u8,
+    /// Current starting position in the sieve row (0 <= offset < p).
+    offset: u32,
+    /// Amount to advance when moving to the next line: root_i mod p.
+    step: u32,
+}
+
+/// Run the line sieve for a batch of special-q primes.
+///
+/// The line sieve processes one sieve row at a time.  For each row j in
+/// `[0, J)`:
+///
+///  1. Initialise the rational and algebraic sieve arrays (length 2I) with
+///     approximate log-norms.
+///  2. For **every** FB prime, stride through the row at step p subtracting
+///     log(p) at each hit.
+///  3. Scan for survivors (cells where both sides are below threshold).
+///  4. Cofactorize survivors to produce relations.
+///
+/// Because the inner loop touches each sieve cell in L1-friendly order and
+/// avoids the per-SQ FK setup phase, the line sieve trades some per-prime
+/// overhead (computing start offsets per line) for far better cache locality
+/// and no O(FB) scatter setup.
+pub fn line_sieve_specialq(
+    f_coeffs: &[i64],
+    m: u64,
+    rat_fb: &FactorBase,
+    alg_fb: &FactorBase,
+    params: &NfsParams,
+    q_start: u64,
+    q_range: u64,
+    max_relations: Option<usize>,
+    sq_root_cache: Option<&HashMap<u64, Vec<u64>>>,
+) -> SieveResult {
+    let start_time = std::time::Instant::now();
+
+    let half_i = params.sieve_half_width() as i64;
+    let sieve_width = (2 * half_i) as usize;
+    let max_j = params.sieve_half_width().max(1) as usize;
+    let scale = rat_fb.scale;
+
+    // Rational polynomial: g(x) = x - m
+    let g0 = -(m as f64);
+    let g1 = 1.0f64;
+
+    let d = f_coeffs.len().saturating_sub(1);
+
+    // Pre-compute cofactoring config once.
+    let cofact_config_rat = CofactorConfig::new(params.lpb0);
+    let cofact_config_alg = CofactorConfig::new(params.lpb1);
+
+    let rat_bound = ((params.sieve_mfb0 as f64) * scale).min(255.0) as u8;
+    let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
+
+    let verbose_sq = std::env::var("RUST_NFS_VERBOSE_SQ")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let q_end = q_start + q_range;
+    let sq_primes: Vec<u64> = sieve_primes(q_end)
+        .into_iter()
+        .filter(|&p| p >= q_start)
+        .collect();
+
+    // --- Root enumeration (same as scatter sieve) ---
+    let root_enum_start = std::time::Instant::now();
+    let mut roots_from_fb = 0usize;
+    let mut roots_fallback = 0usize;
+    let mut qr_pairs = Vec::new();
+    let mut sq_count = 0usize;
+    for &q in &sq_primes {
+        sq_count += 1;
+        if let Ok(idx) = alg_fb.primes.binary_search(&q) {
+            roots_from_fb += 1;
+            for &r in &alg_fb.roots[idx] {
+                qr_pairs.push((q, r));
+            }
+            continue;
+        }
+        if let Some(cache) = sq_root_cache {
+            if let Some(cached_roots) = cache.get(&q) {
+                roots_from_fb += 1;
+                for &r in cached_roots {
+                    qr_pairs.push((q, r));
+                }
+                continue;
+            }
+        }
+        roots_fallback += 1;
+        let q_roots = factorbase::find_roots_mod_p(f_coeffs, q);
+        for r in q_roots {
+            qr_pairs.push((q, r));
+        }
+    }
+    let root_enum_ms = root_enum_start.elapsed().as_secs_f64() * 1000.0;
+
+    // --- Build FB entry lists (all primes, not partitioned by size) ---
+    // Rational FB entries: one root per prime (root = m mod p).
+    let rat_entries_all: Vec<LineSieveEntry> = rat_fb
+        .primes
+        .iter()
+        .enumerate()
+        .map(|(idx, &p)| LineSieveEntry {
+            p,
+            logp: rat_fb.log_p[idx],
+            root_i: 0,              // placeholder; computed per-q
+            projective_row_period: 0,
+        })
+        .collect();
+
+    // Algebraic FB entries: multiple roots per prime.
+    let alg_entries_all: Vec<(usize, usize)> = alg_fb
+        .primes
+        .iter()
+        .enumerate()
+        .flat_map(|(idx, _)| alg_fb.roots[idx].iter().enumerate().map(move |(ri, _)| (idx, ri)))
+        .collect();
+
+    let batch_size = std::env::var("RUST_NFS_SQ_BATCH_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(64usize);
+
+    let mut all_relations = Vec::new();
+    let mut total_survivors = 0usize;
+    let mut total_setup_ns = 0u64;
+    let mut total_sieve_ns = 0u64;
+    let mut total_cofact_ns = 0u64;
+
+    for chunk in qr_pairs.chunks(batch_size.max(1)) {
+        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64)> = chunk
+            .par_iter()
+            .copied()
+            .map_init(
+                || {
+                    let rat_sieve = vec![0u8; sieve_width];
+                    let alg_sieve = vec![0u8; sieve_width];
+                    let survivors: Vec<(i64, u64)> = Vec::with_capacity(1024);
+                    let rat_xformed: Vec<LineSieveEntry> = Vec::with_capacity(rat_entries_all.len());
+                    let alg_xformed: Vec<LineSieveEntry> = Vec::with_capacity(alg_entries_all.len());
+                    let rat_running: Vec<LineSieveRunning> = Vec::new();
+                    let alg_running: Vec<LineSieveRunning> = Vec::new();
+                    (rat_sieve, alg_sieve, survivors, rat_xformed, alg_xformed,
+                     rat_running, alg_running)
+                },
+                |(rat_sieve, alg_sieve, survivors_buf, rat_xformed, alg_xformed,
+                  rat_running, alg_running), (q, r)| {
+                    survivors_buf.clear();
+                    let sq_start = std::time::Instant::now();
+
+                    // 1. Reduce q-lattice
+                    let skewness = 1.0;
+                    let qlat = reduce_qlattice(q, r, skewness);
+
+                    // 2. Precompute transformed roots and running offsets for all FB primes.
+                    //    We initialise each running entry with offset = half_i mod p
+                    //    (the starting position for j=0).  As we advance through lines
+                    //    the offset is updated in-place by adding `step` (no multiply).
+                    rat_xformed.clear();
+                    for (idx, &p) in rat_fb.primes.iter().enumerate() {
+                        if p == q { continue; }
+                        let entry = transform_root_for_line_sieve(
+                            p, m % p, rat_fb.log_p[idx], &qlat,
+                        );
+                        if entry.projective_row_period != 0 {
+                            // Keep projective entries in the static list
+                            rat_xformed.push(entry);
+                        } else {
+                            rat_xformed.push(entry);
+                        }
+                    }
+
+                    alg_xformed.clear();
+                    for &(fb_idx, root_idx) in &alg_entries_all {
+                        let p = alg_fb.primes[fb_idx];
+                        if p == q { continue; }
+                        let root = alg_fb.roots[fb_idx][root_idx];
+                        let entry = transform_root_for_line_sieve(
+                            p, root, alg_fb.log_p[fb_idx], &qlat,
+                        );
+                        alg_xformed.push(entry);
+                    }
+
+                    // Build running offset arrays (reuse pre-allocated buffers).
+                    let half_i_u64 = half_i as u64;
+
+                    // All FB primes go into a single running-offset array.
+                    // Small primes (p < sieve_width) stride multiple times per
+                    // row; large primes (p >= sieve_width) hit 0-1 times via
+                    // the same while loop.  Keeping everything in one vector
+                    // avoids the overhead of iterating two separate arrays per
+                    // row and lets the CPU prefetcher stay on one allocation.
+                    rat_running.clear();
+                    for e in rat_xformed.iter() {
+                        if e.projective_row_period != 0 || e.p <= 1 { continue; }
+                        rat_running.push(LineSieveRunning {
+                            p: e.p as u32,
+                            logp: e.logp,
+                            offset: (half_i_u64 % e.p) as u32,
+                            step: e.root_i as u32,
+                        });
+                    }
+
+                    alg_running.clear();
+                    for e in alg_xformed.iter() {
+                        if e.projective_row_period != 0 || e.p <= 1 { continue; }
+                        alg_running.push(LineSieveRunning {
+                            p: e.p as u32,
+                            logp: e.logp,
+                            offset: (half_i_u64 % e.p) as u32,
+                            step: e.root_i as u32,
+                        });
+                    }
+
+                    if verbose_sq && q == sq_primes[0] {
+                        eprintln!("  line_sieve FB: rat={} alg={} sieve_width={}",
+                            rat_running.len(), alg_running.len(), sieve_width);
+                    }
+
+                    // Collect projective entries for separate handling
+                    let rat_projective: Vec<&LineSieveEntry> = rat_xformed.iter()
+                        .filter(|e| e.projective_row_period != 0)
+                        .collect();
+                    let alg_projective: Vec<&LineSieveEntry> = alg_xformed.iter()
+                        .filter(|e| e.projective_row_period != 0)
+                        .collect();
+
+                    let setup_ns = sq_start.elapsed().as_nanos() as u64;
+
+                    // 3. Line sieve: for each row j
+                    let sieve_start = std::time::Instant::now();
+                    let mut local_rels = Vec::new();
+
+                    let a0f = qlat.a0 as f64;
+                    let b0f = qlat.b0 as f64;
+                    let a1f = qlat.a1 as f64;
+                    let b1f = qlat.b1 as f64;
+
+                    // Rational side: slope and intercept
+                    let slope_rat = g1 * a0f + g0 * b0f;
+                    let intercept_rat_per_j = g1 * a1f + g0 * b1f;
+
+                    // Block-norm approximation: evaluate at block midpoint, fill block.
+                    // Same approach as scatter sieve's norm_block=16.
+                    let norm_block: usize = 16;
+
+                    for j in 0..max_j {
+                        // --- Init norms ---
+                        let j_f = j as f64;
+                        let intercept_rat = intercept_rat_per_j * j_f;
+
+                        // Rational norms (linear: fast, block-approximated)
+                        for block_start in (0..sieve_width).step_by(norm_block) {
+                            let block_len = (sieve_width - block_start).min(norm_block);
+                            let k_mid = block_start + (block_len / 2);
+                            let i_val = (k_mid as i32) - (half_i as i32);
+                            let f_val = slope_rat * (i_val as f64) + intercept_rat;
+                            let v = log_norm_to_u8(f_val.abs(), scale);
+                            rat_sieve[block_start..block_start + block_len].fill(v);
+                        }
+
+                        // Algebraic norms (degree d, block-approximated)
+                        for block_start in (0..sieve_width).step_by(norm_block) {
+                            let block_len = (sieve_width - block_start).min(norm_block);
+                            let k_mid = block_start + (block_len / 2);
+                            let i_val = (k_mid as i32) - (half_i as i32);
+                            let i_f = i_val as f64;
+                            let a = a0f * i_f + a1f * j_f;
+                            let b = b0f * i_f + b1f * j_f;
+                            let abs_f = eval_homogeneous_norm_f64(f_coeffs, a, b, d);
+                            let v = log_norm_to_u8(abs_f, scale);
+                            alg_sieve[block_start..block_start + block_len].fill(v);
+                        }
+
+                        // --- Sieve: subtract log(p) at hit positions using running offsets ---
+
+                        // Small primes (p < sieve_width): stride through line
+                        for entry in rat_running.iter_mut() {
+                            let p = entry.p as usize;
+                            let logp = entry.logp;
+                            let mut pos = entry.offset as usize;
+
+                            while pos < sieve_width {
+                                unsafe {
+                                    let cell = rat_sieve.get_unchecked_mut(pos);
+                                    *cell = cell.saturating_sub(logp);
+                                }
+                                pos += p;
+                            }
+
+                            entry.offset += entry.step;
+                            if entry.offset >= entry.p {
+                                entry.offset -= entry.p;
+                            }
+                        }
+
+                        for entry in alg_running.iter_mut() {
+                            let p = entry.p as usize;
+                            let logp = entry.logp;
+                            let mut pos = entry.offset as usize;
+
+                            while pos < sieve_width {
+                                unsafe {
+                                    let cell = alg_sieve.get_unchecked_mut(pos);
+                                    *cell = cell.saturating_sub(logp);
+                                }
+                                pos += p;
+                            }
+
+                            entry.offset += entry.step;
+                            if entry.offset >= entry.p {
+                                entry.offset -= entry.p;
+                            }
+                        }
+
+                        // Handle projective entries
+                        for entry in &rat_projective {
+                            if (j as u64) % entry.projective_row_period == 0 {
+                                let logp = entry.logp;
+                                for cell in rat_sieve[..sieve_width].iter_mut() {
+                                    *cell = cell.saturating_sub(logp);
+                                }
+                            }
+                        }
+                        for entry in &alg_projective {
+                            if (j as u64) % entry.projective_row_period == 0 {
+                                let logp = entry.logp;
+                                for cell in alg_sieve[..sieve_width].iter_mut() {
+                                    *cell = cell.saturating_sub(logp);
+                                }
+                            }
+                        }
+
+                        // --- Scan for survivors ---
+                        for k in 0..sieve_width {
+                            if rat_sieve[k] <= rat_bound && alg_sieve[k] <= alg_bound {
+                                let i = (k as i64) - half_i;
+                                if j == 0 { continue; }
+
+                                let a = qlat.a0 as i128 * i as i128 + qlat.a1 as i128 * j as i128;
+                                let b = qlat.b0 as i128 * i as i128 + qlat.b1 as i128 * j as i128;
+
+                                if b <= 0 || a == 0 { continue; }
+                                if a.unsigned_abs() > i64::MAX as u128 || b > u64::MAX as i128 {
+                                    continue;
+                                }
+
+                                // gcd(|a|, b) == 1 check
+                                let mut u = a.unsigned_abs() as u64;
+                                let mut v = b as u64;
+                                while v != 0 {
+                                    let t = v;
+                                    v = u % v;
+                                    u = t;
+                                }
+                                if u != 1 { continue; }
+
+                                survivors_buf.push((a as i64, b as u64));
+                            }
+                        }
+                    }
+
+                    let local_survivors = survivors_buf.len();
+                    let sieve_ns = sieve_start.elapsed().as_nanos() as u64;
+
+                    // 4. Cofactorize survivors
+                    let cofact_start = std::time::Instant::now();
+                    for &(a, b) in survivors_buf.iter() {
+                        let rat_norm = compute_rat_norm(a, b, m);
+                        let Some(alg_norm) = compute_alg_norm(a, b, f_coeffs) else {
+                            continue;
+                        };
+
+                        if rat_norm == 0 || alg_norm == 0 { continue; }
+
+                        let mut alg_norm_reduced = alg_norm;
+                        let q128 = q as u128;
+                        if alg_norm_reduced % q128 != 0 { continue; }
+                        alg_norm_reduced /= q128;
+
+                        let rat_result = cofactor::cofactorize_with_config(
+                            rat_norm,
+                            &rat_fb.trial_divisors,
+                            params.lpb0,
+                            params.mfb0,
+                            params.lim0,
+                            &cofact_config_rat,
+                        );
+
+                        if matches!(rat_result, cofactor::CofactResult::NotSmooth) {
+                            continue;
+                        }
+
+                        let alg_norm_to_factor = if alg_norm_reduced == 0 { 1 } else { alg_norm_reduced };
+                        let alg_result = if alg_norm_to_factor <= u64::MAX as u128 {
+                            cofactor::cofactorize_with_config(
+                                alg_norm_to_factor as u64,
+                                &alg_fb.trial_divisors,
+                                params.lpb1,
+                                params.mfb1,
+                                params.lim1,
+                                &cofact_config_alg,
+                            )
+                        } else {
+                            cofactor::cofactorize_u128_with_config(
+                                alg_norm_to_factor,
+                                &alg_fb.trial_divisors,
+                                params.lpb1,
+                                params.mfb1,
+                                params.lim1,
+                                &cofact_config_alg,
+                            )
+                        };
+
+                        if let Some(rel) = build_relation(a, b, Some((q, r)), rat_result, alg_result) {
+                            local_rels.push(rel);
+                        }
+                    }
+                    let cofact_ns = cofact_start.elapsed().as_nanos() as u64;
+
+                    if verbose_sq {
+                        let sq_ms = sq_start.elapsed().as_secs_f64() * 1000.0;
+                        let n_rels = local_rels.len();
+                        let rels_per_sec = if sq_ms > 0.0 {
+                            n_rels as f64 / (sq_ms / 1000.0)
+                        } else {
+                            0.0
+                        };
+                        eprintln!(
+                            "  line_sq={}: {} rels, {} survivors in {:.1}ms ({:.1} rels/s)",
+                            q, n_rels, local_survivors, sq_ms, rels_per_sec
+                        );
+                    }
+
+                    (local_rels, local_survivors, setup_ns, sieve_ns, cofact_ns)
+                },
+            )
+            .collect();
+
+        for (rels, survivors, setup_ns, sieve_ns, cofact_ns) in chunk_results {
+            all_relations.extend(rels);
+            total_survivors += survivors;
+            total_setup_ns += setup_ns;
+            total_sieve_ns += sieve_ns;
+            total_cofact_ns += cofact_ns;
+        }
+
+        if let Some(limit) = max_relations {
+            if all_relations.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    if let Some(limit) = max_relations {
+        if all_relations.len() > limit {
+            all_relations.truncate(limit);
+        }
+    }
+
+    let total_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+    let setup_ms = total_setup_ns as f64 / 1_000_000.0;
+    let sieve_ms = total_sieve_ns as f64 / 1_000_000.0;
+    let cofact_ms = total_cofact_ns as f64 / 1_000_000.0;
+
+    SieveResult {
+        relations: all_relations,
+        special_qs_processed: sq_count,
+        survivors_found: total_survivors,
+        total_ms,
+        root_enum_ms,
+        roots_from_fb,
+        roots_fallback,
+        bucket_setup_ms: setup_ms,
+        region_scan_ms: sieve_ms,
+        sieve_ms: setup_ms + sieve_ms,
+        cofactor_ms: cofact_ms,
+        small_precomp_ms: 0.0,
+        fk_scatter_alg_ms: 0.0,
+        fk_scatter_rat_ms: 0.0,
+    }
+}
+
+/// Transform an FB prime root through the q-lattice for the line sieve.
+///
+/// Returns a `LineSieveEntry` with the transformed root `root_i` in
+/// (i,j) coordinates.  For row j the first hit is at position
+/// `(half_i + root_i * j) mod p`, then every p-th position after that.
+///
+/// The transformation is:
+///   root_i = -(a1 - R*b1) * (a0 - R*b0)^{-1}  mod p
+///
+/// where R is the polynomial root mod p.
+fn transform_root_for_line_sieve(
+    p: u64,
+    root: u64,
+    logp: u8,
+    qlat: &QLattice,
+) -> LineSieveEntry {
+    if p <= 1 {
+        return LineSieveEntry { p, logp, root_i: 0, projective_row_period: 0 };
+    }
+
+    let p_i128 = p as i128;
+
+    // denom = (a0 - R*b0) mod p
+    let denom = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
+    // numer = -(a1 - R*b1) mod p  =  (R*b1 - a1) mod p
+    let numer = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
+
+    if denom == 0 {
+        // Projective root
+        let period = if numer == 0 { 1 } else { p };
+        return LineSieveEntry {
+            p,
+            logp,
+            root_i: 0,
+            projective_row_period: period,
+        };
+    }
+
+    let inv = match crate::arith::mod_inverse(denom as u64, p) {
+        Some(v) => v,
+        None => {
+            return LineSieveEntry { p, logp, root_i: 0, projective_row_period: 0 };
+        }
+    };
+
+    let root_i = ((numer as u128 * inv as u128) % p as u128) as u64;
+
+    LineSieveEntry {
+        p,
+        logp,
+        root_i,
+        projective_row_period: 0,
+    }
+}
+
 /// Estimate the expected number of bucket updates per bucket region.
 ///
 /// For each large FB prime p (above bucket_thresh), each root contributes
