@@ -543,14 +543,28 @@ pub fn sieve_specialq(
                         } else {
                             alg_norm_reduced
                         };
-                        let alg_result = cofactor::cofactorize_u128_with_config(
-                            alg_norm_to_factor,
-                            &alg_fb.trial_divisors,
-                            params.lpb1,
-                            params.mfb1,
-                            params.lim1,
-                            &cofact_config_alg,
-                        );
+                        // Fast path: dispatch to u64 cofactoring when the
+                        // reduced algebraic norm fits, avoiding u128 trial
+                        // division overhead.
+                        let alg_result = if alg_norm_to_factor <= u64::MAX as u128 {
+                            cofactor::cofactorize_with_config(
+                                alg_norm_to_factor as u64,
+                                &alg_fb.trial_divisors,
+                                params.lpb1,
+                                params.mfb1,
+                                params.lim1,
+                                &cofact_config_alg,
+                            )
+                        } else {
+                            cofactor::cofactorize_u128_with_config(
+                                alg_norm_to_factor,
+                                &alg_fb.trial_divisors,
+                                params.lpb1,
+                                params.mfb1,
+                                params.lim1,
+                                &cofact_config_alg,
+                            )
+                        };
 
                         if let Some(rel) =
                             build_relation(a, b, Some((q, r)), rat_result, alg_result)
