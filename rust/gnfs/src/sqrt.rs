@@ -4,8 +4,11 @@ use rug::Integer;
 
 /// Compute the rational square root for a dependency.
 ///
-/// Given a set of relations whose product of rational norms a_i + b_i*m is a perfect square,
-/// compute x = sqrt(product of (a_i + b_i*m)) mod N.
+/// Given a set of relations whose product of rational norms g1*a_i + g0*b_i is a perfect square,
+/// compute x = sqrt(product) mod N.
+///
+/// For monic polynomials (g1=1, g0=-m): norm = a - b*m.
+/// For Kleinjung non-monic (g1=ad, g0=-m): norm = ad*a - b*m.
 ///
 /// Returns Some((x, sign_negative)) or None if the product is not a perfect square.
 pub fn rational_square_root(
@@ -14,12 +17,25 @@ pub fn rational_square_root(
     m: &Integer,
     n: &Integer,
 ) -> Option<(Integer, bool)> {
+    rational_square_root_g(relations, dependency, &Integer::from(-m), &Integer::from(1), n)
+}
+
+/// Generalized rational square root using explicit g0, g1.
+///
+/// Computes x = sqrt(product of (g1*a_i + g0*b_i)) mod N.
+pub fn rational_square_root_g(
+    relations: &[Relation],
+    dependency: &[usize],
+    g0: &Integer,
+    g1: &Integer,
+    n: &Integer,
+) -> Option<(Integer, bool)> {
     let mut product = Integer::from(1);
     let mut sign_negative = false;
 
     for &idx in dependency {
         let rel = &relations[idx];
-        let norm = Integer::from(rel.a) - Integer::from(rel.b) * m;
+        let norm = Integer::from(rel.a) * g1 + Integer::from(rel.b) * g0;
         if norm < 0 {
             sign_negative = !sign_negative;
             product *= Integer::from(-&norm);
@@ -999,7 +1015,7 @@ pub fn extract_factor_diagnostic(
     m: &Integer,
     n: &Integer,
 ) -> (Option<Integer>, Option<FactorFailure>) {
-    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, None)
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, None, None, None)
 }
 
 /// Like extract_factor_diagnostic but uses stored factorizations for fast
@@ -1012,7 +1028,21 @@ pub fn extract_factor_diagnostic_fast(
     n: &Integer,
     rat_fb_primes: &[u64],
 ) -> (Option<Integer>, Option<FactorFailure>) {
-    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, Some(rat_fb_primes))
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, Some(rat_fb_primes), None, None)
+}
+
+/// Generalized version with explicit g0, g1 for non-monic polynomial support.
+pub fn extract_factor_diagnostic_fast_g(
+    relations: &[Relation],
+    dependency: &[usize],
+    f_coeffs: &[Integer],
+    m: &Integer,
+    n: &Integer,
+    rat_fb_primes: &[u64],
+    g0: &Integer,
+    g1: &Integer,
+) -> (Option<Integer>, Option<FactorFailure>) {
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, false, Some(rat_fb_primes), Some(g0), Some(g1))
 }
 
 /// Verbose version that prints detailed diagnostics for debugging.
@@ -1023,7 +1053,20 @@ pub fn extract_factor_verbose(
     m: &Integer,
     n: &Integer,
 ) -> (Option<Integer>, Option<FactorFailure>) {
-    extract_factor_inner(relations, dependency, f_coeffs, m, n, true, None)
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, true, None, None, None)
+}
+
+/// Generalized verbose version with explicit g0, g1.
+pub fn extract_factor_verbose_g(
+    relations: &[Relation],
+    dependency: &[usize],
+    f_coeffs: &[Integer],
+    m: &Integer,
+    n: &Integer,
+    g0: &Integer,
+    g1: &Integer,
+) -> (Option<Integer>, Option<FactorFailure>) {
+    extract_factor_inner(relations, dependency, f_coeffs, m, n, true, None, Some(g0), Some(g1))
 }
 
 fn extract_factor_inner(
@@ -1034,6 +1077,8 @@ fn extract_factor_inner(
     n: &Integer,
     verbose: bool,
     rat_fb_primes: Option<&[u64]>,
+    g0_opt: Option<&Integer>,
+    g1_opt: Option<&Integer>,
 ) -> (Option<Integer>, Option<FactorFailure>) {
     let d = f_coeffs.len() - 1;
     let ad = f_coeffs[d].clone();
@@ -1042,6 +1087,15 @@ fn extract_factor_inner(
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     let t0 = std::time::Instant::now();
+
+    // Rational polynomial g(x) = g1*x + g0.
+    // Default: g1=1, g0=-m (monic case).
+    let default_g0 = Integer::from(-m);
+    let default_g1 = Integer::from(1);
+    let g0 = g0_opt.unwrap_or(&default_g0);
+    let g1 = g1_opt.unwrap_or(&default_g1);
+    let g0_i64 = g0.to_i64().unwrap_or(-(m.to_i64().unwrap_or(0)));
+    let g1_i64 = g1.to_i64().unwrap_or(1);
 
     // For non-monic f, scale to monic g and work in Z[θ]/(g) where θ = ad*α.
     let (working_f, working_m) = if is_nonmonic {
@@ -1068,7 +1122,6 @@ fn extract_factor_inner(
         let mut exponents: HashMap<u64, u32> = HashMap::new();
         let mut sign_count = 0u32;
         let mut cofactor_exact = Integer::from(1);
-        let m_u64 = m.to_u64().unwrap_or(0);
 
         for &idx in dependency {
             let rel = &relations[idx];
@@ -1081,9 +1134,8 @@ fn extract_factor_inner(
             }
 
             // Recover LP cofactor using u128 arithmetic where possible.
-            // norm = |a - b*m|; for c30: |a| < 2^50, b < 2^50, m < 2^34.
-            // b*m < 2^84, fits u128. Division by u64 primes stays in u128.
-            let norm_i128 = rel.a as i128 - (rel.b as u128 * m_u64 as u128) as i128;
+            // norm = |g1*a + g0*b|; for monic: |a - b*m|.
+            let norm_i128 = (g1_i64 as i128) * (rel.a as i128) + (g0_i64 as i128) * (rel.b as i128);
             let mut cofactor_u128 = norm_i128.unsigned_abs();
             for &(fb_idx, exp) in &rel.rational_factors {
                 let p = fb_primes[fb_idx as usize] as u128;
@@ -1140,7 +1192,7 @@ fn extract_factor_inner(
         let mut rat_product = Integer::from(1);
         for &idx in dependency {
             let rel = &relations[idx];
-            let norm = Integer::from(rel.a) - Integer::from(rel.b) * m;
+            let norm = Integer::from(rel.a) * g1 + Integer::from(rel.b) * g0;
             rat_product *= norm;
         }
 
