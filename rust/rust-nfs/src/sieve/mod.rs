@@ -224,9 +224,11 @@ pub fn sieve_specialq(
                     let rat_sieve = vec![0u8; BUCKET_REGION];
                     let alg_sieve = vec![0u8; BUCKET_REGION];
                     let survivors = Vec::with_capacity(1024);
-                    (rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors)
+                    let fk_entries: Vec<(u64, u64, u8)> = Vec::with_capacity(alg_large_indices.len() * 2 + rat_large_indices.len());
+                    let walk_buf: Vec<FkWalkParams> = Vec::with_capacity(alg_large_indices.len() * 2 + rat_large_indices.len());
+                    (rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors, fk_entries, walk_buf)
                 },
-                |(rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors_this_sq), (q, r)| {
+                |(rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors_this_sq, fk_entries, walk_buf), (q, r)| {
                     rat_buckets.clear();
                     alg_buckets.clear();
                     survivors_this_sq.clear();
@@ -288,49 +290,52 @@ pub fn sieve_specialq(
 
                     let small_precomp_ns = t_small_precomp.elapsed().as_nanos() as u64;
 
-                    // 3. Scatter bucket updates
+                    // 3. Scatter bucket updates (batch FK)
 
                     let t_fk_alg = std::time::Instant::now();
+                    fk_entries.clear();
                     for &fb_idx in &alg_large_indices {
                         let p = alg_fb.primes[fb_idx];
                         if p == q {
                             continue;
                         }
+                        let logp = alg_fb.log_p[fb_idx];
                         for &root in &alg_fb.roots[fb_idx] {
-                            scatter_bucket_updates_fk(
-                                p,
-                                root,
-                                alg_fb.log_p[fb_idx],
-                                &qlat,
-                                params.log_i,
-                                &mut *alg_buckets,
-                                sieve_width,
-                                max_j,
-                                half_i,
-                            );
+                            fk_entries.push((p, root, logp));
                         }
                     }
+                    scatter_bucket_updates_fk_batch(
+                        &fk_entries,
+                        &qlat,
+                        params.log_i,
+                        &mut *alg_buckets,
+                        sieve_width,
+                        max_j,
+                        half_i,
+                        &mut *walk_buf,
+                    );
 
                     let fk_scatter_alg_ns = t_fk_alg.elapsed().as_nanos() as u64;
 
                     let t_fk_rat = std::time::Instant::now();
+                    fk_entries.clear();
                     for &fb_idx in &rat_large_indices {
                         let p = rat_fb.primes[fb_idx];
                         if p == q {
                             continue;
                         }
-                        scatter_bucket_updates_fk(
-                            p,
-                            rat_roots_by_index[fb_idx],
-                            rat_fb.log_p[fb_idx],
-                            &qlat,
-                            params.log_i,
-                            &mut *rat_buckets,
-                            sieve_width,
-                            max_j,
-                            half_i,
-                        );
+                        fk_entries.push((p, rat_roots_by_index[fb_idx], rat_fb.log_p[fb_idx]));
                     }
+                    scatter_bucket_updates_fk_batch(
+                        &fk_entries,
+                        &qlat,
+                        params.log_i,
+                        &mut *rat_buckets,
+                        sieve_width,
+                        max_j,
+                        half_i,
+                        &mut *walk_buf,
+                    );
                     let fk_scatter_rat_ns = t_fk_rat.elapsed().as_nanos() as u64;
 
                     let bucket_setup_elapsed = sieve_start.elapsed().as_nanos() as u64;
@@ -834,6 +839,7 @@ fn scatter_bucket_updates_for_prime(
 /// Falls back to `scatter_bucket_updates_for_prime` for projective roots,
 /// degenerate partial-GCD outputs, and cases where the reduced vectors cannot
 /// cover the full i-range (dead-zone condition).
+#[allow(dead_code)]
 fn scatter_bucket_updates_fk(
     p: u64,
     root: u64,
@@ -1055,6 +1061,250 @@ fn scatter_bucket_updates_fk(
         } else {
             x += inc_sum;
             ic += u_sum;
+        }
+    }
+}
+
+/// Compact FK walk parameters for batch processing.
+///
+/// Pre-computed from root transform + partial-GCD; consumed by the FK walk loop.
+struct FkWalkParams {
+    /// Smaller 1D increment.
+    inc_a: i64,
+    /// Larger 1D increment.
+    inc_b: i64,
+    /// Difference increment (inc_b - inc_a).
+    inc_diff: i64,
+    /// Sum increment (inc_a + inc_b).
+    inc_sum: i64,
+    /// i-component of vector a.
+    u_a: i64,
+    /// i-component of vector b.
+    u_b: i64,
+    /// i-component of difference (u_b - u_a).
+    u_diff: i64,
+    /// i-component of sum (u_a + u_b).
+    u_sum: i64,
+    /// Threshold for a_ok check.
+    a_thresh: i64,
+    /// Threshold for b_ok check.
+    b_thresh: i64,
+    /// True if u_a < 0.
+    u_a_neg: bool,
+    /// Starting 1D position.
+    start_x: i64,
+    /// Starting i-coordinate (centered).
+    start_ic: i64,
+    /// Quantized log2(p).
+    logp: u8,
+}
+
+/// Batch scatter bucket updates for multiple (prime, root, logp) triples.
+///
+/// Phase 1: Pre-compute all FK walk parameters (root transform + partial-GCD).
+/// Phase 2: Execute all FK walks, emitting bucket updates.
+///
+/// This separation improves instruction cache utilization and branch prediction
+/// compared to calling scatter_bucket_updates_fk per prime.
+fn scatter_bucket_updates_fk_batch(
+    entries: &[(u64, u64, u8)], // (prime, root, logp) triples
+    qlat: &QLattice,
+    log_i: u32,
+    buckets: &mut BucketArray,
+    sieve_width: usize,
+    max_j: usize,
+    half_i: i64,
+    walk_buf: &mut Vec<FkWalkParams>,
+) {
+    let half_width = half_i;
+    let sieve_w = sieve_width as i64;
+    let total_area = (sieve_width * max_j) as i64;
+    let even_mask = 1i64 | (1i64 << (log_i + 1));
+
+    walk_buf.clear();
+
+    // --- Phase 1: compute FK walk parameters for all primes ---
+    for &(p, root, logp) in entries {
+        // Root transform
+        let r_prime = match transform_root(p, root, qlat) {
+            Err(_) => {
+                // Projective root: delegate to fallback.
+                scatter_bucket_updates_for_prime(
+                    p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+                );
+                continue;
+            }
+            Ok(rp) => rp,
+        };
+
+        // Quick hit check.
+        if r_prime == 0 && p >= half_i as u64 {
+            continue;
+        }
+
+        let p_i64 = p as i64;
+
+        // Partial-GCD reduction
+        let mut u0 = p_i64;
+        let mut v0: i64 = 0;
+        let mut u1 = r_prime as i64;
+        let mut v1: i64 = 1;
+
+        if u1 > p_i64 / 2 {
+            u1 -= p_i64;
+        }
+
+        while u1 != 0 && u1.unsigned_abs() >= half_width as u64 {
+            let q_div = u0 / u1;
+            let new_u = u0 - q_div * u1;
+            let new_v = v0 - q_div * v1;
+            u0 = u1;
+            v0 = v1;
+            u1 = new_u;
+            v1 = new_v;
+        }
+
+        // Degenerate cases: fall back
+        if u1 == 0 || v0 == 0 || v1 == 0 {
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            continue;
+        }
+
+        // Normalize v > 0
+        if v1 < 0 { u1 = -u1; v1 = -v1; }
+        if v0 < 0 { u0 = -u0; v0 = -v0; }
+
+        // Check opposite u-signs
+        if (u0 > 0) == (u1 > 0) || u0 == 0 || u1 == 0 {
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            continue;
+        }
+
+        // Identify step/warp
+        let (u_step, v_step, u_warp, v_warp) = if u1.unsigned_abs() < u0.unsigned_abs() {
+            (u1, v1, u0, v0)
+        } else {
+            (u0, v0, u1, v1)
+        };
+
+        let inc_step = v_step * sieve_w + u_step;
+        let inc_warp = v_warp * sieve_w + u_warp;
+
+        if inc_step <= 0 || inc_warp <= 0 {
+            scatter_bucket_updates_for_prime(
+                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            );
+            continue;
+        }
+
+        // Dead-zone check
+        let u_sum = u_step + u_warp;
+        let s_lo = (-half_width - u_step).max(-half_width);
+        let w_hi = (half_width - u_warp).min(half_width);
+
+        if w_hi < s_lo {
+            let m_lo = (-half_width - u_sum).max(-half_width);
+            let m_hi = (half_width - u_sum).min(half_width);
+            if m_lo > w_hi || m_hi < s_lo {
+                scatter_bucket_updates_for_prime(
+                    p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+                );
+                continue;
+            }
+        }
+
+        // Compute walk parameters
+        let (inc_a, u_a, inc_b, u_b) = if inc_step < inc_warp {
+            (inc_step, u_step, inc_warp, u_warp)
+        } else {
+            (inc_warp, u_warp, inc_step, u_step)
+        };
+
+        let start_i_pos = (half_i as u64 % p) as i64;
+
+        walk_buf.push(FkWalkParams {
+            inc_a,
+            inc_b,
+            inc_diff: inc_b - inc_a,
+            inc_sum: inc_a + inc_b,
+            u_a,
+            u_b,
+            u_diff: u_b - u_a,
+            u_sum,
+            a_thresh: if u_a < 0 { -half_width - u_a } else { half_width - u_a },
+            b_thresh: if u_b < 0 { -half_width - u_b } else { half_width - u_b },
+            u_a_neg: u_a < 0,
+            start_x: start_i_pos,
+            start_ic: start_i_pos - half_width,
+            logp,
+        });
+    }
+
+    // --- Phase 2: execute all FK walks ---
+    for params in walk_buf.iter() {
+        let logp = params.logp;
+        let inc_a = params.inc_a;
+        let inc_b = params.inc_b;
+        let inc_diff = params.inc_diff;
+        let inc_sum = params.inc_sum;
+        let u_a = params.u_a;
+        let u_b = params.u_b;
+        let u_diff = params.u_diff;
+        let u_sum = params.u_sum;
+        let a_thresh = params.a_thresh;
+        let b_thresh = params.b_thresh;
+        let u_a_neg = params.u_a_neg;
+
+        let mut x = params.start_x;
+        let mut ic = params.start_ic;
+
+        while x < total_area {
+            if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+                let gpos = x as usize;
+                buckets.push(
+                    gpos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+            }
+
+            let (a_ok, b_ok) = if u_a_neg {
+                (ic >= a_thresh, ic < b_thresh)
+            } else {
+                (ic < a_thresh, ic >= b_thresh)
+            };
+
+            if a_ok && b_ok {
+                x += inc_a;
+                ic += u_a;
+                if x < total_area && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+                    let gpos = x as usize;
+                    buckets.push(
+                        gpos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
+                x += inc_diff;
+                ic += u_diff;
+            } else if a_ok {
+                x += inc_a;
+                ic += u_a;
+            } else if b_ok {
+                x += inc_b;
+                ic += u_b;
+            } else {
+                x += inc_sum;
+                ic += u_sum;
+            }
         }
     }
 }
@@ -1541,8 +1791,23 @@ mod tests {
             p, root, logp, qlat, log_i, &mut buckets_fk, sieve_width, max_j, half_i,
         );
 
+        // Also test batch version
+        let mut buckets_batch = BucketArray::new(n_buckets, cap.max(16));
+        let entries = vec![(p, root, logp)];
+        let mut walk_buf = Vec::new();
+        scatter_bucket_updates_fk_batch(
+            &entries, qlat, log_i, &mut buckets_batch, sieve_width, max_j, half_i, &mut walk_buf,
+        );
+        let batch_pos = extract_positions(&buckets_batch);
+
         let old_pos = extract_positions(&buckets_old);
         let fk_pos = extract_positions(&buckets_fk);
+
+        assert_eq!(
+            fk_pos, batch_pos,
+            "FK batch mismatch for p={}, root={}", p, root
+        );
+
         (old_pos, fk_pos)
     }
 
