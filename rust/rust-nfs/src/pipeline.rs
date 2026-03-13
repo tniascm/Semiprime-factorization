@@ -638,9 +638,17 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         }
     };
 
+    // Extract rational polynomial g(x) = g1*x + g0 from the PolynomialPair.
+    // For monic polynomials: g1=1, g0=-m.
+    // For Kleinjung non-monic: g1=ad, g0=-m.
+    let g0_big = poly.g0();
+    let g1_big = poly.g1();
+    let g0_i64: i64 = g0_big.to_i64().unwrap_or(-(m as i64));
+    let g1_i64: i64 = g1_big.to_i64().unwrap_or(1);
+
     eprintln!(
-        "  poly: degree={}, m={}, coeffs={:?}",
-        params.degree, m, f_coeffs_i64
+        "  poly: degree={}, m={}, coeffs={:?}, g=[{}, {}]",
+        params.degree, m, f_coeffs_i64, g0_i64, g1_i64
     );
     eprintln!(
         "  params: lim0={}, lim1={}, lpb0={}, lpb1={}, mfb0={}, mfb1={}, log_i={}, qmin={}, qrange={}, rels_wanted={}",
@@ -660,8 +668,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let degree = params.degree as usize;
 
     // Build factor bases for both sides.
-    // Rational polynomial: g(x) = x - m, coefficients [-m, 1].
-    let rat_coeffs = vec![-(m as i64), 1i64];
+    // Rational polynomial: g(x) = g1*x + g0.
+    let rat_coeffs = vec![g0_i64, g1_i64];
     let rat_fb = crate::factorbase::FactorBase::new(&rat_coeffs, params.lim0, 1.442);
     let alg_fb = crate::factorbase::FactorBase::new_roots_only(&f_coeffs_i64, params.lim1, 1.442);
 
@@ -957,6 +965,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                         m,
                         degree,
                         &bad_root_offsets,
+                        g0_i64,
+                        g1_i64,
                     );
                     let (probe_sets_remapped, probe_sets_dropped, probe_sets_recomputed) =
                         remap_partial_sets_from_sources(
@@ -1125,6 +1135,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                 params.qrange,
                 Some(remaining_to_target),
                 Some(&sq_root_cache),
+                g0_i64,
+                g1_i64,
             )
         } else {
             crate::sieve::sieve_specialq(
@@ -1137,6 +1149,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                 params.qrange,
                 Some(remaining_to_target),
                 Some(&sq_root_cache),
+                g0_i64,
+                g1_i64,
             )
         };
 
@@ -1259,6 +1273,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         m,
         degree,
         &bad_root_offsets,
+        g0_i64,
+        g1_i64,
     );
     result.viability.remap_valid_relations = remap_stats.kept_relations;
     result.viability.remap_dropped_total = remap_stats.skipped_total();
@@ -2083,13 +2099,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                         }
                         let cand = &useful_deps[cand_idx];
                         let dep_expanded = cand.expanded.as_deref()?;
-                        let (factor_opt, failure) = gnfs::sqrt::extract_factor_diagnostic_fast(
+                        let (factor_opt, failure) = gnfs::sqrt::extract_factor_diagnostic_fast_g(
                             &gnfs_rels,
                             dep_expanded,
                             &f_coeffs_big,
                             &m_big,
                             n,
                             &rat_fb.primes,
+                            &g0_big,
+                            &g1_big,
                         );
                         if factor_opt.is_some() {
                             found.store(true, Ordering::Relaxed);
@@ -2323,21 +2341,25 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             }
 
             let (factor_opt, failure) = if i < verbose_deps {
-                gnfs::sqrt::extract_factor_verbose(
+                gnfs::sqrt::extract_factor_verbose_g(
                     &gnfs_rels,
                     dep_expanded,
                     &f_coeffs_big,
                     &m_big,
                     n,
+                    &g0_big,
+                    &g1_big,
                 )
             } else {
-                gnfs::sqrt::extract_factor_diagnostic_fast(
+                gnfs::sqrt::extract_factor_diagnostic_fast_g(
                     &gnfs_rels,
                     dep_expanded,
                     &f_coeffs_big,
                     &m_big,
                     n,
                     &rat_fb.primes,
+                    &g0_big,
+                    &g1_big,
                 )
             };
 
@@ -3743,9 +3765,11 @@ fn remap_hybrid(
     alg_fb: &crate::factorbase::FactorBase,
     gnfs_fb: &gnfs::types::FactorBase,
     f_coeffs_big: &[Integer],
-    m: u64,
+    _m: u64,
     degree: usize,
     bad_root_offsets: &HashMap<(u64, u64), usize>,
+    g0_i64: i64,
+    g1_i64: i64,
 ) -> (Vec<gnfs::types::Relation>, Vec<usize>, RemapHybridStats) {
     let ignore_special_q = std::env::var("RUST_NFS_IGNORE_SPECIAL_Q_COLUMN")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -3951,7 +3975,7 @@ fn remap_hybrid(
                     (rat_lp, alg_lp)
                 };
 
-                let rat_norm_val = rel.a as i128 - (rel.b as i128) * (m as i128);
+                let rat_norm_val = (g1_i64 as i128) * (rel.a as i128) + (g0_i64 as i128) * (rel.b as i128);
                 let rational_sign_negative = rat_norm_val < 0;
                 let algebraic_sign_negative = eval_f_homogeneous_bigint(rel.a, rel.b, f_coeffs_big) < 0;
 
@@ -4323,7 +4347,7 @@ mod tests {
         };
 
         let (rels, _src, stats) =
-            remap_hybrid(&[rel], &rat_fb, &alg_fb, &gnfs_fb, &coeffs_big, 88, 3, &bad);
+            remap_hybrid(&[rel], &rat_fb, &alg_fb, &gnfs_fb, &coeffs_big, 88, 3, &bad, -88, 1);
         assert_eq!(stats.invalid_hd_residual, 0);
         assert_eq!(rels.len(), 1);
 
