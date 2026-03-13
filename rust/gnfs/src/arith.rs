@@ -407,9 +407,21 @@ pub fn select_quad_char_primes(f_coeffs: &[i64], fb_primes: &[u64], count: usize
         }
         let roots = find_polynomial_roots_mod_p(f_coeffs, p);
         if !roots.is_empty() {
-            result.primes.push(p);
-            result.roots.push(roots[0]);
-            if result.primes.len() >= count {
+            // Push ALL roots for each QC prime. For degree-d polynomials,
+            // each prime can have up to d roots; we need a QC column for
+            // every (prime, root) pair to fully constrain the algebraic
+            // product to be a square across all prime ideals above each prime.
+            for &r in &roots {
+                result.primes.push(p);
+                result.roots.push(r);
+            }
+            // Count distinct primes, not total (prime, root) pairs
+            let distinct_count = {
+                let mut seen = std::collections::HashSet::new();
+                result.primes.iter().for_each(|&p| { seen.insert(p); });
+                seen.len()
+            };
+            if distinct_count >= count {
                 break;
             }
         }

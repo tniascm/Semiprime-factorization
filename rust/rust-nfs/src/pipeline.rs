@@ -764,13 +764,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v > 0.0)
         .unwrap_or(1.25);
+    let actual_qc_cols = quad_chars.primes.len();
     let est_dense_cols = if partial_merge_2lp {
         rat_fb.primes.len()
             + gnfs_fb.algebraic_pair_count()
             + gnfs_fb.higher_degree_ideal_count(degree)
             + alg_bad
             + 2
-            + qc_count
+            + actual_qc_cols
     } else {
         0
     };
@@ -2438,12 +2439,20 @@ fn select_quad_char_primes_fast(
     // Start from the first odd number above fb_max
     let mut candidate = if fb_max % 2 == 0 { fb_max + 1 } else { fb_max + 2 };
 
-    while result.primes.len() < count {
+    let mut distinct_count = 0usize;
+    while distinct_count < count {
         if is_prime_trial(candidate) {
             let roots = crate::factorbase::find_roots_mod_p(f_coeffs, candidate);
             if !roots.is_empty() {
-                result.primes.push(candidate);
-                result.roots.push(roots[0]);
+                // Push ALL roots for each QC prime. For degree-d polynomials,
+                // each prime can have up to d roots; we need a QC column for
+                // every (prime, root) pair to fully constrain the algebraic
+                // product to be a square across all prime ideals above each prime.
+                for &r in &roots {
+                    result.primes.push(candidate);
+                    result.roots.push(r);
+                }
+                distinct_count += 1;
             }
         }
         candidate += 2;
