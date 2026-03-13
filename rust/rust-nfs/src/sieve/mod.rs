@@ -1040,7 +1040,8 @@ fn scatter_bucket_updates_fk(
         if a_ok && b_ok {
             x += inc_a;
             ic += u_a;
-            if x < total_area && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+            // ic guaranteed in bounds by a_ok; only check x bound and coprimality.
+            if x < total_area && (x & even_mask) != 0 {
                 let gpos = x as usize;
                 buckets.push(
                     gpos >> LOG_BUCKET_REGION,
@@ -1293,7 +1294,9 @@ fn scatter_bucket_updates_fk_batch(
             if a_ok && b_ok {
                 x += inc_a;
                 ic += u_a;
-                if x < total_area && ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+                // ic is guaranteed in bounds here (a_ok verified this).
+                // Only check x < total_area and coprimality.
+                if x < total_area && (x & even_mask) != 0 {
                     let gpos = x as usize;
                     buckets.push(
                         gpos >> LOG_BUCKET_REGION,
