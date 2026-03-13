@@ -723,7 +723,13 @@ fn transform_root(p: u64, root: u64, qlat: &QLattice) -> Result<u64, bool> {
         Some(v) => v,
         None => return Ok(0), // treat as no-hit
     };
-    let r_prime = ((numer as u64 as u128 * inv as u128) % p as u128) as u64;
+    // For typical NFS primes (p < 2^32), numer * inv < p^2 < 2^64,
+    // so u64 multiplication suffices. Use u128 only for large p.
+    let r_prime = if p < (1u64 << 32) {
+        ((numer as u64).wrapping_mul(inv)) % p
+    } else {
+        ((numer as u64 as u128 * inv as u128) % p as u128) as u64
+    };
     Ok(r_prime)
 }
 
