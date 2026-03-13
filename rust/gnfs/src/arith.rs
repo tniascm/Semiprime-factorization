@@ -377,6 +377,147 @@ pub fn lagrange_interpolation_mod(
     result
 }
 
+// ---------------------------------------------------------------------------
+// Polynomial arithmetic over F_p (for irreducibility testing)
+// ---------------------------------------------------------------------------
+
+/// Polynomial over F_p stored in ascending degree order: poly[i] = coefficient of x^i.
+/// The zero polynomial is represented as an empty Vec.
+type PolyFp = Vec<u64>;
+
+/// Strip trailing zeros from a polynomial.
+fn poly_fp_normalize(a: &mut PolyFp) {
+    while a.last() == Some(&0) {
+        a.pop();
+    }
+}
+
+/// Polynomial multiplication mod p.
+fn poly_fp_mul(a: &PolyFp, b: &PolyFp, p: u64) -> PolyFp {
+    if a.is_empty() || b.is_empty() {
+        return Vec::new();
+    }
+    let mut c = vec![0u64; a.len() + b.len() - 1];
+    for (i, &ai) in a.iter().enumerate() {
+        if ai == 0 {
+            continue;
+        }
+        for (j, &bj) in b.iter().enumerate() {
+            c[i + j] = ((c[i + j] as u128 + ai as u128 * bj as u128) % p as u128) as u64;
+        }
+    }
+    poly_fp_normalize(&mut c);
+    c
+}
+
+/// Polynomial remainder: a mod b over F_p.
+fn poly_fp_rem(a: &PolyFp, b: &PolyFp, p: u64) -> PolyFp {
+    if b.is_empty() {
+        return a.clone();
+    }
+    let mut r = a.clone();
+    let db = b.len() - 1;
+    let lead_b_inv = mod_inverse(*b.last().unwrap(), p).unwrap();
+    while r.len() > db {
+        let coeff =
+            ((r.last().copied().unwrap_or(0) as u128 * lead_b_inv as u128) % p as u128) as u64;
+        let shift = r.len() - 1 - db;
+        for (i, &bi) in b.iter().enumerate() {
+            let sub = (coeff as u128 * bi as u128) % p as u128;
+            r[shift + i] = ((r[shift + i] as u128 + p as u128 - sub) % p as u128) as u64;
+        }
+        poly_fp_normalize(&mut r);
+    }
+    r
+}
+
+/// Polynomial GCD over F_p, returned as monic.
+fn poly_fp_gcd(a: &PolyFp, b: &PolyFp, p: u64) -> PolyFp {
+    let mut a = a.clone();
+    let mut b = b.clone();
+    while !b.is_empty() {
+        let r = poly_fp_rem(&a, &b, p);
+        a = b;
+        b = r;
+    }
+    // Make monic
+    if let Some(&lead) = a.last() {
+        if lead != 0 && lead != 1 {
+            let inv = mod_inverse(lead, p).unwrap();
+            for c in a.iter_mut() {
+                *c = (*c as u128 * inv as u128 % p as u128) as u64;
+            }
+        }
+    }
+    a
+}
+
+/// Compute base^exp mod modulus_poly over F_p using repeated squaring.
+fn poly_fp_powmod(base: &PolyFp, exp: &Integer, modulus: &PolyFp, p: u64) -> PolyFp {
+    if modulus.is_empty() {
+        return Vec::new();
+    }
+    let mut result: PolyFp = vec![1]; // constant 1
+    let mut cur = poly_fp_rem(base, modulus, p);
+
+    // Iterate over bits of exp from LSB to MSB
+    let bit_len = exp.significant_bits();
+    for bit_idx in 0..bit_len {
+        if exp.get_bit(bit_idx) {
+            result = poly_fp_mul(&result, &cur, p);
+            result = poly_fp_rem(&result, modulus, p);
+        }
+        cur = poly_fp_mul(&cur, &cur, p);
+        cur = poly_fp_rem(&cur, modulus, p);
+    }
+    result
+}
+
+/// Check if polynomial f has a factor of degree <= 2 over F_p.
+///
+/// Uses the fact that the product of all irreducible polynomials of degree
+/// dividing k over F_p is x^{p^k} - x. So:
+///   gcd(x^{p^1} - x, f) captures all degree-1 factors (roots)
+///   gcd(x^{p^2} - x, f) captures all factors of degree 1 or 2
+///
+/// If f has no roots (degree-1 factors), we only need to check for degree-2 factors
+/// by computing gcd(x^{p^2} - x, f) mod p and checking if its degree > 0.
+pub fn has_factor_degree_le_2(f_coeffs: &[i64], p: u64) -> bool {
+    let d = f_coeffs.len() - 1;
+    if d <= 2 {
+        return true; // trivially has a factor of degree <= deg(f)
+    }
+
+    // Convert f to F_p representation
+    let f_fp: PolyFp = f_coeffs
+        .iter()
+        .map(|&c| ((c as i128).rem_euclid(p as i128)) as u64)
+        .collect();
+
+    // x = [0, 1] in ascending degree representation
+    let x: PolyFp = vec![0, 1];
+
+    // Compute x^{p^2} mod f over F_p
+    // p^2 can be very large, so use Integer for the exponent
+    let p_sq = Integer::from(p) * Integer::from(p);
+    let x_p2 = poly_fp_powmod(&x, &p_sq, &f_fp, p);
+
+    // Compute x^{p^2} - x mod f over F_p
+    let mut diff = x_p2;
+    // Subtract x: diff[1] -= 1
+    if diff.len() < 2 {
+        diff.resize(2, 0);
+    }
+    diff[1] = (diff[1] + p - 1) % p;
+    poly_fp_normalize(&mut diff);
+
+    // gcd(x^{p^2} - x, f) mod p
+    let g = poly_fp_gcd(&diff, &f_fp, p);
+
+    // If degree of gcd > 0, f has a factor of degree <= 2
+    g.len() > 1
+}
+
 /// Quadratic character primes for GNFS: ensures algebraic product is a square in O_K.
 /// Each (q, r) pair represents a prime q not in the factor base where f(r) ≡ 0 (mod q).
 /// The Legendre symbol ((a - b*r) / q) must be +1 for all relations in a dependency

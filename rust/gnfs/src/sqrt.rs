@@ -258,12 +258,23 @@ fn find_irreducible_prime(f_coeffs: &[i64], bound: u64, prefer_3mod4: bool) -> O
                 return Some(p);
             }
         } else {
-            // For higher degree: no roots is necessary but not sufficient
-            // (could have quadratic factors). Skip for now — fall back to Couveignes.
+            // For degree > 3: no roots is necessary but not sufficient for
+            // irreducibility (f could factor into quadratic/cubic pieces).
+            // Use gcd(x^{p^2} - x, f) to detect factors of degree <= 2.
             if roots.is_empty() {
-                // TODO: add proper polynomial GCD check for degree > 3
-                // For now, conservatively accept (may sometimes be wrong for d=4)
-                return Some(p);
+                let has_small_factors = crate::arith::has_factor_degree_le_2(f_coeffs, p);
+                if !has_small_factors {
+                    // For degree 4: no degree-1 or degree-2 factors ⟹ irreducible
+                    // (a degree-4 poly with no factors of degree <= 2 is irreducible).
+                    // For degree 5+: could still have a degree-2 * degree-3 factoring,
+                    // but degree 5 is not currently used. For degree 4 this is exact.
+                    if d == 4 {
+                        return Some(p);
+                    }
+                    // For higher degrees, we would need to check for degree-3 factors too.
+                    // For now, conservatively accept (degree > 4 is unused in practice).
+                    return Some(p);
+                }
             }
         }
     }
