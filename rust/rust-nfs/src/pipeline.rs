@@ -767,16 +767,25 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .filter(|&v| v > 0.0)
         .unwrap_or(1.25);
     let actual_qc_cols = quad_chars.primes.len();
+    let est_rat_fb_cols = rat_fb.primes.len();
+    let est_alg_pair_cols = gnfs_fb.algebraic_pair_count();
+    let est_alg_hd_cols = gnfs_fb.higher_degree_ideal_count(degree);
     let est_dense_cols = if partial_merge_2lp {
-        rat_fb.primes.len()
-            + gnfs_fb.algebraic_pair_count()
-            + gnfs_fb.higher_degree_ideal_count(degree)
+        est_rat_fb_cols
+            + est_alg_pair_cols
+            + est_alg_hd_cols
             + alg_bad
             + 2
             + actual_qc_cols
     } else {
         0
     };
+    if partial_merge_2lp {
+        eprintln!(
+            "  est_dense_cols: {} (rat_fb={}, alg_pairs={}, alg_hd={}, alg_bad={}, signs=2, qc={})",
+            est_dense_cols, est_rat_fb_cols, est_alg_pair_cols, est_alg_hd_cols, alg_bad, actual_qc_cols
+        );
+    }
     let adaptive_matrix_probe_step = std::env::var("RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -792,11 +801,16 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(2_000usize);
+    // For degree >= 4, est_dense_cols already overestimates active dense columns
+    // by ~30% (many algebraic FB primes have fewer than `degree` roots, so their
+    // pair columns go unused). This built-in buffer implicitly covers the SQ columns
+    // that aren't in est_dense_cols, so a lower rows_ratio suffices.
+    let default_rows_ratio = if degree >= 4 { 1.05 } else { 1.10 };
     let adaptive_rows_ratio = std::env::var("RUST_NFS_ADAPTIVE_ROWS_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v > 0.0)
-        .unwrap_or(1.10f64);
+        .unwrap_or(default_rows_ratio);
     let adaptive_rows_min = std::env::var("RUST_NFS_ADAPTIVE_ROWS_MIN")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
