@@ -1326,6 +1326,7 @@ fn scatter_bucket_updates_fk_batch(
             }
         }
     }
+
 }
 
 /// Evaluate |F(a, b)| for the homogeneous algebraic polynomial using f64.
