@@ -295,6 +295,7 @@ pub fn sieve_primes(bound: u64) -> Vec<u64> {
 ///
 /// Uses the signed-integer extended Euclidean algorithm on i128 to avoid
 /// overflow.
+#[inline]
 pub fn extended_gcd(a: u64, m: u64) -> (u64, i64) {
     // Fast path: when both values fit in i64 (< 2^63), avoid i128 entirely.
     // This covers all NFS factor base primes (p < 10^6).
@@ -341,6 +342,7 @@ pub fn extended_gcd(a: u64, m: u64) -> (u64, i64) {
 }
 
 /// Modular inverse: returns `a^{-1} mod m` if `gcd(a, m) == 1`, else `None`.
+#[inline]
 pub fn mod_inverse(a: u64, m: u64) -> Option<u64> {
     let (g, x) = extended_gcd(a, m);
     if g == 1 {
@@ -348,6 +350,74 @@ pub fn mod_inverse(a: u64, m: u64) -> Option<u64> {
     } else {
         None
     }
+}
+
+/// Batch modular inversion using Montgomery's trick.
+///
+/// Given values[0..n] and a fixed modulus p, computes inv(values[i]) mod p
+/// for all i, using only 1 extended GCD + 3(n-1) multiplications mod p.
+///
+/// If values[i] == 0 or is not invertible, the corresponding output is 0.
+/// The `out` slice must have the same length as `values`.
+pub fn batch_mod_inverse(values: &[u64], p: u64, out: &mut [u64]) {
+    let n = values.len();
+    assert_eq!(n, out.len());
+    if n == 0 {
+        return;
+    }
+
+    // Helper: sanitize value for product chain (replace 0 with 1).
+    let sanitize = |v: u64| -> u64 {
+        let r = v % p;
+        if r == 0 { 1 } else { r }
+    };
+
+    // Step 1: prefix products in out[]. out[i] = prod(sanitize(values[0..=i])) mod p.
+    out[0] = sanitize(values[0]);
+    for i in 1..n {
+        let vi = sanitize(values[i]);
+        if p < (1u64 << 32) {
+            out[i] = (out[i - 1] * vi) % p;
+        } else {
+            out[i] = ((out[i - 1] as u128 * vi as u128) % p as u128) as u64;
+        }
+    }
+
+    // Step 2: invert the full product.
+    let total_product = out[n - 1];
+    let inv_total = match mod_inverse(total_product, p) {
+        Some(inv) => inv,
+        None => {
+            // Fallback: compute each inverse individually.
+            for i in 0..n {
+                let v = values[i] % p;
+                out[i] = if v == 0 { 0 } else { mod_inverse(v, p).unwrap_or(0) };
+            }
+            return;
+        }
+    };
+
+    // Step 3: back-propagate inverses.
+    // inv(values[i]) = prefix[i-1] * running_inv
+    // Then running_inv *= values[i].
+    let mul_mod = |a: u64, b: u64| -> u64 {
+        if p < (1u64 << 32) {
+            (a * b) % p
+        } else {
+            ((a as u128 * b as u128) % p as u128) as u64
+        }
+    };
+
+    let mut running_inv = inv_total;
+    for i in (1..n).rev() {
+        let vi = sanitize(values[i]);
+        let inv_i = mul_mod(out[i - 1], running_inv);
+        running_inv = mul_mod(running_inv, vi);
+        // If original value was not invertible, output 0.
+        out[i] = if values[i] % p == 0 { 0 } else { inv_i };
+    }
+    // First element: inv(values[0]) = running_inv.
+    out[0] = if values[0] % p == 0 { 0 } else { running_inv };
 }
 
 // ===========================================================================
@@ -438,5 +508,42 @@ mod tests {
         // (n-1)^2 ≡ 1 mod n
         let result = mont.powmod(n - 1, 2);
         assert_eq!(result, 1, "(n-1)^2 mod n should be 1 for n = 2^62 - 57");
+    }
+
+    #[test]
+    fn test_batch_mod_inverse() {
+        let p = 97u64;
+        let values = vec![3, 5, 7, 11, 13, 17];
+        let mut out = vec![0u64; values.len()];
+        batch_mod_inverse(&values, p, &mut out);
+        for (i, &v) in values.iter().enumerate() {
+            let expected = mod_inverse(v, p).unwrap();
+            assert_eq!(out[i], expected, "batch inv({v}) mod {p}: got {}, expected {expected}", out[i]);
+        }
+    }
+
+    #[test]
+    fn test_batch_mod_inverse_with_zero() {
+        let p = 97u64;
+        let values = vec![3, 0, 7, 97, 13];
+        let mut out = vec![0u64; values.len()];
+        batch_mod_inverse(&values, p, &mut out);
+        assert_eq!(out[0], mod_inverse(3, p).unwrap());
+        assert_eq!(out[1], 0); // zero input
+        assert_eq!(out[2], mod_inverse(7, p).unwrap());
+        assert_eq!(out[3], 0); // p mod p == 0
+        assert_eq!(out[4], mod_inverse(13, p).unwrap());
+    }
+
+    #[test]
+    fn test_batch_mod_inverse_large_prime() {
+        let p = 44497u64; // prime near our FB limit
+        let values: Vec<u64> = (1..100).collect();
+        let mut out = vec![0u64; values.len()];
+        batch_mod_inverse(&values, p, &mut out);
+        for (i, &v) in values.iter().enumerate() {
+            let expected = mod_inverse(v, p).unwrap();
+            assert_eq!(out[i], expected, "batch inv({v}) mod {p}");
+        }
     }
 }
