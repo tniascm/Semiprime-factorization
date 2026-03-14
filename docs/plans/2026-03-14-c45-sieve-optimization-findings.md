@@ -63,7 +63,31 @@ The `mod_inverse` (extended GCD) alone accounts for ~100ns per call, or ~3.2s to
 
 **Decision:** Reverted. Would require fundamental changes to the matrix/sqrt pipeline to accommodate skewed distributions.
 
-### 2. log_i=10 (Larger Sieve Area)
+### 2. log_i Sweep (Sieve Area Scaling)
+
+| log_i | Area | Sieve Time | SQs | Rels/SQ | Factor? |
+|-------|------|-----------|-----|---------|---------|
+| 9 (baseline) | 512K | 19.0s | 3835 | 9.0 | YES |
+| 10 | 2M | 24.2s¹/71.5s² | 2231/5686 | ~6.3 | 1/2 variants |
+| 11 | 8M | 101.0s | 2761 | 12.3 | YES (389s total) |
+
+¹ First variant only. ² Variant that collected enough rels.
+
+**log_i=10 with larger FB** (lim=55K/65K): sieve=56.1s, factor=none.
+All larger log_i configurations are strictly worse than log_i=9.
+
+### 3. FB Size Sweep
+
+| lim0/lim1 | Sieve Time | SQs | Factor? | Notes |
+|-----------|-----------|-----|---------|-------|
+| 40K/45K (baseline) | 19.0s | 3835 | YES | Current params |
+| 25K/30K | 85.0s+ | 20546+ | NO | Too few rels/SQ, needs too many SQs |
+| 20K/20K | 3535s+ | 980840+ | NO | Extreme SQ count, useless |
+
+Current FB size (lim=40K/45K) is confirmed near-optimal. Smaller FBs produce fewer rels/SQ,
+requiring vastly more SQs that overwhelm any per-SQ savings.
+
+### 4. log_i=10 (original finding, detailed)
 
 **Change:** `RUST_NFS_OVR_LOG_I=10` → sieve area 4x larger (2M vs 512K positions).
 
