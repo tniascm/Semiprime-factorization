@@ -83,12 +83,8 @@ pub fn sieve_specialq(
     let total_sieve_area = sieve_width * max_j;
     let n_buckets = (total_sieve_area + BUCKET_REGION - 1) / BUCKET_REGION;
 
-    // Bucket threshold: primes below this use small sieve, above use bucket sieve.
-    // Tuned via sweep: 256 gives optimal setup/scan tradeoff for c45 (17.0s vs 17.3s at 512).
-    let bucket_thresh = std::env::var("RUST_NFS_BUCKET_THRESH")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(256u64.max(64));
+    // Bucket threshold: primes below this use small sieve, above use bucket sieve
+    let bucket_thresh = (half_i as u64).max(64);
 
     let scale = rat_fb.scale;
 
@@ -231,50 +227,10 @@ pub fn sieve_specialq(
     );
     let updates_per_bucket = (est_updates * 2).max(1024);
 
-    // Pre-build stable entry lists for batch transform_root (once, outside chunk loop).
-    let alg_batch_entries: Vec<(u64, u64, u8)> = alg_large_indices
-        .iter()
-        .flat_map(|&fb_idx| {
-            let p = alg_fb.primes[fb_idx];
-            let logp = alg_fb.log_p[fb_idx];
-            alg_fb.roots[fb_idx].iter().map(move |&root| (p, root, logp))
-        })
-        .collect();
-    let rat_batch_entries: Vec<(u64, u64, u8)> = rat_large_indices
-        .iter()
-        .map(|&fb_idx| {
-            let p = rat_fb.primes[fb_idx];
-            (p, rat_roots_by_index[fb_idx], rat_fb.log_p[fb_idx])
-        })
-        .collect();
-
     for chunk in qr_pairs.chunks(batch_size.max(1)) {
-        // --- Batch precompute transformed roots for all SQs in this chunk ---
-        let t_batch_start = std::time::Instant::now();
-        let chunk_qlats: Vec<QLattice> = chunk
-            .iter()
-            .map(|&(q, r)| reduce_qlattice(q, r, 1.0))
-            .collect();
-        let n_sq = chunk.len();
-        let n_alg = alg_batch_entries.len();
-        let n_rat = rat_batch_entries.len();
-        let mut alg_rprimes = vec![0u64; n_alg * n_sq];
-        let mut rat_rprimes = vec![0u64; n_rat * n_sq];
-        batch_transform_roots(&alg_batch_entries, &chunk_qlats, &mut alg_rprimes);
-        batch_transform_roots(&rat_batch_entries, &chunk_qlats, &mut rat_rprimes);
-        let batch_ms = t_batch_start.elapsed().as_secs_f64() * 1000.0;
-        if verbose_sq {
-            eprintln!("  batch_transform_roots: {:.1}ms (alg={} rat={} sq={})",
-                batch_ms, n_alg, n_rat, n_sq);
-        }
-        let alg_rprimes = &alg_rprimes;
-        let rat_rprimes = &rat_rprimes;
-        let chunk_qlats = &chunk_qlats;
-        let alg_batch_ref = &alg_batch_entries;
-        let rat_batch_ref = &rat_batch_entries;
-
-        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = (0..n_sq)
-            .into_par_iter()
+        let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = chunk
+            .par_iter()
+            .copied()
             .map_init(
                 || {
                     let rat_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
@@ -286,8 +242,7 @@ pub fn sieve_specialq(
                     let walk_buf: Vec<FkWalkParams> = Vec::with_capacity(alg_large_indices.len() * 2 + rat_large_indices.len());
                     (rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors, fk_entries, walk_buf)
                 },
-                |(rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors_this_sq, fk_entries, walk_buf), sq_idx| {
-                    let (q, r) = chunk[sq_idx];
+                |(rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors_this_sq, fk_entries, walk_buf), (q, r)| {
                     rat_buckets.clear();
                     alg_buckets.clear();
                     survivors_this_sq.clear();
@@ -296,8 +251,9 @@ pub fn sieve_specialq(
                     let mut local_survivors = 0usize;
                     let sieve_start = std::time::Instant::now();
 
-                    // 1. Use precomputed q-lattice
-                    let qlat = chunk_qlats[sq_idx];
+                    // 1. Reduce q-lattice
+                    let skewness = 1.0;
+                    let qlat = reduce_qlattice(q, r, skewness);
 
                     // 2. Precompute small sieve entries
                     let t_small_precomp = std::time::Instant::now();
@@ -349,28 +305,23 @@ pub fn sieve_specialq(
 
                     let small_precomp_ns = t_small_precomp.elapsed().as_nanos() as u64;
 
-                    // 3. Scatter bucket updates using precomputed r' values
-                    //    Pass entries with r' from batch_transform_roots, skip transform_root.
+                    // 3. Scatter bucket updates (batch FK)
 
                     let t_fk_alg = std::time::Instant::now();
-                    // Build entries for FK batch, substituting precomputed r' for the root.
-                    // Entries where p == q are given sentinel r' = u64::MAX to skip.
                     fk_entries.clear();
-                    let alg_base = sq_idx * n_alg;
-                    for (eidx, &(p, _root, logp)) in alg_batch_ref.iter().enumerate() {
-                        if p == q { continue; }
-                        let rp = alg_rprimes[alg_base + eidx];
-                        // Pass r' as the "root" — scatter_bucket_updates_fk_batch will call
-                        // transform_root on it, but since we're passing r' (already transformed),
-                        // transform_root(p, r', qlat) will give the WRONG result.
-                        // We need a different approach.
-                        fk_entries.push((p, rp, logp));
+                    for &fb_idx in &alg_large_indices {
+                        let p = alg_fb.primes[fb_idx];
+                        if p == q {
+                            continue;
+                        }
+                        let logp = alg_fb.log_p[fb_idx];
+                        for &root in &alg_fb.roots[fb_idx] {
+                            fk_entries.push((p, root, logp));
+                        }
                     }
-                    // Use original FK batch with entries that have r' as root.
-                    // This is INCORRECT — transform_root will double-transform.
-                    // Instead, we need scatter_fk_batch_with_precomputed_rprime.
-                    scatter_fk_batch_with_precomputed_rprime(
+                    scatter_bucket_updates_fk_batch(
                         &fk_entries,
+                        &qlat,
                         params.log_i,
                         &mut *alg_buckets,
                         sieve_width,
@@ -383,14 +334,16 @@ pub fn sieve_specialq(
 
                     let t_fk_rat = std::time::Instant::now();
                     fk_entries.clear();
-                    let rat_base = sq_idx * n_rat;
-                    for (eidx, &(p, _root, logp)) in rat_batch_ref.iter().enumerate() {
-                        if p == q { continue; }
-                        let rp = rat_rprimes[rat_base + eidx];
-                        fk_entries.push((p, rp, logp));
+                    for &fb_idx in &rat_large_indices {
+                        let p = rat_fb.primes[fb_idx];
+                        if p == q {
+                            continue;
+                        }
+                        fk_entries.push((p, rat_roots_by_index[fb_idx], rat_fb.log_p[fb_idx]));
                     }
-                    scatter_fk_batch_with_precomputed_rprime(
+                    scatter_bucket_updates_fk_batch(
                         &fk_entries,
+                        &qlat,
                         params.log_i,
                         &mut *rat_buckets,
                         sieve_width,
@@ -1729,235 +1682,6 @@ fn scatter_bucket_updates_fk(
         } else {
             x += inc_sum;
             ic += u_sum;
-        }
-    }
-}
-
-/// Batch-compute transformed roots for all (entry × SQ) pairs.
-///
-/// Output is column-major: `out[sq_idx * n_entries + entry_idx]`.
-/// `u64::MAX` = projective root (denom ≡ 0 mod p).
-fn batch_transform_roots(
-    entries: &[(u64, u64, u8)],
-    qlats: &[QLattice],
-    out: &mut [u64],
-) {
-    let n_entries = entries.len();
-    let n_sq = qlats.len();
-    debug_assert_eq!(out.len(), n_entries * n_sq);
-
-    let mut denoms = vec![0u64; n_sq];
-    let mut inv_denoms = vec![0u64; n_sq];
-
-    for (eidx, &(p, root, _logp)) in entries.iter().enumerate() {
-        let p_i128 = p as i128;
-        let root_i128 = root as i128;
-        for (sq_idx, qlat) in qlats.iter().enumerate() {
-            let d = ((qlat.a0 as i128 - root_i128 * (qlat.b0 as i128)) % p_i128 + p_i128) % p_i128;
-            denoms[sq_idx] = d as u64;
-        }
-        crate::arith::batch_mod_inverse(&denoms, p, &mut inv_denoms);
-        for (sq_idx, qlat) in qlats.iter().enumerate() {
-            if inv_denoms[sq_idx] == 0 {
-                out[sq_idx * n_entries + eidx] = u64::MAX;
-                continue;
-            }
-            let n = ((root_i128 * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128) % p_i128;
-            let rp = if p < (1u64 << 32) {
-                ((n as u64).wrapping_mul(inv_denoms[sq_idx])) % p
-            } else {
-                ((n as u128 * inv_denoms[sq_idx] as u128) % p as u128) as u64
-            };
-            out[sq_idx * n_entries + eidx] = rp;
-        }
-    }
-}
-
-/// FK scatter with precomputed r' values (skips transform_root entirely).
-///
-/// Entries are `(prime, r_prime, logp)` where `r_prime` is the already-transformed root.
-/// `r_prime == u64::MAX` means projective (skipped).
-fn scatter_fk_batch_with_precomputed_rprime(
-    entries: &[(u64, u64, u8)], // (prime, r_prime, logp)
-    log_i: u32,
-    buckets: &mut BucketArray,
-    sieve_width: usize,
-    max_j: usize,
-    half_i: i64,
-    walk_buf: &mut Vec<FkWalkParams>,
-) {
-    let half_width = half_i;
-    let sieve_w = sieve_width as i64;
-    let total_area = (sieve_width * max_j) as i64;
-    let even_mask = 1i64 | (1i64 << (log_i + 1));
-
-    walk_buf.clear();
-
-    for &(p, r_prime, logp) in entries {
-        if p < sieve_width as u64 || r_prime == u64::MAX {
-            // Small prime or projective: row-by-row fallback
-            if r_prime == u64::MAX { continue; }
-            let p_usize = p as usize;
-            let step = r_prime % p;
-            let mut start_mod_p = (half_i as u64) % p;
-            let em = 1usize | (1usize << (log_i + 1));
-            for j in 0..max_j {
-                let row_base = j * sieve_width;
-                let mut i_pos = start_mod_p as usize;
-                while i_pos < sieve_width {
-                    let gp = row_base + i_pos;
-                    if (gp & em) != 0 {
-                        buckets.push(gp >> LOG_BUCKET_REGION, BucketUpdate { pos: (gp & (BUCKET_REGION - 1)) as u16, logp });
-                    }
-                    i_pos += p_usize;
-                }
-                start_mod_p += step;
-                if start_mod_p >= p { start_mod_p -= p; }
-            }
-            continue;
-        }
-
-        if r_prime == 0 && p >= half_i as u64 { continue; }
-
-        let p_i64 = p as i64;
-        let mut u0 = p_i64;
-        let mut v0: i64 = 0;
-        let mut u1 = r_prime as i64;
-        let mut v1: i64 = 1;
-        if u1 > p_i64 / 2 { u1 -= p_i64; }
-
-        while u1 != 0 && u1.unsigned_abs() >= half_width as u64 {
-            let q_div = u0 / u1;
-            u0 -= q_div * u1;
-            v0 -= q_div * v1;
-            std::mem::swap(&mut u0, &mut u1);
-            std::mem::swap(&mut v0, &mut v1);
-        }
-
-        if u1 == 0 || v0 == 0 || v1 == 0 {
-            // Degenerate: row-by-row
-            let step = r_prime % p;
-            let mut start = (half_i as u64) % p;
-            let em = 1usize | (1usize << (log_i + 1));
-            for j in 0..max_j {
-                if (start as usize) < sieve_width {
-                    let gp = j * sieve_width + start as usize;
-                    if (gp & em) != 0 { buckets.push(gp >> LOG_BUCKET_REGION, BucketUpdate { pos: (gp & (BUCKET_REGION - 1)) as u16, logp }); }
-                }
-                start += step;
-                if start >= p { start -= p; }
-            }
-            continue;
-        }
-
-        if v1 < 0 { u1 = -u1; v1 = -v1; }
-        if v0 < 0 { u0 = -u0; v0 = -v0; }
-        if (u0 > 0) == (u1 > 0) || u0 == 0 || u1 == 0 {
-            let step = r_prime % p;
-            let mut start = (half_i as u64) % p;
-            let em = 1usize | (1usize << (log_i + 1));
-            for j in 0..max_j {
-                if (start as usize) < sieve_width {
-                    let gp = j * sieve_width + start as usize;
-                    if (gp & em) != 0 { buckets.push(gp >> LOG_BUCKET_REGION, BucketUpdate { pos: (gp & (BUCKET_REGION - 1)) as u16, logp }); }
-                }
-                start += step;
-                if start >= p { start -= p; }
-            }
-            continue;
-        }
-
-        let (u_step, v_step, u_warp, v_warp) = if u1.unsigned_abs() < u0.unsigned_abs() {
-            (u1, v1, u0, v0)
-        } else {
-            (u0, v0, u1, v1)
-        };
-        let inc_step = v_step * sieve_w + u_step;
-        let inc_warp = v_warp * sieve_w + u_warp;
-        if inc_step <= 0 || inc_warp <= 0 {
-            let step = r_prime % p;
-            let mut start = (half_i as u64) % p;
-            let em = 1usize | (1usize << (log_i + 1));
-            for j in 0..max_j {
-                if (start as usize) < sieve_width {
-                    let gp = j * sieve_width + start as usize;
-                    if (gp & em) != 0 { buckets.push(gp >> LOG_BUCKET_REGION, BucketUpdate { pos: (gp & (BUCKET_REGION - 1)) as u16, logp }); }
-                }
-                start += step;
-                if start >= p { start -= p; }
-            }
-            continue;
-        }
-
-        let u_sum = u_step + u_warp;
-        let s_lo = (-half_width - u_step).max(-half_width);
-        let w_hi = (half_width - u_warp).min(half_width);
-        if w_hi < s_lo {
-            let m_lo = (-half_width - u_sum).max(-half_width);
-            let m_hi = (half_width - u_sum).min(half_width);
-            if m_lo > w_hi || m_hi < s_lo {
-                let step = r_prime % p;
-                let mut start = (half_i as u64) % p;
-                let em = 1usize | (1usize << (log_i + 1));
-                for j in 0..max_j {
-                    if (start as usize) < sieve_width {
-                        let gp = j * sieve_width + start as usize;
-                        if (gp & em) != 0 { buckets.push(gp >> LOG_BUCKET_REGION, BucketUpdate { pos: (gp & (BUCKET_REGION - 1)) as u16, logp }); }
-                    }
-                    start += step;
-                    if start >= p { start -= p; }
-                }
-                continue;
-            }
-        }
-
-        let (inc_a, u_a, inc_b, u_b) = if inc_step < inc_warp {
-            (inc_step, u_step, inc_warp, u_warp)
-        } else {
-            (inc_warp, u_warp, inc_step, u_step)
-        };
-        let start_i_pos = (half_i as u64 % p) as i64;
-        walk_buf.push(FkWalkParams {
-            inc_a, inc_b,
-            inc_diff: inc_b - inc_a, inc_sum: inc_a + inc_b,
-            u_a, u_b, u_diff: u_b - u_a, u_sum,
-            a_thresh: if u_a < 0 { -half_width - u_a } else { half_width - u_a },
-            b_thresh: if u_b < 0 { -half_width - u_b } else { half_width - u_b },
-            u_a_neg: u_a < 0,
-            start_x: start_i_pos, start_ic: start_i_pos - half_width,
-            logp,
-        });
-    }
-
-    // Phase 2: execute all FK walks (same as original)
-    for params in walk_buf.iter() {
-        let logp = params.logp;
-        let mut x = params.start_x;
-        let mut ic = params.start_ic;
-        while x < total_area {
-            if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-                let gpos = x as usize;
-                buckets.push(gpos >> LOG_BUCKET_REGION, BucketUpdate { pos: (gpos & (BUCKET_REGION - 1)) as u16, logp });
-            }
-            let (a_ok, b_ok) = if params.u_a_neg {
-                (ic >= params.a_thresh, ic < params.b_thresh)
-            } else {
-                (ic < params.a_thresh, ic >= params.b_thresh)
-            };
-            if a_ok && b_ok {
-                x += params.inc_a; ic += params.u_a;
-                if x < total_area && (x & even_mask) != 0 {
-                    let gpos = x as usize;
-                    buckets.push(gpos >> LOG_BUCKET_REGION, BucketUpdate { pos: (gpos & (BUCKET_REGION - 1)) as u16, logp });
-                }
-                x += params.inc_diff; ic += params.u_diff;
-            } else if a_ok {
-                x += params.inc_a; ic += params.u_a;
-            } else if b_ok {
-                x += params.inc_b; ic += params.u_b;
-            } else {
-                x += params.inc_sum; ic += params.u_sum;
-            }
         }
     }
 }
