@@ -168,8 +168,37 @@ The small sieve (3.4s) could potentially be SIMD-optimized using NEON/SSE for th
 | c30 ST median | ~940ms | <1000ms | <500ms |
 | Architecture | Scatter sieve | Scatter + batch inv | Lattice sieve |
 
+## CADO-NFS Architecture Analysis (2026-03-15)
+
+CADO c45 params: degree=4, I=10, lim=55K/65K, lpb=18/19, mfb=24/26.
+Our params: degree=4, I=9, lim=40K/45K, lpb=20/21, mfb=42/44.
+
+**CADO uses the same FK scatter + partial-GCD approach.** Their speedup comes from:
+- Tighter C inner loop: FK walk step is 2-3 cycles (vs our ~15 cycles)
+- Bucket push is 1 cycle (vs our ~5 cycles)
+- Toplevel/non-toplevel separation: precompute non-toplevel plattices once per SQ
+- Dense 96-bit storage for non-toplevel plattice data
+- Per-entry cost: ~50ns (vs our ~250ns), **4.6x faster per entry**
+
+### Batch Inversion Integration Attempt (REVERTED)
+
+Attempted to batch `transform_root` across SQs for the same prime p using
+`batch_mod_inverse`. The batch_transform_roots function itself was fast (9.8ms
+for 8652 entries × 64 SQs). But the restructured chunk loop introduced a
+**17x performance regression** (2 chunks processed in 35s vs expected 0.6s).
+
+Root cause: unidentified overhead in the `indexed_chunk.par_iter().map_init()`
+pattern. The batch approach saves ~3.4s of mod_inverse but the loop restructuring
+costs >>10s. Further investigation needed.
+
+### FK Walk Tightening Attempt (REVERTED)
+
+Attempted CADO-style 2 conditional adds per FK step. Failed because CADO's dual-
+step emit (when both conditions true, emit at intermediate position) requires
+the original 4-way branch structure. Simple conditional add loses the intermediate emit.
+
 **Next concrete steps:**
-1. Complete batch inversion integration into FK scatter (expected: sieve 19s → 15s)
-2. SIMD-ize small sieve inner loop (expected: 3.4s → ~1s)
-3. Profile and optimize region scan overhead (expected: ~1s savings)
-4. Investigate lattice sieve for Phase 3 (required for <1s)
+1. Reduce per-entry FK setup cost from ~250ns to ~100ns (match CADO's per-entry performance)
+2. Investigate the par_iter regression to enable batch inversion (saves 3.4s)
+3. SIMD-ize small sieve inner loop (expected: 3.4s → ~1s)
+4. Once per-entry cost is reduced, switch to I=10 (matching CADO params)
