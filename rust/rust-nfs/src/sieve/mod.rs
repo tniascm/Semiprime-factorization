@@ -83,8 +83,12 @@ pub fn sieve_specialq(
     let total_sieve_area = sieve_width * max_j;
     let n_buckets = (total_sieve_area + BUCKET_REGION - 1) / BUCKET_REGION;
 
-    // Bucket threshold: primes below this use small sieve, above use bucket sieve
-    let bucket_thresh = (half_i as u64).max(64);
+    // Bucket threshold: primes below this use small sieve, above use bucket sieve.
+    // Tuned via sweep: 256 gives optimal setup/scan tradeoff for c45 (17.0s vs 17.3s at 512).
+    let bucket_thresh = std::env::var("RUST_NFS_BUCKET_THRESH")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(256u64.max(64));
 
     let scale = rat_fb.scale;
 
