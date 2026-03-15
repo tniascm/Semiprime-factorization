@@ -1744,38 +1744,21 @@ fn scatter_bucket_updates_fk(
     }
 }
 
-/// Compact FK walk parameters for batch processing.
+/// Compact FK walk parameters for batch processing (56 bytes, cache-friendly).
 ///
 /// Pre-computed from root transform + partial-GCD; consumed by the FK walk loop.
+/// Derived fields (inc_diff, inc_sum, u_diff, u_sum, a_thresh, b_thresh) are
+/// computed on-the-fly in Phase 2 to reduce struct size from 104 → 56 bytes,
+/// cutting walk_buf memory from 468KB to 255KB per side per SQ.
 struct FkWalkParams {
-    /// Smaller 1D increment.
     inc_a: i64,
-    /// Larger 1D increment.
     inc_b: i64,
-    /// Difference increment (inc_b - inc_a).
-    inc_diff: i64,
-    /// Sum increment (inc_a + inc_b).
-    inc_sum: i64,
-    /// i-component of vector a.
     u_a: i64,
-    /// i-component of vector b.
     u_b: i64,
-    /// i-component of difference (u_b - u_a).
-    u_diff: i64,
-    /// i-component of sum (u_a + u_b).
-    u_sum: i64,
-    /// Threshold for a_ok check.
-    a_thresh: i64,
-    /// Threshold for b_ok check.
-    b_thresh: i64,
-    /// True if u_a < 0.
-    u_a_neg: bool,
-    /// Starting 1D position.
     start_x: i64,
-    /// Starting i-coordinate (centered).
     start_ic: i64,
-    /// Quantized log2(p).
     logp: u8,
+    u_a_neg: bool,
 }
 
 /// Batch scatter bucket updates for multiple (prime, root, logp) triples.
@@ -1916,14 +1899,8 @@ fn scatter_bucket_updates_fk_batch(
         walk_buf.push(FkWalkParams {
             inc_a,
             inc_b,
-            inc_diff: inc_b - inc_a,
-            inc_sum: inc_a + inc_b,
             u_a,
             u_b,
-            u_diff: u_b - u_a,
-            u_sum,
-            a_thresh: if u_a < 0 { -half_width - u_a } else { half_width - u_a },
-            b_thresh: if u_b < 0 { -half_width - u_b } else { half_width - u_b },
             u_a_neg: u_a < 0,
             start_x: start_i_pos,
             start_ic: start_i_pos - half_width,
@@ -1932,19 +1909,19 @@ fn scatter_bucket_updates_fk_batch(
     }
 
     // --- Phase 2: execute all FK walks ---
+    // Derived fields computed on-the-fly to keep walk_buf small (56 vs 104 bytes/entry).
     for params in walk_buf.iter() {
         let logp = params.logp;
         let inc_a = params.inc_a;
         let inc_b = params.inc_b;
-        let inc_diff = params.inc_diff;
-        let inc_sum = params.inc_sum;
+        let inc_diff = inc_b - inc_a;
+        let inc_sum = inc_a + inc_b;
         let u_a = params.u_a;
         let u_b = params.u_b;
-        let u_diff = params.u_diff;
-        let u_sum = params.u_sum;
-        let a_thresh = params.a_thresh;
-        let b_thresh = params.b_thresh;
-        let u_a_neg = params.u_a_neg;
+        let u_diff = u_b - u_a;
+        let u_sum = u_a + u_b;
+        let a_thresh = if u_a < 0 { -half_width - u_a } else { half_width - u_a };
+        let b_thresh = if u_b < 0 { -half_width - u_b } else { half_width - u_b };
 
         let mut x = params.start_x;
         let mut ic = params.start_ic;
@@ -1961,7 +1938,7 @@ fn scatter_bucket_updates_fk_batch(
                 );
             }
 
-            let (a_ok, b_ok) = if u_a_neg {
+            let (a_ok, b_ok) = if params.u_a_neg {
                 (ic >= a_thresh, ic < b_thresh)
             } else {
                 (ic < a_thresh, ic >= b_thresh)
@@ -1970,8 +1947,6 @@ fn scatter_bucket_updates_fk_batch(
             if a_ok && b_ok {
                 x += inc_a;
                 ic += u_a;
-                // ic is guaranteed in bounds here (a_ok verified this).
-                // Only check x < total_area and coprimality.
                 if x < total_area && (x & even_mask) != 0 {
                     let gpos = x as usize;
                     buckets.push(
