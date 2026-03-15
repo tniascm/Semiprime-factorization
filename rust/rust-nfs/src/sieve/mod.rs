@@ -26,7 +26,7 @@ use self::lattice::{reduce_qlattice, QLattice};
 // norm functions are used via direct inline computation in the sieve loop;
 // the module is re-exported for external use.
 use self::region::{apply_bucket_updates, pos_to_ij, scan_survivors};
-use self::small::{precompute_small_sieve_alg, precompute_small_sieve_rat_g, small_sieve_region};
+use self::small::{precompute_small_sieve_alg, precompute_small_sieve_rat_g, small_sieve_region_tracked};
 
 /// Result of sieving: relations + timing breakdown.
 #[derive(Debug, Clone)]
@@ -364,6 +364,12 @@ pub fn sieve_specialq(
                     let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
                     let d = f_coeffs.len().saturating_sub(1);
 
+                    // Allocate position tracking arrays for incremental small sieve.
+                    let mut rat_tracked_starts = vec![0usize; small_rat.len()];
+                    let mut alg_tracked_starts = vec![0usize; small_alg.len()];
+                    let mut prev_j_rat: Option<i32> = None;
+                    let mut prev_j_alg: Option<i32> = None;
+
                     for bucket_idx in 0..n_buckets {
                         let region_start = bucket_idx * BUCKET_REGION;
                         let region_end = (region_start + BUCKET_REGION).min(total_sieve_area);
@@ -452,22 +458,28 @@ pub fn sieve_specialq(
 
                             let t_ss = std::time::Instant::now();
                             let region_offset = i_offset_in_row;
-                            small_sieve_region(
+                            small_sieve_region_tracked(
                                 &mut rat_sieve[local_start..local_end],
                                 &small_rat,
                                 j_row as i32,
                                 region_offset,
                                 overlap_len,
                                 sieve_width,
+                                &mut rat_tracked_starts,
+                                prev_j_rat,
                             );
-                            small_sieve_region(
+                            prev_j_rat = Some(j_row as i32);
+                            small_sieve_region_tracked(
                                 &mut alg_sieve[local_start..local_end],
                                 &small_alg,
                                 j_row as i32,
                                 region_offset,
                                 overlap_len,
                                 sieve_width,
+                                &mut alg_tracked_starts,
+                                prev_j_alg,
                             );
+                            prev_j_alg = Some(j_row as i32);
                             small_sieve_ns += t_ss.elapsed().as_nanos() as u64;
                         }
 

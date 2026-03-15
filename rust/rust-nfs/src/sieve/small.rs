@@ -303,6 +303,120 @@ pub fn small_sieve_region(
     }
 }
 
+/// Apply small sieve to a region with incremental position tracking.
+///
+/// This is an optimized variant of `small_sieve_region` that avoids the
+/// per-entry modular division (`(half_i + root_i * j_mod_p) % p`) on
+/// consecutive rows. Instead, it maintains a `tracked_starts` array with one
+/// element per entry, advancing each position with a single addition and
+/// conditional subtract: `pos = (pos + root_i) % p`.
+///
+/// When `prev_j` is `Some(j - 1)`, positions are advanced incrementally.
+/// Otherwise (first call or non-consecutive rows), positions are computed
+/// from scratch.
+///
+/// SIMD entries (p <= 7 on aarch64) and projective entries always compute
+/// from scratch, since SIMD already dominates the cost for tiny primes and
+/// projective entries have special row logic.
+pub fn small_sieve_region_tracked(
+    sieve: &mut [u8],
+    entries: &[SmallSieveEntry],
+    j: i32,
+    region_start: usize,
+    region_len: usize,
+    sieve_width: usize,
+    tracked_starts: &mut [usize],
+    prev_j: Option<i32>,
+) {
+    let region_end = region_start + region_len;
+    let half_i = sieve_width / 2;
+    // Determine the update mode:
+    // - Consecutive (prev_j == j-1): advance positions incrementally
+    // - Same row (prev_j == j): positions already correct, reuse as-is
+    // - Otherwise: recompute from scratch
+    let update_mode = match prev_j {
+        Some(pj) if pj == j - 1 => 1u8,  // consecutive: advance
+        Some(pj) if pj == j => 2u8,       // same row: reuse
+        _ => 0u8,                          // recompute from scratch
+    };
+
+    for (idx, entry) in entries.iter().enumerate() {
+        let logp = entry.logp;
+        let row_period = entry.projective_row_period;
+        if row_period != 0 {
+            // Projective entries: no position tracking, use existing logic.
+            if j.rem_euclid(row_period as i32) == 0 {
+                for cell in sieve.iter_mut() {
+                    *cell = cell.saturating_sub(logp);
+                }
+            }
+            continue;
+        }
+
+        let p = entry.p as usize;
+
+        // Determine start_in_row: incrementally, reuse, or from scratch.
+        let start_in_row;
+
+        #[cfg(target_arch = "aarch64")]
+        let is_simd_prime = p <= 7;
+        #[cfg(not(target_arch = "aarch64"))]
+        let is_simd_prime = false;
+
+        if is_simd_prime {
+            // SIMD primes: always compute from scratch (SIMD already fast).
+            let j_mod_p = ((j as i64).rem_euclid(p as i64)) as u64;
+            start_in_row = ((half_i as u64 + entry.root_i * j_mod_p) % entry.p) as usize;
+            tracked_starts[idx] = start_in_row;
+        } else if update_mode == 1 {
+            // Consecutive row: advance pos_new = (pos_old + root_i) % p
+            let old_pos = tracked_starts[idx];
+            let root = entry.root_i as usize;
+            let new_pos = old_pos + root;
+            start_in_row = if new_pos >= p { new_pos - p } else { new_pos };
+            tracked_starts[idx] = start_in_row;
+        } else if update_mode == 2 {
+            // Same row repeated (split across bucket regions): reuse stored position.
+            start_in_row = tracked_starts[idx];
+        } else {
+            // Non-consecutive or first call: compute from scratch.
+            let j_mod_p = ((j as i64).rem_euclid(p as i64)) as u64;
+            start_in_row = ((half_i as u64 + entry.root_i * j_mod_p) % entry.p) as usize;
+            tracked_starts[idx] = start_in_row;
+        }
+
+        // Find the first hit at or after region_start.
+        let first_hit = if start_in_row >= region_start {
+            start_in_row
+        } else {
+            let gap = region_start - start_in_row;
+            let steps = (gap + p - 1) / p;
+            start_in_row + steps * p
+        };
+
+        let local_start = first_hit.saturating_sub(region_start);
+
+        // Use SIMD for tiny primes (p <= 7) on aarch64.
+        #[cfg(target_arch = "aarch64")]
+        if p <= 7 {
+            small_sieve_simd(sieve, p, logp, local_start, region_len);
+            continue;
+        }
+
+        // Stride through the region using unchecked access (hot path).
+        let mut pos = first_hit;
+        while pos < region_end {
+            let local = pos - region_start;
+            debug_assert!(local < sieve.len());
+            unsafe {
+                let cell = sieve.get_unchecked_mut(local);
+                *cell = cell.saturating_sub(logp);
+            }
+            pos += p;
+        }
+    }
+}
+
 /// SIMD pattern sieve for tiny primes (p=2,3,5,7) on aarch64.
 ///
 /// Pre-computes p different 16-byte patterns (one for each possible alignment
@@ -660,5 +774,203 @@ mod tests {
         assert_eq!(entries[0].root_i, 2);
         assert_eq!(entries[0].p, 7);
         assert_eq!(entries[0].logp, 8);
+    }
+
+    // ---------------------------------------------------------------
+    // Tests for small_sieve_region_tracked
+    // ---------------------------------------------------------------
+
+    /// Helper: run both tracked and untracked on the same inputs and assert
+    /// identical sieve output.
+    fn assert_tracked_matches_untracked(
+        entries: &[SmallSieveEntry],
+        j: i32,
+        region_start: usize,
+        region_len: usize,
+        sieve_width: usize,
+        tracked_starts: &mut [usize],
+        prev_j: Option<i32>,
+    ) {
+        let mut sieve_ref = vec![100u8; region_len];
+        let mut sieve_trk = vec![100u8; region_len];
+
+        small_sieve_region(
+            &mut sieve_ref,
+            entries,
+            j,
+            region_start,
+            region_len,
+            sieve_width,
+        );
+        small_sieve_region_tracked(
+            &mut sieve_trk,
+            entries,
+            j,
+            region_start,
+            region_len,
+            sieve_width,
+            tracked_starts,
+            prev_j,
+        );
+
+        assert_eq!(
+            sieve_ref, sieve_trk,
+            "tracked diverged from reference at j={}, region_start={}, prev_j={:?}",
+            j, region_start, prev_j
+        );
+    }
+
+    #[test]
+    fn test_tracked_matches_untracked_from_scratch() {
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 13, logp: 11, projective_row_period: 0, root_i: 7 },
+            SmallSieveEntry { p: 17, logp: 12, projective_row_period: 0, root_i: 5 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        // From scratch (prev_j = None)
+        for j in 0..20 {
+            assert_tracked_matches_untracked(&entries, j, 0, 60, 60, &mut tracked, None);
+        }
+    }
+
+    #[test]
+    fn test_tracked_consecutive_rows() {
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 13, logp: 11, projective_row_period: 0, root_i: 7 },
+            SmallSieveEntry { p: 59, logp: 16, projective_row_period: 0, root_i: 22 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 80;
+
+        // First row from scratch
+        assert_tracked_matches_untracked(&entries, 0, 0, sieve_width, sieve_width, &mut tracked, None);
+
+        // Subsequent rows incrementally
+        for j in 1..50 {
+            assert_tracked_matches_untracked(
+                &entries, j, 0, sieve_width, sieve_width, &mut tracked, Some(j - 1),
+            );
+        }
+    }
+
+    #[test]
+    fn test_tracked_negative_j_consecutive() {
+        let entries = vec![
+            SmallSieveEntry { p: 7, logp: 8, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 23, logp: 13, projective_row_period: 0, root_i: 11 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 40;
+
+        // Start with a negative j
+        assert_tracked_matches_untracked(&entries, -5, 0, sieve_width, sieve_width, &mut tracked, None);
+
+        for j in -4..10 {
+            assert_tracked_matches_untracked(
+                &entries, j, 0, sieve_width, sieve_width, &mut tracked, Some(j - 1),
+            );
+        }
+    }
+
+    #[test]
+    fn test_tracked_same_row_split_region() {
+        // Simulate a row split across two bucket regions
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 4 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 80;
+
+        // First half of row j=3 (region_start=0, region_len=40)
+        assert_tracked_matches_untracked(&entries, 3, 0, 40, sieve_width, &mut tracked, None);
+
+        // Second half of same row j=3 (region_start=40, region_len=40), prev_j=3
+        assert_tracked_matches_untracked(&entries, 3, 40, 40, sieve_width, &mut tracked, Some(3));
+    }
+
+    #[test]
+    fn test_tracked_non_consecutive_recompute() {
+        let entries = vec![
+            SmallSieveEntry { p: 17, logp: 12, projective_row_period: 0, root_i: 9 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 60;
+
+        // Process row 5
+        assert_tracked_matches_untracked(&entries, 5, 0, sieve_width, sieve_width, &mut tracked, None);
+
+        // Jump to row 10 (non-consecutive)
+        assert_tracked_matches_untracked(&entries, 10, 0, sieve_width, sieve_width, &mut tracked, Some(5));
+    }
+
+    #[test]
+    fn test_tracked_projective_entry() {
+        let entries = vec![
+            SmallSieveEntry { p: 5, logp: 10, projective_row_period: 5, root_i: 0 },
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 30;
+
+        // From scratch
+        assert_tracked_matches_untracked(&entries, 0, 0, sieve_width, sieve_width, &mut tracked, None);
+
+        // Consecutive rows (projective should still work correctly)
+        for j in 1..15 {
+            assert_tracked_matches_untracked(
+                &entries, j, 0, sieve_width, sieve_width, &mut tracked, Some(j - 1),
+            );
+        }
+    }
+
+    #[test]
+    fn test_tracked_sub_region() {
+        // Test with region_start > 0 (sub-region of full row)
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 4 },
+            SmallSieveEntry { p: 19, logp: 12, projective_row_period: 0, root_i: 7 },
+        ];
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 100;
+
+        // Region starts at offset 30
+        assert_tracked_matches_untracked(&entries, 0, 30, 40, sieve_width, &mut tracked, None);
+
+        // Consecutive row, same sub-region offset
+        assert_tracked_matches_untracked(&entries, 1, 30, 40, sieve_width, &mut tracked, Some(0));
+
+        // Consecutive row, different sub-region offset
+        assert_tracked_matches_untracked(&entries, 2, 50, 30, sieve_width, &mut tracked, Some(1));
+    }
+
+    #[test]
+    fn test_tracked_many_entries_full_sweep() {
+        // Many entries, sweep through consecutive rows to stress test
+        let entries: Vec<SmallSieveEntry> = (0..20)
+            .map(|i| {
+                let p = [11, 13, 17, 19, 23, 29, 31, 37, 41, 43,
+                          47, 53, 59, 61, 67, 71, 73, 79, 83, 89][i];
+                SmallSieveEntry {
+                    p,
+                    logp: (p as f64).log2().round() as u8,
+                    projective_row_period: 0,
+                    root_i: (p / 3) as u64,
+                }
+            })
+            .collect();
+        let mut tracked = vec![0usize; entries.len()];
+        let sieve_width = 200;
+
+        // First row from scratch
+        assert_tracked_matches_untracked(&entries, 0, 0, sieve_width, sieve_width, &mut tracked, None);
+
+        // 100 consecutive rows
+        for j in 1..100 {
+            assert_tracked_matches_untracked(
+                &entries, j, 0, sieve_width, sieve_width, &mut tracked, Some(j - 1),
+            );
+        }
     }
 }
