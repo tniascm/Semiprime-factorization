@@ -500,8 +500,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         });
     }
     result.polyselect_ms = ext_polyselect_ms;
-    // Suppress unused-variable warnings until timeout checks are wired in.
-    let _ = (sieve_timeout_ms, la_timeout_ms, sqrt_timeout_ms, total_timeout_ms);
+    let _ = (la_timeout_ms, sqrt_timeout_ms);
 
     // Optional runtime parameter overrides for reproducible tuning experiments.
     let mut params = params.clone();
@@ -879,6 +878,24 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     }
 
     loop {
+        // Check global and sieve timeouts at each sieve window boundary.
+        let elapsed_total_ms = start.elapsed().as_millis() as u64;
+        if let Some(limit) = total_timeout_ms {
+            if elapsed_total_ms > limit {
+                eprintln!("  timeout: total elapsed {}ms exceeds limit {}ms, stopping sieve", elapsed_total_ms, limit);
+                break;
+            }
+        }
+        if let Some(limit) = sieve_timeout_ms {
+            let sieve_elapsed = (total_sieve_ms as u64).saturating_add(
+                (start.elapsed().as_secs_f64() * 1000.0 - startup_ms) as u64
+            );
+            if sieve_elapsed > limit {
+                eprintln!("  timeout: sieve elapsed ~{}ms exceeds limit {}ms, stopping", sieve_elapsed, limit);
+                break;
+            }
+        }
+
         let total_rels = all_sieve_relations.len();
         let at_q_window_cap = max_q_windows.map_or(false, |cap| window >= cap);
         let near_q_window_cap = max_q_windows.map_or(false, |cap| window + 1 >= cap);

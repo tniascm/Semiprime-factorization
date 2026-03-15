@@ -1306,43 +1306,42 @@ fn transform_root(p: u64, root: u64, qlat: &QLattice) -> Result<u64, bool> {
     //
     // For typical NFS parameters (p < 100k, |qlat coeffs| < 1000),
     // root * b0 and root * b1 fit in i64 (< 10^8). Use i64 when safe.
+    //
+    // Optimization: use rem_euclid to reduce signed -> [0, p) in one division
+    // instead of the double-division pattern ((val % p) + p) % p.
     let r = root as i64;
-    let (denom_raw, numer_raw) = if root < (1u64 << 31)
+    let p_i64 = p as i64;
+
+    let (denom, numer) = if root < (1u64 << 31)
         && qlat.b0.unsigned_abs() < (1u64 << 31)
         && qlat.b1.unsigned_abs() < (1u64 << 31)
     {
         // Fast path: all products fit in i64 (no overflow for 31+31 < 62 bits)
-        let d = qlat.a0 - r * qlat.b0;
-        let n = r * qlat.b1 - qlat.a1;
+        let d = (qlat.a0 - r * qlat.b0).rem_euclid(p_i64) as u64;
+        let n = (r * qlat.b1 - qlat.a1).rem_euclid(p_i64) as u64;
         (d, n)
     } else {
-        // Fallback: use i128 for large values
+        // Fallback: use i128 for large values, reduce once in i128
         let p_i128 = p as i128;
-        let d = ((qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)) % p_i128 + p_i128)
-            % p_i128;
-        let n = (((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128) % p_i128 + p_i128)
-            % p_i128;
-        (d as i64, n as i64)
+        let d = (qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128)).rem_euclid(p_i128) as u64;
+        let n = ((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128).rem_euclid(p_i128) as u64;
+        (d, n)
     };
-
-    let p_i64 = p as i64;
-    let denom = ((denom_raw % p_i64) + p_i64) % p_i64;
-    let numer = ((numer_raw % p_i64) + p_i64) % p_i64;
 
     if denom == 0 {
         return Err(numer == 0);
     }
 
-    let inv = match crate::arith::mod_inverse(denom as u64, p) {
+    let inv = match crate::arith::mod_inverse(denom, p) {
         Some(v) => v,
         None => return Ok(0), // treat as no-hit
     };
     // For typical NFS primes (p < 2^32), numer * inv < p^2 < 2^64,
     // so u64 multiplication suffices. Use u128 only for large p.
     let r_prime = if p < (1u64 << 32) {
-        ((numer as u64).wrapping_mul(inv)) % p
+        numer.wrapping_mul(inv) % p
     } else {
-        ((numer as u64 as u128 * inv as u128) % p as u128) as u64
+        ((numer as u128 * inv as u128) % p as u128) as u64
     };
     Ok(r_prime)
 }
