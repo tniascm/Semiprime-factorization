@@ -175,7 +175,8 @@ pub fn merge_relations_2lp(
             0 => {
                 stats.relations_0lp += 1;
                 let singleton = vec![rel_idx];
-                if seen_sets.insert(singleton.clone()) {
+                if !seen_sets.contains(&singleton) {
+                    seen_sets.insert(singleton.clone());
                     sets.push(singleton);
                 }
             }
@@ -195,7 +196,8 @@ pub fn merge_relations_2lp(
                         path.push(rel_idx);
                         path.sort_unstable();
                         path.dedup();
-                        if seen_sets.insert(path.clone()) {
+                        if !seen_sets.contains(&path) {
+                            seen_sets.insert(path.clone());
                             sets.push(path);
                         }
                     }
@@ -217,7 +219,8 @@ pub fn merge_relations_2lp(
                         path.push(rel_idx);
                         path.sort_unstable();
                         path.dedup();
-                        if seen_sets.insert(path.clone()) {
+                        if !seen_sets.contains(&path) {
+                            seen_sets.insert(path.clone());
                             sets.push(path);
                         }
                     }

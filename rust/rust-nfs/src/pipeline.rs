@@ -2733,7 +2733,7 @@ fn pollard_rho_brent(n: &Integer, seed: u64, iter_limit: usize) -> Option<Intege
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum SparseKey {
     SpecialQ(u64, u64),
     RatLp(u64),
@@ -2746,18 +2746,18 @@ struct SparseElimRow {
     rels: Vec<usize>,
 }
 
-fn sym_diff_sorted<T: Ord + Clone>(a: &[T], b: &[T]) -> Vec<T> {
+fn sym_diff_sorted<T: Ord + Copy>(a: &[T], b: &[T]) -> Vec<T> {
     let mut out = Vec::with_capacity(a.len() + b.len());
     let mut i = 0usize;
     let mut j = 0usize;
     while i < a.len() && j < b.len() {
         match a[i].cmp(&b[j]) {
             std::cmp::Ordering::Less => {
-                out.push(a[i].clone());
+                out.push(a[i]);
                 i += 1;
             }
             std::cmp::Ordering::Greater => {
-                out.push(b[j].clone());
+                out.push(b[j]);
                 j += 1;
             }
             std::cmp::Ordering::Equal => {
@@ -2767,11 +2767,11 @@ fn sym_diff_sorted<T: Ord + Clone>(a: &[T], b: &[T]) -> Vec<T> {
         }
     }
     while i < a.len() {
-        out.push(a[i].clone());
+        out.push(a[i]);
         i += 1;
     }
     while j < b.len() {
-        out.push(b[j].clone());
+        out.push(b[j]);
         j += 1;
     }
     out
