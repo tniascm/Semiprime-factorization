@@ -114,6 +114,30 @@ impl NfsParams {
         }
     }
 
+    /// c45 parameters for bucket sieve with larger sieve area (I=11).
+    ///
+    /// With log_i=11: sieve_width=4096, max_j=2048, area=8M (16x larger than I=9).
+    /// Yields ~40 rels/SQ (vs 9 at I=9), needing ~850 SQs (vs 3835).
+    /// Used automatically when bucket sieve is selected for degree >= 4.
+    pub fn c45_bucket() -> Self {
+        Self {
+            name: "c45_bucket",
+            degree: 4,
+            lim0: 40_000,
+            lim1: 45_000,
+            lpb0: 20,
+            lpb1: 21,
+            mfb0: 28,
+            mfb1: 30,
+            sieve_mfb0: 28,
+            sieve_mfb1: 30,
+            log_i: 11,
+            qmin: 35_000,
+            qrange: 3_000,
+            rels_wanted: 45_000,
+        }
+    }
+
     /// Select parameters automatically based on semiprime bit-size.
     pub fn for_bits(bits: u32) -> Self {
         match bits {
