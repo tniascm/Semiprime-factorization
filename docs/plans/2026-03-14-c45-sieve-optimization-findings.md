@@ -158,15 +158,26 @@ The partial-GCD (2.5s total) cannot be easily eliminated — it converts O(max_j
 
 The small sieve (3.4s) could potentially be SIMD-optimized using NEON/SSE for the `saturating_sub` inner loop. Currently processes 1 byte at a time. With NEON, could process 16 bytes simultaneously → up to 16x speedup theoretically, but alignment and loop overhead would limit it to ~4-8x.
 
-## Summary of Current Position
+## Summary of Current Position (2026-03-15, post-optimization)
 
-| Metric | Current | Phase 1 Target | Phase 3 Target |
-|--------|---------|----------------|----------------|
-| c45 ST total | 20.1s | <8s | <1s |
-| c45 sieve | 19.0s | <7s | <0.5s |
-| c45 success rate | 100% | ≥80% | ≥90% |
-| c30 ST median | ~940ms | <1000ms | <500ms |
-| Architecture | Scatter sieve | Scatter + batch inv | Lattice sieve |
+| Metric | Start | Current | Phase 1 | Phase 3 |
+|--------|-------|---------|---------|---------|
+| c45 ST total | 20.1s | **17.4s** | <8s | <1s |
+| c45 sieve | 19.0s | **16.2s** | <7s | <0.5s |
+| c45 FK setup | 13.0s | **10.8s** | - | - |
+| c45 region scan | 5.6s | **4.8s** | - | - |
+| c45 success | 100% | **100% (3/3)** | ≥80% | ≥90% |
+| c30 ST mean | ~940ms | **925ms** | <1000ms | <500ms |
+| Architecture | Scatter sieve | Scatter + batch inv | ? | Lattice sieve |
+
+### Optimizations Applied
+1. **Batch mod_inverse** (commit 5ed8f19): 2.3s savings on FK setup (17.7%)
+2. **bucket_thresh=256** (commit d7a4cb2): 218ms net savings from setup/scan rebalance
+3. **Clone→Copy + HashSet fix** (commit 1521068): minor perf bug fixes
+
+### Remaining Gap Analysis
+17.4s → 1s requires 17.4x improvement. Scatter sieve minimum floor ~9.3s.
+**Architectural change required** — lattice sieve or fundamentally different sieve loop.
 
 ## CADO-NFS Architecture Analysis (2026-03-15)
 
