@@ -297,8 +297,30 @@ pub fn sieve_primes(bound: u64) -> Vec<u64> {
 /// overflow.
 #[inline]
 pub fn extended_gcd(a: u64, m: u64) -> (u64, i64) {
+    // Ultra-fast path: when both fit in i32 (< 2^31), use 32-bit division.
+    // 32-bit sdiv is ~4 cycles vs 64-bit sdiv at ~7 cycles on ARM.
+    // Covers all NFS factor base primes (p < 100K).
+    if a < (1u64 << 31) && m < (1u64 << 31) {
+        let (mut old_r, mut r) = (a as i32, m as i32);
+        let (mut old_s, mut s) = (1i32, 0i32);
+
+        while r != 0 {
+            let q = old_r / r;
+            let tmp = r;
+            r = old_r - q * r;
+            old_r = tmp;
+
+            let tmp = s;
+            s = old_s - q * s;
+            old_s = tmp;
+        }
+
+        let gcd = old_r as u64;
+        let x = ((old_s as i64 % m as i64) + m as i64) % m as i64;
+        return (gcd, x);
+    }
+
     // Fast path: when both values fit in i64 (< 2^63), avoid i128 entirely.
-    // This covers all NFS factor base primes (p < 10^6).
     if a < (1u64 << 62) && m < (1u64 << 62) {
         let (mut old_r, mut r) = (a as i64, m as i64);
         let (mut old_s, mut s) = (1i64, 0i64);
