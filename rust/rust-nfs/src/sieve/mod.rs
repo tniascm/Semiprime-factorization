@@ -83,8 +83,13 @@ pub fn sieve_specialq(
     let total_sieve_area = sieve_width * max_j;
     let n_buckets = (total_sieve_area + BUCKET_REGION - 1) / BUCKET_REGION;
 
-    // Bucket threshold: primes below this use small sieve, above use bucket sieve
-    let bucket_thresh = (half_i as u64).max(64);
+    // Bucket threshold: primes below this use small sieve, above use bucket sieve.
+    // Default: half_i (512 for log_i=9). Higher values push more primes to the
+    // optimized small sieve (incremental tracking), reducing FK scatter overhead.
+    let bucket_thresh = std::env::var("RUST_NFS_BUCKET_THRESH")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or((half_i as u64).max(64));
 
     let scale = rat_fb.scale;
 
@@ -1921,6 +1926,8 @@ fn scatter_bucket_updates_fk_batch(
 
     // --- Phase 2: execute all FK walks ---
     // Derived fields computed on-the-fly to keep walk_buf small (56 vs 104 bytes/entry).
+    // walk_buf.len() = number of entries that passed all FK setup checks.
+    // entries.len() - walk_buf.len() = entries that used fallback or small prime paths.
     for params in walk_buf.iter() {
         let logp = params.logp;
         let inc_a = params.inc_a;

@@ -84,32 +84,31 @@ impl NfsParams {
 
     /// Parameters for ~45-digit (141+ bit) semiprimes.
     ///
-    /// Tuned via parameter sweep (2026-03-13):
+    /// Tuned via parameter sweep (2026-03-13, updated 2026-03-16):
     /// - Smaller FB (lim 40k/45k vs 55k/65k) cuts dense columns, improving
     ///   row/col ratio and reducing matrix size.
-    /// - Higher lpb (20/21 vs 18/19) yields more relations per special-q and
-    ///   achieves 100% remap keep ratio on many polynomial variants.
+    /// - Higher lpb (21/22 vs 20/21) yields 35% more relations per sieve second
+    ///   and 7.5% faster total time; 2LP mfb is auto-bumped by pipeline.
     /// - Lower qmin (35k vs 58k) provides more diverse special-qs, improving
     ///   per-SQ yield and overall sieve throughput.
-    /// - Wider qrange (3k vs 1.5k) gives the adaptive sieve more room.
     /// - Smaller log_i (9 vs 10) halves the sieve region, roughly doubling
     ///   the number of special-qs processed in the same wall time.
-    /// Net effect: sieve 5s vs 39s (~8x), total through LA ~7s vs ~280s.
+    /// Net effect: 16.1s mean c45 total (3/3 factored, seed 42).
     pub fn c45() -> Self {
         Self {
             name: "c45",
             degree: 4,
             lim0: 40_000,
             lim1: 45_000,
-            lpb0: 20,
-            lpb1: 21,
+            lpb0: 21,
+            lpb1: 22,
             mfb0: 28,
             mfb1: 30,
             sieve_mfb0: 28,
             sieve_mfb1: 30,
             log_i: 9,
             qmin: 35_000,
-            qrange: 750,  // tuned: smaller windows for better adaptive efficiency
+            qrange: 750,
             rels_wanted: 45_000,
         }
     }
