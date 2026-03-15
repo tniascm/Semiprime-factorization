@@ -1435,6 +1435,64 @@ fn scatter_bucket_updates_for_prime(
     }
 }
 
+/// Row-by-row scatter using pre-computed r' (avoids re-doing transform_root).
+/// Used as fallback when FK partial-GCD produces degenerate parameters.
+#[inline(always)]
+fn scatter_row_by_row_with_rprime(
+    p: u64,
+    r_prime: u64,
+    logp: u8,
+    log_i: u32,
+    buckets: &mut BucketArray,
+    sieve_width: usize,
+    max_j: usize,
+    half_i: i64,
+) {
+    let even_mask = 1usize | (1usize << (log_i + 1));
+    let step = r_prime % p;
+    let mut start_mod_p = (half_i as u64) % p;
+
+    if p as usize > sieve_width {
+        for j in 0..max_j {
+            if (start_mod_p as usize) < sieve_width {
+                let global_pos = j * sieve_width + start_mod_p as usize;
+                if (global_pos & even_mask) != 0 {
+                    buckets.push(
+                        global_pos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
+            }
+            start_mod_p += step;
+            if start_mod_p >= p { start_mod_p -= p; }
+        }
+    } else {
+        let p_usize = p as usize;
+        for j in 0..max_j {
+            let row_base = j * sieve_width;
+            let mut i_pos = start_mod_p as usize;
+            while i_pos < sieve_width {
+                let global_pos = row_base + i_pos;
+                if (global_pos & even_mask) != 0 {
+                    buckets.push(
+                        global_pos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
+                i_pos += p_usize;
+            }
+            start_mod_p += step;
+            if start_mod_p >= p { start_mod_p -= p; }
+        }
+    }
+}
+
 /// Scatter bucket updates using the Franke-Kleinjung lattice walk.
 ///
 /// This is functionally equivalent to `scatter_bucket_updates_for_prime` but uses
@@ -1795,10 +1853,10 @@ fn scatter_bucket_updates_fk_batch(
             v1 = new_v;
         }
 
-        // Degenerate cases: fall back
+        // Degenerate cases: fall back using pre-computed r' (no re-transform)
         if u1 == 0 || v0 == 0 || v1 == 0 {
-            scatter_bucket_updates_for_prime(
-                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            scatter_row_by_row_with_rprime(
+                p, r_prime, logp, log_i, buckets, sieve_width, max_j, half_i,
             );
             continue;
         }
@@ -1809,8 +1867,8 @@ fn scatter_bucket_updates_fk_batch(
 
         // Check opposite u-signs
         if (u0 > 0) == (u1 > 0) || u0 == 0 || u1 == 0 {
-            scatter_bucket_updates_for_prime(
-                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            scatter_row_by_row_with_rprime(
+                p, r_prime, logp, log_i, buckets, sieve_width, max_j, half_i,
             );
             continue;
         }
@@ -1826,8 +1884,8 @@ fn scatter_bucket_updates_fk_batch(
         let inc_warp = v_warp * sieve_w + u_warp;
 
         if inc_step <= 0 || inc_warp <= 0 {
-            scatter_bucket_updates_for_prime(
-                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+            scatter_row_by_row_with_rprime(
+                p, r_prime, logp, log_i, buckets, sieve_width, max_j, half_i,
             );
             continue;
         }
@@ -1841,8 +1899,8 @@ fn scatter_bucket_updates_fk_batch(
             let m_lo = (-half_width - u_sum).max(-half_width);
             let m_hi = (half_width - u_sum).min(half_width);
             if m_lo > w_hi || m_hi < s_lo {
-                scatter_bucket_updates_for_prime(
-                    p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+                scatter_row_by_row_with_rprime(
+                    p, r_prime, logp, log_i, buckets, sieve_width, max_j, half_i,
                 );
                 continue;
             }
