@@ -12,7 +12,7 @@ pub mod norm;
 pub mod region;
 pub mod small;
 
-use crate::arith::{mod_inverse, sieve_primes};
+use crate::arith::{batch_mod_inverse, mod_inverse, sieve_primes};
 use crate::cofactor::{self, CofactResult, CofactorConfig};
 use crate::factorbase::{self, FactorBase};
 use crate::lp_key::LpKey;
@@ -150,6 +150,25 @@ pub fn sieve_specialq(
         compute_rat_root_mod_p(g0_param, g1_param, p)
     }).collect();
 
+    // Canonical entry lists for batch r_prime precomputation.
+    // These include ALL large FB entries (p >= bucket_thresh), including those where
+    // p might equal q. The q-skip is handled by scatter_bucket_updates_fk_batch.
+    let alg_canonical_entries: Vec<(u64, u64, u8)> = alg_large_indices
+        .iter()
+        .flat_map(|&fb_idx| {
+            let p = alg_fb.primes[fb_idx];
+            let logp = alg_fb.log_p[fb_idx];
+            alg_fb.roots[fb_idx].iter().map(move |&root| (p, root, logp))
+        })
+        .collect();
+    let rat_canonical_entries: Vec<(u64, u64, u8)> = rat_large_indices
+        .iter()
+        .map(|&fb_idx| {
+            let p = rat_fb.primes[fb_idx];
+            (p, rat_roots_by_index[fb_idx], rat_fb.log_p[fb_idx])
+        })
+        .collect();
+
     let mut all_relations = Vec::new();
     let mut total_survivors = 0usize;
     let mut total_bucket_setup_ns = 0u64;
@@ -233,9 +252,29 @@ pub fn sieve_specialq(
     let updates_per_bucket = (est_updates * 2).max(1024);
 
     for chunk in qr_pairs.chunks(batch_size.max(1)) {
+        // --- Cross-SQ batch precomputation of r_primes ---
+        // Precompute qlattices for all SQs in this chunk.
+        let skewness = 1.0;
+        let chunk_qlats: Vec<QLattice> = chunk.iter()
+            .map(|&(q, r)| reduce_qlattice(q, r, skewness))
+            .collect();
+
+        // Batch precompute r_primes for all (FB entry, SQ) pairs using Montgomery's trick.
+        // Layout: precomputed_alg_rprimes[sq_idx * n_alg_entries + entry_idx]
+        let precomputed_alg_rprimes = batch_precompute_rprimes(
+            &chunk_qlats, &alg_canonical_entries, sieve_width,
+        );
+        let precomputed_rat_rprimes = batch_precompute_rprimes(
+            &chunk_qlats, &rat_canonical_entries, sieve_width,
+        );
+
+        let n_alg_entries = alg_canonical_entries.len();
+        let n_rat_entries = rat_canonical_entries.len();
+
         let chunk_results: Vec<(Vec<Relation>, usize, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = chunk
             .par_iter()
             .copied()
+            .enumerate()
             .map_init(
                 || {
                     let rat_buckets = BucketArray::new(n_buckets.max(1), updates_per_bucket);
@@ -243,11 +282,10 @@ pub fn sieve_specialq(
                     let rat_sieve = vec![0u8; BUCKET_REGION];
                     let alg_sieve = vec![0u8; BUCKET_REGION];
                     let survivors = Vec::with_capacity(1024);
-                    let fk_entries: Vec<(u64, u64, u8)> = Vec::with_capacity(alg_large_indices.len() * 2 + rat_large_indices.len());
                     let walk_buf: Vec<FkWalkParams> = Vec::with_capacity(alg_large_indices.len() * 2 + rat_large_indices.len());
-                    (rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors, fk_entries, walk_buf)
+                    (rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors, walk_buf)
                 },
-                |(rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors_this_sq, fk_entries, walk_buf), (q, r)| {
+                |(rat_buckets, alg_buckets, rat_sieve, alg_sieve, survivors_this_sq, walk_buf), (sq_idx, (q, r))| {
                     rat_buckets.clear();
                     alg_buckets.clear();
                     survivors_this_sq.clear();
@@ -256,9 +294,8 @@ pub fn sieve_specialq(
                     let mut local_survivors = 0usize;
                     let sieve_start = std::time::Instant::now();
 
-                    // 1. Reduce q-lattice
-                    let skewness = 1.0;
-                    let qlat = reduce_qlattice(q, r, skewness);
+                    // 1. Use precomputed q-lattice
+                    let qlat = chunk_qlats[sq_idx];
 
                     // 2. Precompute small sieve entries
                     let t_small_precomp = std::time::Instant::now();
@@ -310,22 +347,20 @@ pub fn sieve_specialq(
 
                     let small_precomp_ns = t_small_precomp.elapsed().as_nanos() as u64;
 
-                    // 3. Scatter bucket updates (batch FK)
+                    // 3. Scatter bucket updates (batch FK) using precomputed r_primes
+                    //    The canonical entry lists + precomputed r_primes are indexed by
+                    //    sq_idx * n_entries + entry_idx. The FK batch function handles
+                    //    q-skip internally via the skip_q parameter.
 
                     let t_fk_alg = std::time::Instant::now();
-                    fk_entries.clear();
-                    for &fb_idx in &alg_large_indices {
-                        let p = alg_fb.primes[fb_idx];
-                        if p == q {
-                            continue;
-                        }
-                        let logp = alg_fb.log_p[fb_idx];
-                        for &root in &alg_fb.roots[fb_idx] {
-                            fk_entries.push((p, root, logp));
-                        }
-                    }
+                    let alg_rp_slice = if !precomputed_alg_rprimes.is_empty() {
+                        let start = sq_idx * n_alg_entries;
+                        Some(&precomputed_alg_rprimes[start..start + n_alg_entries])
+                    } else {
+                        None
+                    };
                     scatter_bucket_updates_fk_batch(
-                        &fk_entries,
+                        &alg_canonical_entries,
                         &qlat,
                         params.log_i,
                         &mut *alg_buckets,
@@ -333,21 +368,21 @@ pub fn sieve_specialq(
                         max_j,
                         half_i,
                         &mut *walk_buf,
+                        alg_rp_slice,
+                        q,
                     );
 
                     let fk_scatter_alg_ns = t_fk_alg.elapsed().as_nanos() as u64;
 
                     let t_fk_rat = std::time::Instant::now();
-                    fk_entries.clear();
-                    for &fb_idx in &rat_large_indices {
-                        let p = rat_fb.primes[fb_idx];
-                        if p == q {
-                            continue;
-                        }
-                        fk_entries.push((p, rat_roots_by_index[fb_idx], rat_fb.log_p[fb_idx]));
-                    }
+                    let rat_rp_slice = if !precomputed_rat_rprimes.is_empty() {
+                        let start = sq_idx * n_rat_entries;
+                        Some(&precomputed_rat_rprimes[start..start + n_rat_entries])
+                    } else {
+                        None
+                    };
                     scatter_bucket_updates_fk_batch(
-                        &fk_entries,
+                        &rat_canonical_entries,
                         &qlat,
                         params.log_i,
                         &mut *rat_buckets,
@@ -355,6 +390,8 @@ pub fn sieve_specialq(
                         max_j,
                         half_i,
                         &mut *walk_buf,
+                        rat_rp_slice,
+                        q,
                     );
                     let fk_scatter_rat_ns = t_fk_rat.elapsed().as_nanos() as u64;
 
@@ -1760,6 +1797,140 @@ fn scatter_bucket_updates_fk(
     }
 }
 
+/// Sentinel value for precomputed r_prime indicating a projective root (denom == 0)
+/// or a failed inverse. The FK batch function treats this as "skip precomputed, use
+/// fallback path".
+const RPRIME_SENTINEL: u64 = u64::MAX;
+
+/// Sentinel indicating a projective root where both numer and denom are zero.
+const RPRIME_PROJECTIVE_BOTH_ZERO: u64 = u64::MAX - 1;
+
+/// Sentinel indicating a projective root where only denom is zero (numer != 0).
+const RPRIME_PROJECTIVE_DENOM_ZERO: u64 = u64::MAX - 2;
+
+/// Precompute transformed roots (r_prime) for all large FB entries across all SQs
+/// in a chunk, using batch modular inverse (Montgomery's trick) to amortize the
+/// cost of `extended_gcd`.
+///
+/// For each FB entry (prime p, root R), the transform_root computation requires:
+///   denom = (a0 - R*b0) mod p
+///   numer = (R*b1 - a1) mod p
+///   r_prime = numer * denom^{-1} mod p
+///
+/// The expensive part is `mod_inverse(denom, p)` which calls `extended_gcd` (~30ns).
+/// By batching all denominators for a given prime p across all SQs in the chunk,
+/// we use Montgomery's trick: 1 extended_gcd + 3*(chunk_len-1) multiplications,
+/// amortizing the per-entry cost to ~10ns.
+///
+/// Returns a flat Vec of r_prime values indexed by `sq_idx * n_entries + entry_idx`.
+/// Projective/failed entries are marked with sentinel values (RPRIME_SENTINEL,
+/// RPRIME_PROJECTIVE_BOTH_ZERO, RPRIME_PROJECTIVE_DENOM_ZERO).
+///
+/// Only entries where p >= sieve_width are precomputed (smaller primes use
+/// scatter_bucket_updates_for_prime which handles transform_root internally).
+fn batch_precompute_rprimes(
+    chunk_qlats: &[QLattice],
+    entries: &[(u64, u64, u8)], // (prime, root, logp) triples - same as passed to FK batch
+    sieve_width: usize,
+) -> Vec<u64> {
+    let n_sq = chunk_qlats.len();
+    let n_entries = entries.len();
+    let total = n_sq * n_entries;
+
+    if total == 0 {
+        return Vec::new();
+    }
+
+    let mut rprimes = vec![RPRIME_SENTINEL; total];
+
+    // Working buffers for batch_mod_inverse. Sized to n_sq (one denom per SQ per entry).
+    let mut denoms = vec![0u64; n_sq];
+    let mut inv_out = vec![0u64; n_sq];
+    // Track which SQ indices had denom == 0 (projective) vs nonzero.
+    let mut denom_zero = vec![false; n_sq];
+
+    for (entry_idx, &(p, root, _logp)) in entries.iter().enumerate() {
+        // Only precompute for entries that the FK batch will process via the FK path
+        // (p >= sieve_width). Smaller primes use scatter_bucket_updates_for_prime.
+        if p < sieve_width as u64 {
+            continue;
+        }
+
+        let r = root as i64;
+        let p_i64 = p as i64;
+
+        // Compute denom and numer for all SQs in the chunk.
+        // Choose i64 or i128 path based on value ranges.
+        let use_fast = root < (1u64 << 31);
+
+        for (sq_idx, qlat) in chunk_qlats.iter().enumerate() {
+            let (denom_val, numer_val) = if use_fast
+                && qlat.b0.unsigned_abs() < (1u64 << 31)
+                && qlat.b1.unsigned_abs() < (1u64 << 31)
+            {
+                let d = (qlat.a0 - r * qlat.b0).rem_euclid(p_i64) as u64;
+                let n = (r * qlat.b1 - qlat.a1).rem_euclid(p_i64) as u64;
+                (d, n)
+            } else {
+                let p_i128 = p as i128;
+                let d = (qlat.a0 as i128 - (root as i128) * (qlat.b0 as i128))
+                    .rem_euclid(p_i128) as u64;
+                let n = ((root as i128) * (qlat.b1 as i128) - qlat.a1 as i128)
+                    .rem_euclid(p_i128) as u64;
+                (d, n)
+            };
+
+            let out_idx = sq_idx * n_entries + entry_idx;
+
+            if denom_val == 0 {
+                // Projective root
+                denom_zero[sq_idx] = true;
+                denoms[sq_idx] = 1; // placeholder for batch (won't be used)
+                rprimes[out_idx] = if numer_val == 0 {
+                    RPRIME_PROJECTIVE_BOTH_ZERO
+                } else {
+                    RPRIME_PROJECTIVE_DENOM_ZERO
+                };
+            } else {
+                denom_zero[sq_idx] = false;
+                denoms[sq_idx] = denom_val;
+                // Store numer temporarily in rprimes; will be multiplied by inverse below.
+                rprimes[out_idx] = numer_val;
+            }
+        }
+
+        // Batch invert all denominators for this (p, root) across all SQs.
+        batch_mod_inverse(&denoms[..n_sq], p, &mut inv_out[..n_sq]);
+
+        // Compute r_prime = numer * inv(denom) mod p for non-projective entries.
+        for sq_idx in 0..n_sq {
+            if denom_zero[sq_idx] {
+                continue; // already set to projective sentinel
+            }
+
+            let out_idx = sq_idx * n_entries + entry_idx;
+            let numer_val = rprimes[out_idx];
+            let inv_val = inv_out[sq_idx];
+
+            if inv_val == 0 {
+                // Inverse failed (shouldn't happen for prime p with nonzero denom, but handle it)
+                rprimes[out_idx] = RPRIME_SENTINEL;
+                continue;
+            }
+
+            // r_prime = numer * inv mod p
+            let r_prime = if p < (1u64 << 32) {
+                numer_val.wrapping_mul(inv_val) % p
+            } else {
+                ((numer_val as u128 * inv_val as u128) % p as u128) as u64
+            };
+            rprimes[out_idx] = r_prime;
+        }
+    }
+
+    rprimes
+}
+
 /// Compact FK walk parameters for batch processing (56 bytes, cache-friendly).
 ///
 /// Pre-computed from root transform + partial-GCD; consumed by the FK walk loop.
@@ -1793,6 +1964,8 @@ fn scatter_bucket_updates_fk_batch(
     max_j: usize,
     half_i: i64,
     walk_buf: &mut Vec<FkWalkParams>,
+    precomputed_rprimes: Option<&[u64]>,
+    skip_q: u64,
 ) {
     let half_width = half_i;
     let sieve_w = sieve_width as i64;
@@ -1802,7 +1975,12 @@ fn scatter_bucket_updates_fk_batch(
     walk_buf.clear();
 
     // --- Phase 1: compute FK walk parameters for all primes ---
-    for &(p, root, logp) in entries {
+    for (entry_idx, &(p, root, logp)) in entries.iter().enumerate() {
+        // Skip entries matching the current special-q prime.
+        if p == skip_q {
+            continue;
+        }
+
         // Pre-filter: primes below sieve_width use row-by-row (original path).
         if p < sieve_width as u64 {
             scatter_bucket_updates_for_prime(
@@ -1811,16 +1989,40 @@ fn scatter_bucket_updates_fk_batch(
             continue;
         }
 
-        // Root transform
-        let r_prime = match transform_root(p, root, qlat) {
-            Err(_) => {
-                // Projective root: delegate to fallback (uses original root).
+        // Root transform: use precomputed r_prime if available, otherwise compute.
+        let r_prime = if let Some(rp_slice) = precomputed_rprimes {
+            let rp = rp_slice[entry_idx];
+            if rp == RPRIME_PROJECTIVE_BOTH_ZERO || rp == RPRIME_PROJECTIVE_DENOM_ZERO {
+                // Projective root: delegate to fallback.
                 scatter_bucket_updates_for_prime(
                     p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
                 );
                 continue;
             }
-            Ok(rp) => rp,
+            if rp == RPRIME_SENTINEL {
+                // Failed inverse or not precomputed: fall back to per-entry computation.
+                match transform_root(p, root, qlat) {
+                    Err(_) => {
+                        scatter_bucket_updates_for_prime(
+                            p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+                        );
+                        continue;
+                    }
+                    Ok(rp_fallback) => rp_fallback,
+                }
+            } else {
+                rp
+            }
+        } else {
+            match transform_root(p, root, qlat) {
+                Err(_) => {
+                    scatter_bucket_updates_for_prime(
+                        p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
+                    );
+                    continue;
+                }
+                Ok(rp) => rp,
+            }
         };
 
         // Quick hit check.
@@ -2506,12 +2708,13 @@ mod tests {
             p, root, logp, qlat, log_i, &mut buckets_fk, sieve_width, max_j, half_i,
         );
 
-        // Also test batch version
+        // Also test batch version (no precomputed r_primes, skip_q=0 to skip nothing)
         let mut buckets_batch = BucketArray::new(n_buckets, cap.max(16));
         let entries = vec![(p, root, logp)];
         let mut walk_buf = Vec::new();
         scatter_bucket_updates_fk_batch(
             &entries, qlat, log_i, &mut buckets_batch, sieve_width, max_j, half_i, &mut walk_buf,
+            None, 0,
         );
         let batch_pos = extract_positions(&buckets_batch);
 
@@ -2748,6 +2951,125 @@ mod tests {
                     p, root
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_batch_precompute_rprimes_matches_transform_root() {
+        // Verify that batch_precompute_rprimes produces the same r_prime values
+        // as calling transform_root individually for each (entry, qlattice) pair.
+        let qlats = vec![
+            reduce_qlattice(97, 30, 1.0),
+            reduce_qlattice(101, 42, 1.0),
+            reduce_qlattice(65537, 12345, 1.0),
+            reduce_qlattice(1009, 500, 2.0),
+        ];
+
+        // Entries with p >= 16 (sieve_width for log_i=3)
+        let sieve_width = 16usize;
+        let entries: Vec<(u64, u64, u8)> = vec![
+            (37, 10, 7),
+            (41, 20, 7),
+            (43, 15, 7),
+            (53, 25, 7),
+            (521, 100, 7),
+            (1009, 500, 7),
+            (1021, 510, 7),
+            (4099, 2049, 7),
+        ];
+
+        let rprimes = batch_precompute_rprimes(&qlats, &entries, sieve_width);
+        let n_entries = entries.len();
+
+        for (sq_idx, qlat) in qlats.iter().enumerate() {
+            for (entry_idx, &(p, root, _logp)) in entries.iter().enumerate() {
+                if p < sieve_width as u64 {
+                    continue; // not precomputed
+                }
+                let batch_rp = rprimes[sq_idx * n_entries + entry_idx];
+                let individual_result = transform_root(p, root, qlat);
+
+                match individual_result {
+                    Ok(expected_rp) => {
+                        assert_eq!(
+                            batch_rp, expected_rp,
+                            "r_prime mismatch for p={}, root={}, sq_idx={}: batch={} expected={}",
+                            p, root, sq_idx, batch_rp, expected_rp
+                        );
+                    }
+                    Err(both_zero) => {
+                        if both_zero {
+                            assert_eq!(
+                                batch_rp, RPRIME_PROJECTIVE_BOTH_ZERO,
+                                "Expected PROJECTIVE_BOTH_ZERO for p={}, root={}, sq_idx={}",
+                                p, root, sq_idx
+                            );
+                        } else {
+                            assert_eq!(
+                                batch_rp, RPRIME_PROJECTIVE_DENOM_ZERO,
+                                "Expected PROJECTIVE_DENOM_ZERO for p={}, root={}, sq_idx={}",
+                                p, root, sq_idx
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_fk_batch_with_precomputed_rprimes_matches_without() {
+        // Verify that FK batch with precomputed r_primes produces the same
+        // bucket updates as FK batch without precomputation (None).
+        let qlats = vec![
+            reduce_qlattice(97, 30, 1.0),
+            reduce_qlattice(65537, 12345, 1.0),
+        ];
+
+        let log_i = 4; // half_i = 16, sieve_width = 32
+        let half_i = 1i64 << log_i;
+        let sieve_width = (2 * half_i) as usize;
+        let max_j = half_i as usize;
+        let n_buckets = (sieve_width * max_j + BUCKET_REGION - 1) / BUCKET_REGION;
+        let cap = 1024;
+
+        let entries: Vec<(u64, u64, u8)> = vec![
+            (37, 10, 7),
+            (41, 20, 7),
+            (53, 25, 7),
+            (67, 33, 7),
+            (79, 40, 7),
+            (89, 44, 7),
+        ];
+
+        let rprimes = batch_precompute_rprimes(&qlats, &entries, sieve_width);
+        let n_entries = entries.len();
+
+        for (sq_idx, qlat) in qlats.iter().enumerate() {
+            // Without precomputation
+            let mut buckets_no_pre = BucketArray::new(n_buckets.max(1), cap);
+            let mut walk_buf_no_pre = Vec::new();
+            scatter_bucket_updates_fk_batch(
+                &entries, qlat, log_i, &mut buckets_no_pre, sieve_width, max_j, half_i,
+                &mut walk_buf_no_pre, None, 0,
+            );
+            let pos_no_pre = extract_positions(&buckets_no_pre);
+
+            // With precomputation
+            let mut buckets_pre = BucketArray::new(n_buckets.max(1), cap);
+            let mut walk_buf_pre = Vec::new();
+            let rp_slice = &rprimes[sq_idx * n_entries..(sq_idx + 1) * n_entries];
+            scatter_bucket_updates_fk_batch(
+                &entries, qlat, log_i, &mut buckets_pre, sieve_width, max_j, half_i,
+                &mut walk_buf_pre, Some(rp_slice), 0,
+            );
+            let pos_pre = extract_positions(&buckets_pre);
+
+            assert_eq!(
+                pos_no_pre, pos_pre,
+                "Precomputed r_primes produce different results for sq_idx={}",
+                sq_idx
+            );
         }
     }
 }
