@@ -109,7 +109,7 @@ impl NfsParams {
             sieve_mfb1: 30,
             log_i: 9,
             qmin: 35_000,
-            qrange: 3_000,
+            qrange: 750,  // tuned: smaller windows for better adaptive efficiency
             rels_wanted: 45_000,
         }
     }
