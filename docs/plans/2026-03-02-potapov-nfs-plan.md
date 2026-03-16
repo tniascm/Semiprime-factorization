@@ -1,31 +1,31 @@
-# Rust-NFS Implementation Plan
+# Potapov-NFS Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build a production NFS sieve in Rust that beats CADO-NFS on 96-128 bit semiprimes.
 
-**Architecture:** New standalone crate `rust-nfs` implementing CADO's bucket sieve + special-q lattice sieve + cofactorization chain, reusing `gnfs` for LA and square root. All sieve arithmetic uses u64 Montgomery form. Parallelism via rayon.
+**Architecture:** New standalone crate `potapov-nfs` implementing CADO's bucket sieve + special-q lattice sieve + cofactorization chain, reusing `gnfs` for LA and square root. All sieve arithmetic uses u64 Montgomery form. Parallelism via rayon.
 
 **Tech Stack:** Rust, rayon, rug (for LA/sqrt big integers), gnfs crate (LA, sqrt, polynomial selection)
 
-**Design Doc:** `docs/plans/2026-03-02-rust-nfs-design.md`
+**Design Doc:** `docs/plans/2026-03-02-potapov-nfs-design.md`
 
 ---
 
 ## Task 1: Scaffold Crate + Types + Parameters
 
 **Files:**
-- Create: `rust/rust-nfs/Cargo.toml`
-- Create: `rust/rust-nfs/src/lib.rs`
-- Create: `rust/rust-nfs/src/main.rs`
-- Create: `rust/rust-nfs/src/params.rs`
-- Create: `rust/rust-nfs/src/relation.rs`
+- Create: `rust/potapov-nfs/Cargo.toml`
+- Create: `rust/potapov-nfs/src/lib.rs`
+- Create: `rust/potapov-nfs/src/main.rs`
+- Create: `rust/potapov-nfs/src/params.rs`
+- Create: `rust/potapov-nfs/src/relation.rs`
 
 **Step 1: Create Cargo.toml**
 
 ```toml
 [package]
-name = "rust-nfs"
+name = "potapov-nfs"
 version = "0.1.0"
 edition = "2021"
 description = "Production NFS implementation — bucket sieve + special-q lattice sieve"
@@ -226,7 +226,7 @@ pub use relation::Relation;
 use clap::Parser;
 
 #[derive(Parser)]
-#[command(name = "rust-nfs", about = "Production NFS factorization")]
+#[command(name = "potapov-nfs", about = "Production NFS factorization")]
 struct Cli {
     /// Number to factor (decimal)
     #[arg(long)]
@@ -253,25 +253,25 @@ fn main() {
             .build_global()
             .unwrap();
     }
-    eprintln!("rust-nfs: not yet implemented");
+    eprintln!("potapov-nfs: not yet implemented");
 }
 ```
 
 **Step 5: Verify it compiles**
 
-Run: `cd /Users/andriipotapov/Semiprime/rust/rust-nfs && cargo check`
+Run: `cd /Users/andriipotapov/Semiprime/rust/potapov-nfs && cargo check`
 Expected: Compiles with no errors.
 
 **Step 6: Run tests**
 
-Run: `cargo test -p rust-nfs`
+Run: `cargo test -p potapov-nfs`
 Expected: 2 tests pass (params tests).
 
 **Step 7: Commit**
 
 ```bash
-git add rust/rust-nfs/
-git commit -m "feat(rust-nfs): scaffold crate with CADO-matched params and relation types"
+git add rust/potapov-nfs/
+git commit -m "feat(potapov-nfs): scaffold crate with CADO-matched params and relation types"
 ```
 
 ---
@@ -281,8 +281,8 @@ git commit -m "feat(rust-nfs): scaffold crate with CADO-matched params and relat
 Foundation for all sieve arithmetic: trial division, P-1, P+1, ECM.
 
 **Files:**
-- Create: `rust/rust-nfs/src/arith.rs`
-- Modify: `rust/rust-nfs/src/lib.rs` — add `pub mod arith;`
+- Create: `rust/potapov-nfs/src/arith.rs`
+- Modify: `rust/potapov-nfs/src/lib.rs` — add `pub mod arith;`
 
 **Step 1: Write failing tests for Montgomery arithmetic**
 
@@ -453,7 +453,7 @@ mod tests {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p rust-nfs arith -- --nocapture`
+Run: `cargo test -p potapov-nfs arith -- --nocapture`
 Expected: FAIL — all `todo!()` functions panic.
 
 **Step 3: Implement Montgomery arithmetic**
@@ -469,14 +469,14 @@ Implement all functions. Key algorithms:
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p rust-nfs arith`
+Run: `cargo test -p potapov-nfs arith`
 Expected: All 8 tests pass.
 
 **Step 5: Commit**
 
 ```bash
-git add rust/rust-nfs/src/arith.rs
-git commit -m "feat(rust-nfs): Montgomery u64 arithmetic + trial divisor + Miller-Rabin"
+git add rust/potapov-nfs/src/arith.rs
+git commit -m "feat(potapov-nfs): Montgomery u64 arithmetic + trial divisor + Miller-Rabin"
 ```
 
 ---
@@ -484,8 +484,8 @@ git commit -m "feat(rust-nfs): Montgomery u64 arithmetic + trial divisor + Mille
 ## Task 3: Factor Base Construction
 
 **Files:**
-- Create: `rust/rust-nfs/src/factorbase.rs`
-- Modify: `rust/rust-nfs/src/lib.rs` — add `pub mod factorbase;`
+- Create: `rust/potapov-nfs/src/factorbase.rs`
+- Modify: `rust/potapov-nfs/src/lib.rs` — add `pub mod factorbase;`
 
 **Step 1: Write failing tests**
 
@@ -599,9 +599,9 @@ mod tests {
 ## Task 4: Q-Lattice Reduction
 
 **Files:**
-- Create: `rust/rust-nfs/src/sieve/mod.rs`
-- Create: `rust/rust-nfs/src/sieve/lattice.rs`
-- Modify: `rust/rust-nfs/src/lib.rs` — add `pub mod sieve;`
+- Create: `rust/potapov-nfs/src/sieve/mod.rs`
+- Create: `rust/potapov-nfs/src/sieve/lattice.rs`
+- Modify: `rust/potapov-nfs/src/lib.rs` — add `pub mod sieve;`
 
 **Step 1: Write failing tests for skew Gaussian lattice reduction**
 
@@ -710,7 +710,7 @@ Compute walk parameters: inc_step, inc_warp, bounds
 ## Task 5: Bucket Sieve Data Structure
 
 **Files:**
-- Create: `rust/rust-nfs/src/sieve/bucket.rs`
+- Create: `rust/potapov-nfs/src/sieve/bucket.rs`
 
 **Step 1: Write failing tests**
 
@@ -810,8 +810,8 @@ mod tests {
 ## Task 6: Norm Initialization + Small Sieve
 
 **Files:**
-- Create: `rust/rust-nfs/src/sieve/norm.rs`
-- Create: `rust/rust-nfs/src/sieve/small.rs`
+- Create: `rust/potapov-nfs/src/sieve/norm.rs`
+- Create: `rust/potapov-nfs/src/sieve/small.rs`
 
 **Step 1: Implement u8 log-norm initialization**
 
@@ -890,7 +890,7 @@ pub fn small_sieve_alg(
 ## Task 7: Per-Region Processing + Survivor Collection
 
 **Files:**
-- Create: `rust/rust-nfs/src/sieve/region.rs`
+- Create: `rust/potapov-nfs/src/sieve/region.rs`
 
 **Step 1: Implement per-bucket-region processing**
 
@@ -961,7 +961,7 @@ pub fn scan_survivors(
 ## Task 8: Special-Q Sieve Loop
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs` — main sieve orchestration
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs` — main sieve orchestration
 
 **Step 1: Implement the full special-q sieve loop**
 
@@ -1040,12 +1040,12 @@ mod tests {
 ## Task 9: Cofactorization Pipeline (Trial Div + P-1 + P+1 + ECM)
 
 **Files:**
-- Create: `rust/rust-nfs/src/cofactor/mod.rs`
-- Create: `rust/rust-nfs/src/cofactor/trialdiv.rs`
-- Create: `rust/rust-nfs/src/cofactor/pm1.rs`
-- Create: `rust/rust-nfs/src/cofactor/pp1.rs`
-- Create: `rust/rust-nfs/src/cofactor/ecm.rs`
-- Modify: `rust/rust-nfs/src/lib.rs` — add `pub mod cofactor;`
+- Create: `rust/potapov-nfs/src/cofactor/mod.rs`
+- Create: `rust/potapov-nfs/src/cofactor/trialdiv.rs`
+- Create: `rust/potapov-nfs/src/cofactor/pm1.rs`
+- Create: `rust/potapov-nfs/src/cofactor/pp1.rs`
+- Create: `rust/potapov-nfs/src/cofactor/ecm.rs`
+- Modify: `rust/potapov-nfs/src/lib.rs` — add `pub mod cofactor;`
 
 **Step 1: Implement Montgomery trial division**
 
@@ -1261,8 +1261,8 @@ mod tests {
 ## Task 10: Filtering (Singleton + Duplicate Removal)
 
 **Files:**
-- Create: `rust/rust-nfs/src/filter.rs`
-- Modify: `rust/rust-nfs/src/lib.rs` — add `pub mod filter;`
+- Create: `rust/potapov-nfs/src/filter.rs`
+- Modify: `rust/potapov-nfs/src/lib.rs` — add `pub mod filter;`
 
 **Step 1: Implement singleton and duplicate removal**
 
@@ -1323,8 +1323,8 @@ pub fn filter_relations(relations: Vec<Relation>) -> Vec<Relation> {
 ## Task 11: Full Pipeline Integration
 
 **Files:**
-- Create: `rust/rust-nfs/src/pipeline.rs`
-- Modify: `rust/rust-nfs/src/lib.rs` — add `pub mod pipeline; pub mod filter;`
+- Create: `rust/potapov-nfs/src/pipeline.rs`
+- Modify: `rust/potapov-nfs/src/lib.rs` — add `pub mod pipeline; pub mod filter;`
 
 **Step 1: Implement the full NFS pipeline**
 
@@ -1391,7 +1391,7 @@ mod tests {
 ## Task 12: CLI + Benchmark + Head-to-Head
 
 **Files:**
-- Modify: `rust/rust-nfs/src/main.rs` — full CLI implementation
+- Modify: `rust/potapov-nfs/src/main.rs` — full CLI implementation
 
 **Step 1: Implement CLI with factor and benchmark modes**
 
@@ -1451,7 +1451,7 @@ fn benchmark(bit_sizes: &[u32], semiprimes_per_size: usize) {
 
 **Step 2: Run benchmark at 96-bit to validate**
 
-Run: `cd /Users/andriipotapov/Semiprime/rust/rust-nfs && cargo run --release -- --bits 96 --semiprimes 1`
+Run: `cd /Users/andriipotapov/Semiprime/rust/potapov-nfs && cargo run --release -- --bits 96 --semiprimes 1`
 Expected: Factors a 96-bit semiprime. Record rels/sec.
 
 **Step 3: Run CADO-NFS on same semiprime for comparison**
@@ -1466,8 +1466,8 @@ Record: rels/sec, wall time, factor found.
 **Step 5: Commit benchmark results**
 
 ```bash
-git add rust/rust-nfs/
-git commit -m "feat(rust-nfs): full NFS pipeline with benchmark harness"
+git add rust/potapov-nfs/
+git commit -m "feat(potapov-nfs): full NFS pipeline with benchmark harness"
 ```
 
 ---

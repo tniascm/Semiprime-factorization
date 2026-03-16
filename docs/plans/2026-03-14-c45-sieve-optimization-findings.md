@@ -89,7 +89,7 @@ requiring vastly more SQs that overwhelm any per-SQ savings.
 
 ### 4. log_i=10 (original finding, detailed)
 
-**Change:** `RUST_NFS_OVR_LOG_I=10` → sieve area 4x larger (2M vs 512K positions).
+**Change:** `POTAPOV_NFS_OVR_LOG_I=10` → sieve area 4x larger (2M vs 512K positions).
 
 **Result:**
 - Variant 1: sieve=24.2s (setup=13.0s, scan=11.0s) — 27% SLOWER

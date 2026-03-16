@@ -1,4 +1,4 @@
-# Rust-NFS Optimization: Findings, Reflections, and Lessons Learned
+# Potapov-NFS Optimization: Findings, Reflections, and Lessons Learned
 
 **Date**: 2026-03-12
 **Branch**: `feat/cado-parity-phase2` (55 commits, merged to main)
@@ -160,7 +160,7 @@ in polyselect is an investment, not overhead.
 ### Observability Framework
 
 Created `timing.rs` with `StageTimer`, `StageResult`, and `PipelineTimings`.
-Per-stage JSON output (via `RUST_NFS_TIMING_JSON=1`) with sub-stage metrics:
+Per-stage JSON output (via `POTAPOV_NFS_TIMING_JSON=1`) with sub-stage metrics:
 
 ```json
 {"stage": "sieve", "wall_ms": 256, "special_qs": 580, "ms_per_sq": 0.44,
@@ -169,7 +169,7 @@ Per-stage JSON output (via `RUST_NFS_TIMING_JSON=1`) with sub-stage metrics:
 
 This was critical for diagnosis. Without per-stage timing, all optimization
 would have been guesswork. Configurable timeouts via environment variables
-(`RUST_NFS_SIEVE_TIMEOUT_MS`, etc.) provide graceful degradation.
+(`POTAPOV_NFS_SIEVE_TIMEOUT_MS`, etc.) provide graceful degradation.
 
 ### Adaptive vs Fixed Sieve
 

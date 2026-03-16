@@ -14,17 +14,17 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `rust/rust-nfs/src/params.rs` | Modify | Add `c45_bucket()` params with log_i=11 |
-| `rust/rust-nfs/src/sieve/mod.rs` | Modify | Add `bucket_sieve_specialq` function |
-| `rust/rust-nfs/src/pipeline.rs` | Modify | Auto-select bucket sieve for c45 |
-| `rust/rust-nfs/src/sieve/bucket.rs` | Modify | Scale BucketArray for larger n_buckets |
+| `rust/potapov-nfs/src/params.rs` | Modify | Add `c45_bucket()` params with log_i=11 |
+| `rust/potapov-nfs/src/sieve/mod.rs` | Modify | Add `bucket_sieve_specialq` function |
+| `rust/potapov-nfs/src/pipeline.rs` | Modify | Auto-select bucket sieve for c45 |
+| `rust/potapov-nfs/src/sieve/bucket.rs` | Modify | Scale BucketArray for larger n_buckets |
 
 ---
 
 ### Task 1: Add c45 Bucket Parameters
 
 **Files:**
-- Modify: `rust/rust-nfs/src/params.rs`
+- Modify: `rust/potapov-nfs/src/params.rs`
 
 - [ ] **Step 1: Add `c45_bucket()` parameter set**
 
@@ -60,7 +60,7 @@ Expected: PASS (new function doesn't break existing)
 - [ ] **Step 3: Commit**
 
 ```bash
-git add rust/rust-nfs/src/params.rs
+git add rust/potapov-nfs/src/params.rs
 git commit -m "params: add c45_bucket preset with log_i=11 for bucket sieve"
 ```
 
@@ -69,7 +69,7 @@ git commit -m "params: add c45_bucket preset with log_i=11 for bucket sieve"
 ### Task 2: Implement `bucket_sieve_specialq`
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs`
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs`
 
 This is the core task. The function is structurally identical to `sieve_specialq` but with:
 1. Higher bucket_thresh (sieve_width instead of 256) — more primes use FK scatter
@@ -124,7 +124,7 @@ Expected: PASS (new function not yet called from pipeline)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rust/rust-nfs/src/sieve/mod.rs
+git add rust/potapov-nfs/src/sieve/mod.rs
 git commit -m "sieve: add bucket_sieve_specialq for large-area c45 sieving"
 ```
 
@@ -133,14 +133,14 @@ git commit -m "sieve: add bucket_sieve_specialq for large-area c45 sieving"
 ### Task 3: Wire into Pipeline with Auto-Selection
 
 **Files:**
-- Modify: `rust/rust-nfs/src/pipeline.rs`
+- Modify: `rust/potapov-nfs/src/pipeline.rs`
 
 - [ ] **Step 1: Add sieve mode selection logic**
 
 Near the existing `use_line_sieve` toggle (line 874), add bucket sieve selection:
 
 ```rust
-let sieve_mode = std::env::var("RUST_NFS_SIEVE_MODE")
+let sieve_mode = std::env::var("POTAPOV_NFS_SIEVE_MODE")
     .unwrap_or_else(|_| "auto".to_string());
 
 let use_bucket_sieve = match sieve_mode.as_str() {
@@ -186,7 +186,7 @@ Expected: PASS
 - [ ] **Step 4: Benchmark c45 with bucket sieve**
 
 ```bash
-RUST_NFS_SIEVE_PROFILE=1 cargo run --release -- --bits 148 --semiprimes 1 --seed 42 --threads 1
+POTAPOV_NFS_SIEVE_PROFILE=1 cargo run --release -- --bits 148 --semiprimes 1 --seed 42 --threads 1
 ```
 Expected: Bucket sieve auto-selected, sieve time < 10s (initial, untuned)
 
@@ -200,7 +200,7 @@ Expected: 3/3 factored, mean < 1000ms (scatter sieve auto-selected)
 - [ ] **Step 6: Commit**
 
 ```bash
-git add rust/rust-nfs/src/pipeline.rs
+git add rust/potapov-nfs/src/pipeline.rs
 git commit -m "pipeline: auto-select bucket sieve for c45 (degree>=4, bits>=130)"
 ```
 
@@ -209,12 +209,12 @@ git commit -m "pipeline: auto-select bucket sieve for c45 (degree>=4, bits>=130)
 ### Task 4: Tune Parameters for I=11
 
 **Files:**
-- Modify: `rust/rust-nfs/src/params.rs`
+- Modify: `rust/potapov-nfs/src/params.rs`
 
 - [ ] **Step 1: Sweep I=10 vs I=11 with bucket sieve**
 
 ```bash
-RUST_NFS_SIEVE_PROFILE=1 cargo run --release -- --bits 148 --semiprimes 1 --seed 42 --threads 1
+POTAPOV_NFS_SIEVE_PROFILE=1 cargo run --release -- --bits 148 --semiprimes 1 --seed 42 --threads 1
 ```
 
 Record: sieve time, rels/SQ, n_SQs, setup time, scan time.
@@ -242,7 +242,7 @@ Expected: 3/3 factored, total < 5s
 - [ ] **Step 6: Commit**
 
 ```bash
-git add rust/rust-nfs/src/params.rs
+git add rust/potapov-nfs/src/params.rs
 git commit -m "params: tune c45_bucket for optimal I and relation yield"
 ```
 
@@ -256,7 +256,7 @@ git commit -m "params: tune c45_bucket for optimal I and relation yield"
 - [ ] **Step 1: MT benchmark**
 
 ```bash
-RUST_NFS_SIEVE_PROFILE=1 cargo run --release -- --bits 148 --semiprimes 3 --seed 42
+POTAPOV_NFS_SIEVE_PROFILE=1 cargo run --release -- --bits 148 --semiprimes 3 --seed 42
 ```
 Expected: Uses all available cores, total < 3s MT
 

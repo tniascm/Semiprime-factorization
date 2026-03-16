@@ -11,7 +11,7 @@
 
 Three compounding mismatches vs CADO params.c30:
 
-| Issue | Rust-NFS | CADO c30 | Impact |
+| Issue | Potapov-NFS | CADO c30 | Impact |
 |-------|----------|----------|--------|
 | Sieve area (log_i) | 7 (area=32K) | 9 (area=524K) | 16x less area per q, need 16x more q's |
 | Sieve threshold | mfb=36 (2LP bump) | mfb=18 (no bump) | 9x more false survivors (230k vs ~30k) |

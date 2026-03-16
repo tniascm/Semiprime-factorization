@@ -6,7 +6,7 @@
 
 **Architecture:** (1) Replace row-by-row bucket scatter with Franke-Kleinjung lattice enumerator that uses packed 1D coordinates and two-addition inner loop. (2) Decouple sieve survivor threshold from 2LP mfb bump so cofactoring doesn't waste time on 91% false positives. (3) Add coprimality pre-filter in FK inner loop to skip both-even (i,j) pairs.
 
-**Tech Stack:** Rust, no new dependencies. All changes in `rust/rust-nfs/src/sieve/`.
+**Tech Stack:** Rust, no new dependencies. All changes in `rust/potapov-nfs/src/sieve/`.
 
 ---
 
@@ -15,11 +15,11 @@
 This is the trivial high-impact fix. Currently `rat_bound = (params.mfb0 * scale)` where mfb0 gets bumped from 18 to 36 for 2LP. CADO never inflates the sieve threshold for 2LP — it handles 2LP entirely in cofactor strategy. We should cap the sieve threshold at `2 * lpb` (the maximum un-bumped mfb).
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs:326-327`
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs:326-327`
 
 **Step 1: Write the failing test**
 
-Add to `rust/rust-nfs/src/sieve/mod.rs` in the `#[cfg(test)] mod tests` block:
+Add to `rust/potapov-nfs/src/sieve/mod.rs` in the `#[cfg(test)] mod tests` block:
 
 ```rust
 #[test]
@@ -44,11 +44,11 @@ fn test_sieve_bound_not_inflated_by_2lp_mfb() {
 
 **Step 2: Run test to verify it passes** (this is a unit logic test, it passes immediately since it tests arithmetic)
 
-Run: `cd rust/rust-nfs && cargo test test_sieve_bound_not_inflated_by_2lp_mfb -- --nocapture`
+Run: `cd rust/potapov-nfs && cargo test test_sieve_bound_not_inflated_by_2lp_mfb -- --nocapture`
 
 **Step 3: Apply the fix**
 
-In `rust/rust-nfs/src/sieve/mod.rs`, change lines 326-327 from:
+In `rust/potapov-nfs/src/sieve/mod.rs`, change lines 326-327 from:
 
 ```rust
 let rat_bound = ((params.mfb0 as f64) * scale).min(255.0) as u8;
@@ -66,19 +66,19 @@ let alg_bound = ((sieve_mfb1 as f64) * scale).min(255.0) as u8;
 
 **Step 4: Run full test suite**
 
-Run: `cd rust/rust-nfs && cargo test`
+Run: `cd rust/potapov-nfs && cargo test`
 Expected: All tests pass.
 
 **Step 5: Benchmark to measure impact**
 
-Run: `cd rust/rust-nfs && cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep -E '(sieve:|total_ms|survivors)'`
+Run: `cd rust/potapov-nfs && cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep -E '(sieve:|total_ms|survivors)'`
 
 Expected: Survivor count should drop significantly (from ~234k to ~50-80k), cofactor time should drop proportionally.
 
 **Step 6: Commit**
 
 ```bash
-git add rust/rust-nfs/src/sieve/mod.rs
+git add rust/potapov-nfs/src/sieve/mod.rs
 git commit -m "sieve: cap survivor threshold at 2*lpb to avoid 2LP mfb inflation"
 ```
 
@@ -89,12 +89,12 @@ git commit -m "sieve: cap survivor threshold at 2*lpb to avoid 2LP mfb inflation
 Replace `scatter_bucket_updates_for_prime` with a function that uses the existing `PLattice` from `lattice.rs` (already has `reduce_plattice` with FK walk parameters). The existing `reduce_plattice` already computes `inc_step`, `inc_warp`, `bound_step`, `bound_warp` — we just need to use them.
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs:639-728` (replace `scatter_bucket_updates_for_prime`)
-- Read: `rust/rust-nfs/src/sieve/lattice.rs:116-288` (existing `PLattice` and `reduce_plattice`)
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs:639-728` (replace `scatter_bucket_updates_for_prime`)
+- Read: `rust/potapov-nfs/src/sieve/lattice.rs:116-288` (existing `PLattice` and `reduce_plattice`)
 
 **Step 1: Write the failing test**
 
-Add to `rust/rust-nfs/src/sieve/mod.rs` tests:
+Add to `rust/potapov-nfs/src/sieve/mod.rs` tests:
 
 ```rust
 #[test]
@@ -160,12 +160,12 @@ fn test_fk_scatter_matches_naive_scatter() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd rust/rust-nfs && cargo test test_fk_scatter_matches_naive_scatter`
+Run: `cd rust/potapov-nfs && cargo test test_fk_scatter_matches_naive_scatter`
 Expected: FAIL — `scatter_bucket_updates_fk` does not exist yet.
 
 **Step 3: Implement `scatter_bucket_updates_fk`**
 
-Add this function in `rust/rust-nfs/src/sieve/mod.rs` right after `scatter_bucket_updates_for_prime` (line ~728):
+Add this function in `rust/potapov-nfs/src/sieve/mod.rs` right after `scatter_bucket_updates_for_prime` (line ~728):
 
 ```rust
 /// Scatter bucket updates using Franke-Kleinjung lattice enumeration.
@@ -274,13 +274,13 @@ fn scatter_bucket_updates_fk(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd rust/rust-nfs && cargo test test_fk_scatter_matches_naive_scatter -- --nocapture`
+Run: `cd rust/potapov-nfs && cargo test test_fk_scatter_matches_naive_scatter -- --nocapture`
 Expected: PASS — both functions produce the same set of hits.
 
 **Step 5: Commit**
 
 ```bash
-git add rust/rust-nfs/src/sieve/mod.rs
+git add rust/potapov-nfs/src/sieve/mod.rs
 git commit -m "sieve: add FK lattice enumerator scatter_bucket_updates_fk"
 ```
 
@@ -296,8 +296,8 @@ The initial FK implementation may have edge cases around:
 - Very small primes near bucket_thresh boundary
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs` (FK function + tests)
-- Modify: `rust/rust-nfs/src/sieve/lattice.rs` (may need to fix reduce_plattice for projective case)
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs` (FK function + tests)
+- Modify: `rust/potapov-nfs/src/sieve/lattice.rs` (may need to fix reduce_plattice for projective case)
 
 **Step 1: Write edge case tests**
 
@@ -360,7 +360,7 @@ fn test_fk_scatter_large_prime_single_hit_per_row() {
 
 **Step 2: Run edge case tests, fix any mismatches**
 
-Run: `cd rust/rust-nfs && cargo test test_fk_scatter -- --nocapture`
+Run: `cd rust/potapov-nfs && cargo test test_fk_scatter -- --nocapture`
 Expected: If any fail, debug and fix the FK implementation or the reduce_plattice start position.
 
 **Step 3: Fix issues found**
@@ -392,13 +392,13 @@ Wait — that defeats the purpose for projective roots. Better: check if reduce_
 
 **Step 4: Run full test suite**
 
-Run: `cd rust/rust-nfs && cargo test`
+Run: `cd rust/potapov-nfs && cargo test`
 Expected: All tests pass.
 
 **Step 5: Commit**
 
 ```bash
-git add rust/rust-nfs/src/sieve/mod.rs rust/rust-nfs/src/sieve/lattice.rs
+git add rust/potapov-nfs/src/sieve/mod.rs rust/potapov-nfs/src/sieve/lattice.rs
 git commit -m "sieve: fix FK enumerator edge cases (projective roots, start position)"
 ```
 
@@ -409,7 +409,7 @@ git commit -m "sieve: fix FK enumerator edge cases (projective roots, start posi
 Replace the calls to `scatter_bucket_updates_for_prime` in the main sieve loop (lines 281-317 of mod.rs) with `scatter_bucket_updates_fk`.
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs:281-317`
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs:281-317`
 
 **Step 1: Replace the scatter calls**
 
@@ -461,18 +461,18 @@ for &fb_idx in &rat_large_indices {
 
 **Step 2: Run full test suite**
 
-Run: `cd rust/rust-nfs && cargo test`
+Run: `cd rust/potapov-nfs && cargo test`
 Expected: All tests pass.
 
 **Step 3: Run end-to-end factorization**
 
-Run: `cd rust/rust-nfs && cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep -E 'Factor:|sieve:|total_ms'`
+Run: `cd rust/potapov-nfs && cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep -E 'Factor:|sieve:|total_ms'`
 Expected: Correct factorization, faster sieve time.
 
 **Step 4: Commit**
 
 ```bash
-git add rust/rust-nfs/src/sieve/mod.rs
+git add rust/potapov-nfs/src/sieve/mod.rs
 git commit -m "sieve: wire FK enumerator into main sieve loop"
 ```
 
@@ -483,7 +483,7 @@ git commit -m "sieve: wire FK enumerator into main sieve loop"
 Add a fast coprimality check in the FK inner loop: skip positions where both i and j are even (gcd(i,j) >= 2). In packed coordinates, i is even when `x & 1 == 0` and j is even when `(x >> log_sieve_width) & 1 == 0`.
 
 **Files:**
-- Modify: `rust/rust-nfs/src/sieve/mod.rs` (FK function inner loop)
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs` (FK function inner loop)
 
 **Step 1: Write test**
 
@@ -526,7 +526,7 @@ fn test_coprime_filter_removes_even_pairs() {
 
 **Step 2: Run test**
 
-Run: `cd rust/rust-nfs && cargo test test_coprime_filter_removes_even_pairs`
+Run: `cd rust/potapov-nfs && cargo test test_coprime_filter_removes_even_pairs`
 
 **Step 3: Add the filter to FK inner loop**
 
@@ -548,13 +548,13 @@ Note: `log_sieve_width = log_i + 1` since `sieve_width = 2 * half_i = 2^(log_i+1
 
 **Step 4: Run full test suite and end-to-end**
 
-Run: `cd rust/rust-nfs && cargo test && cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep 'Factor:'`
+Run: `cd rust/potapov-nfs && cargo test && cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep 'Factor:'`
 Expected: All tests pass, correct factorization.
 
 **Step 5: Commit**
 
 ```bash
-git add rust/rust-nfs/src/sieve/mod.rs
+git add rust/potapov-nfs/src/sieve/mod.rs
 git commit -m "sieve: add coprimality pre-filter in FK inner loop"
 ```
 
@@ -587,7 +587,7 @@ done
 **Step 3: Sieve profile breakdown**
 
 ```bash
-RUST_NFS_SIEVE_PROFILE=1 cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep -E '(sieve-profile|sieve:|setup=)'
+POTAPOV_NFS_SIEVE_PROFILE=1 cargo run --release -- --factor 684217602914977371691118975023 --threads 1 2>&1 | grep -E '(sieve-profile|sieve:|setup=)'
 ```
 
 Expected: `setup=` should drop from ~3600ms to ~500-800ms (the FK enumerator eliminates the i128 modular arithmetic bottleneck).
@@ -603,6 +603,6 @@ cargo run --release -- --bits 45 --semiprimes 3 --seed 123 --threads 1 2>&1 | ta
 **Step 6: Commit**
 
 ```bash
-git add rust/rust-nfs/progress.md
+git add rust/potapov-nfs/progress.md
 git commit -m "sieve: update benchmark numbers after FK enumerator + threshold fix"
 ```

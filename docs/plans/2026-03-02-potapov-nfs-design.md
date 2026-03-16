@@ -1,4 +1,4 @@
-# Rust-NFS: Production NFS Implementation to Beat CADO-NFS
+# Potapov-NFS: Production NFS Implementation to Beat CADO-NFS
 
 **Date**: 2026-03-02
 **Status**: Approved
@@ -31,10 +31,10 @@ cofactorization, filtering, linear algebra, and square root.
 
 ## Architecture
 
-New crate `rust-nfs` under `rust/rust-nfs/`, depending on `gnfs` for LA/sqrt.
+New crate `potapov-nfs` under `rust/potapov-nfs/`, depending on `gnfs` for LA/sqrt.
 
 ```
-rust-nfs/
+potapov-nfs/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs           # Public API: factor(n) -> Vec<Integer>
@@ -334,7 +334,7 @@ pub fn params_c40() -> NfsParams {
 
 1. Generate 3 fixed semiprimes at each of 96, 112, 128 bits (seed=42).
 2. Run CADO-NFS via `cado-evolve` wrapper on each. Record wall time, rels/sec.
-3. Run rust-nfs on same semiprimes. Record wall time, rels/sec.
+3. Run potapov-nfs on same semiprimes. Record wall time, rels/sec.
 4. Both use 8 threads for fair comparison.
 5. Compare: sieve time, total time, rels/sec, relations found.
 

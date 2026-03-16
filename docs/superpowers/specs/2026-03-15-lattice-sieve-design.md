@@ -109,14 +109,14 @@ let sieve_result = if params.log_i >= 11 {
 
 - c30 (degree 3, I=9): scatter sieve (proven, 925ms)
 - c45 (degree 4, I=11+): bucket sieve (new)
-- Controlled by `RUST_NFS_SIEVE_MODE=bucket|scatter|auto` env var
+- Controlled by `POTAPOV_NFS_SIEVE_MODE=bucket|scatter|auto` env var
 
 ### Critical Files
 
-- `rust/rust-nfs/src/sieve/mod.rs` — add `bucket_sieve_specialq` function
-- `rust/rust-nfs/src/sieve/bucket.rs` — reuse existing BucketArray
-- `rust/rust-nfs/src/params.rs` — update c45 params to I=11
-- `rust/rust-nfs/src/pipeline.rs` — auto-select sieve mode
+- `rust/potapov-nfs/src/sieve/mod.rs` — add `bucket_sieve_specialq` function
+- `rust/potapov-nfs/src/sieve/bucket.rs` — reuse existing BucketArray
+- `rust/potapov-nfs/src/params.rs` — update c45 params to I=11
+- `rust/potapov-nfs/src/pipeline.rs` — auto-select sieve mode
 
 ### Verification
 
@@ -130,4 +130,4 @@ let sieve_result = if params.log_i >= 11 {
 
 - Scatter sieve preserved unchanged for c30 (no regression possible)
 - Bucket sieve opt-in via I threshold (only activates for I >= 11)
-- Fallback: `RUST_NFS_SIEVE_MODE=scatter` forces old path
+- Fallback: `POTAPOV_NFS_SIEVE_MODE=scatter` forces old path

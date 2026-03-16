@@ -1,8 +1,8 @@
-# Rust-NFS vs CADO-NFS: Parity Achieved (c30)
+# Potapov-NFS vs CADO-NFS: Parity Achieved (c30)
 
 ## Results (post-optimization, 2026-03-12)
 
-| Metric | Rust-NFS | CADO-NFS | Ratio |
+| Metric | Potapov-NFS | CADO-NFS | Ratio |
 |--------|----------|----------|-------|
 | Single-threaded median | **~940ms** | 2149ms | **0.44x** (2.3x faster) |
 | Multi-threaded mean | **~350ms** | ~5780ms | **0.06x** (16.5x faster) |
@@ -11,7 +11,7 @@ Benchmark: 50 random 100-bit semiprimes (5 seeds x 10 runs), Apple M-series.
 
 ### Previous milestone (2026-03-10)
 
-| Metric | Rust-NFS | CADO-NFS | Ratio |
+| Metric | Potapov-NFS | CADO-NFS | Ratio |
 |--------|----------|----------|-------|
 | Single-threaded CPU | 2071ms | 2149ms | 0.96x (3.6% faster) |
 | Multi-threaded wall | 773ms | ~5780ms | 0.13x (7.5x faster) |
@@ -162,4 +162,4 @@ All key optimizations scale to any input size — none are c30-specific:
 - **Scatter phase**: ~400ms (65% of sieve) is still the dominant cost. FK walk is efficient but per-prime partial-GCD overhead adds up for ~2300 large primes per SQ.
 - **Retry variance**: ~1-in-20 runs hits matrix deficit, triggering 700-1200ms retry. Further reducing this is the main path to lower p95 latency.
 
-See also: [Optimization Findings](2026-03-12-rust-nfs-optimization-findings.md) for detailed lessons learned.
+See also: [Optimization Findings](2026-03-12-potapov-nfs-optimization-findings.md) for detailed lessons learned.

@@ -19,13 +19,13 @@
 The 2LP merge bumps mfb from 18→36, which inflates the sieve threshold from 26→52, creating 230k false-positive survivors (vs ~30k needed). CADO uses mfb=18 for sieve threshold regardless of 2LP. Fix: store original mfb before 2LP bump and use it for sieve threshold.
 
 **Files:**
-- Modify: `rust/rust-nfs/src/params.rs` (add `sieve_mfb0`, `sieve_mfb1` fields)
-- Modify: `rust/rust-nfs/src/pipeline.rs:526-545` (save original mfb before 2LP bump)
-- Modify: `rust/rust-nfs/src/sieve/mod.rs:326-327` (use sieve_mfb for threshold)
+- Modify: `rust/potapov-nfs/src/params.rs` (add `sieve_mfb0`, `sieve_mfb1` fields)
+- Modify: `rust/potapov-nfs/src/pipeline.rs:526-545` (save original mfb before 2LP bump)
+- Modify: `rust/potapov-nfs/src/sieve/mod.rs:326-327` (use sieve_mfb for threshold)
 
 **Step 1: Write the failing test**
 
-Add to `rust/rust-nfs/src/params.rs` in the `#[cfg(test)] mod tests` block:
+Add to `rust/potapov-nfs/src/params.rs` in the `#[cfg(test)] mod tests` block:
 
 ```rust
 #[test]
@@ -38,12 +38,12 @@ fn test_sieve_mfb_defaults_to_mfb() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd rust/rust-nfs && cargo test test_sieve_mfb_defaults_to_mfb`
+Run: `cd rust/potapov-nfs && cargo test test_sieve_mfb_defaults_to_mfb`
 Expected: FAIL with "no field `sieve_mfb0`"
 
 **Step 3: Add sieve_mfb fields to NfsParams**
 
-In `rust/rust-nfs/src/params.rs`, add two fields to the struct:
+In `rust/potapov-nfs/src/params.rs`, add two fields to the struct:
 
 ```rust
 pub struct NfsParams {
@@ -68,7 +68,7 @@ Initialize `sieve_mfb0: 18, sieve_mfb1: 18` (same as mfb) in all presets (c30, c
 
 **Step 4: Save original mfb before 2LP bump**
 
-In `rust/rust-nfs/src/pipeline.rs`, BEFORE the 2LP bump block (line ~526), add:
+In `rust/potapov-nfs/src/pipeline.rs`, BEFORE the 2LP bump block (line ~526), add:
 
 ```rust
 params.sieve_mfb0 = params.mfb0;
@@ -79,7 +79,7 @@ This captures the pre-bump values. The 2LP bump then modifies `mfb0`/`mfb1` only
 
 **Step 5: Use sieve_mfb for threshold computation**
 
-In `rust/rust-nfs/src/sieve/mod.rs`, change the threshold lines from:
+In `rust/potapov-nfs/src/sieve/mod.rs`, change the threshold lines from:
 
 ```rust
 let rat_bound = ((params.mfb0 as f64) * scale).min(255.0) as u8;
@@ -95,13 +95,13 @@ let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
 
 **Step 6: Run full test suite**
 
-Run: `cd rust/rust-nfs && cargo test --lib`
+Run: `cd rust/potapov-nfs && cargo test --lib`
 Expected: All tests pass.
 
 **Step 7: Commit**
 
 ```bash
-git add rust/rust-nfs/src/params.rs rust/rust-nfs/src/pipeline.rs rust/rust-nfs/src/sieve/mod.rs
+git add rust/potapov-nfs/src/params.rs rust/potapov-nfs/src/pipeline.rs rust/potapov-nfs/src/sieve/mod.rs
 git commit -m "sieve: decouple sieve threshold from 2LP mfb bump"
 ```
 
@@ -112,7 +112,7 @@ git commit -m "sieve: decouple sieve threshold from 2LP mfb bump"
 CADO c30 uses `I=9` (our `log_i=9`) giving 16x more sieve area per q. Also update c35 parameters to match CADO's `params.c35`.
 
 **Files:**
-- Modify: `rust/rust-nfs/src/params.rs` (update presets)
+- Modify: `rust/potapov-nfs/src/params.rs` (update presets)
 
 **Step 1: Write the failing test**
 
@@ -129,12 +129,12 @@ fn test_c30_matches_cado() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd rust/rust-nfs && cargo test test_c30_matches_cado`
+Run: `cd rust/potapov-nfs && cargo test test_c30_matches_cado`
 Expected: FAIL with "log_i should match CADO I=9"
 
 **Step 3: Update c30 preset**
 
-In `rust/rust-nfs/src/params.rs`, change `c30()`:
+In `rust/potapov-nfs/src/params.rs`, change `c30()`:
 
 ```rust
 pub fn c30() -> Self {
@@ -184,7 +184,7 @@ Update existing test `test_c30_params` to match new `log_i=9` and `sieve_half_wi
 
 **Step 4: Run full test suite**
 
-Run: `cd rust/rust-nfs && cargo test --lib`
+Run: `cd rust/potapov-nfs && cargo test --lib`
 Expected: All tests pass.
 
 **Step 5: Benchmark**
@@ -196,7 +196,7 @@ Expected: Significant reduction in special-q count (from 2704 to ~200-500) and t
 **Step 6: Commit**
 
 ```bash
-git add rust/rust-nfs/src/params.rs
+git add rust/potapov-nfs/src/params.rs
 git commit -m "params: align c30/c35 with CADO parameter files"
 ```
 
@@ -1013,16 +1013,16 @@ pub fn select_best_polynomial(
 
 **Step 5: Wire into pipeline**
 
-In `rust/rust-nfs/src/pipeline.rs`, replace the simple variant loop with `select_best_polynomial`. The pipeline currently tries 5 variants sequentially; replace with the new search that produces ranked polynomials.
+In `rust/potapov-nfs/src/pipeline.rs`, replace the simple variant loop with `select_best_polynomial`. The pipeline currently tries 5 variants sequentially; replace with the new search that produces ranked polynomials.
 
 **Step 6: Run full test suite + benchmark**
 
-Run: `cd rust/rust-nfs && cargo test --lib && cargo run --release -- --factor 684217602914977371691118975023 --threads 1`
+Run: `cd rust/potapov-nfs && cargo test --lib && cargo run --release -- --factor 684217602914977371691118975023 --threads 1`
 
 **Step 7: Commit**
 
 ```bash
-git add rust/gnfs/src/polyselect/ rust/rust-nfs/src/pipeline.rs
+git add rust/gnfs/src/polyselect/ rust/potapov-nfs/src/pipeline.rs
 git commit -m "polyselect: production polynomial search with Murphy E ranking and rotation"
 ```
 
@@ -1237,7 +1237,7 @@ fn test_block_wiedemann_finds_dependency() {
 
 **Step 2: Implement and wire into pipeline**
 
-In `rust/rust-nfs/src/pipeline.rs`, update the LA gate:
+In `rust/potapov-nfs/src/pipeline.rs`, update the LA gate:
 
 ```rust
 let mut ge_deps = if matrix.len() > 5_000 {
@@ -1255,7 +1255,7 @@ For c45 (50K+ matrix): BW should be ~10x faster than GE.
 **Step 4: Commit**
 
 ```bash
-git add rust/gnfs/src/sparse.rs rust/gnfs/src/berlekamp_massey.rs rust/gnfs/src/block_wiedemann.rs rust/gnfs/src/linalg.rs rust/gnfs/src/lib.rs rust/rust-nfs/src/pipeline.rs
+git add rust/gnfs/src/sparse.rs rust/gnfs/src/berlekamp_massey.rs rust/gnfs/src/block_wiedemann.rs rust/gnfs/src/linalg.rs rust/gnfs/src/lib.rs rust/potapov-nfs/src/pipeline.rs
 git commit -m "linalg: add Block Wiedemann solver with CSR sparse matrix"
 ```
 
@@ -1294,6 +1294,6 @@ Test on at least 5 different c30 semiprimes to ensure reproducibility.
 **Step 5: Commit**
 
 ```bash
-git add rust/rust-nfs/progress.md
+git add rust/potapov-nfs/progress.md
 git commit -m "docs: update benchmarks post CADO-parity optimization"
 ```
