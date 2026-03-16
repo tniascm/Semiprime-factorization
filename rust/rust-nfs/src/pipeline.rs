@@ -1952,11 +1952,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .unwrap_or(default_max_deps_to_try);
     let default_trivial_bail = if sqrt_success_mode {
         // Early-bail if ALL of the first N deps give trivial GCD.
-        // With a good polynomial, each dep has ~50% chance of non-trivial GCD,
-        // so 200 consecutive trivial GCDs indicates a degenerate polynomial
-        // (probability 2^{-200} of false positive). Bailing quickly saves
-        // 30-45s per failed variant instead of exhausting all 5000 deps.
-        200usize
+        // 500 is a compromise: truly degenerate polys (all trivial) bail in ~4.5s
+        // instead of 30-45s, while borderline polys with low success rate get
+        // enough attempts to find a factor. 500 consecutive trivial GCDs has
+        // probability 2^{-500} of false positive if the polynomial is good.
+        500usize
     } else if degree >= 4 {
         60usize
     } else {
