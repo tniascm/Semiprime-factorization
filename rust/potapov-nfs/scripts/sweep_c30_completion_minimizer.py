@@ -25,53 +25,53 @@ C30 = "684217602914977371691118975023"
 PROFILE_ENVS: dict[str, dict[str, str]] = {
     "baseline": {},
     "matrix_1p20_basis256": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.20",
-        "RUST_NFS_DEP_BASIS_LIMIT": "256",
-        "RUST_NFS_DEP_RANDOM_COUNT": "96",
-        "RUST_NFS_MAX_DEPS_TRY": "48",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.20",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "256",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "96",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "48",
     },
     "matrix_1p35_basis512": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.35",
-        "RUST_NFS_DEP_BASIS_LIMIT": "512",
-        "RUST_NFS_DEP_RANDOM_COUNT": "128",
-        "RUST_NFS_MAX_DEPS_TRY": "64",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.35",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "512",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "128",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "64",
     },
     "matrix_1p25_basis256": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
-        "RUST_NFS_DEP_BASIS_LIMIT": "256",
-        "RUST_NFS_DEP_RANDOM_COUNT": "96",
-        "RUST_NFS_MAX_DEPS_TRY": "48",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "256",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "96",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "48",
     },
     "matrix_1p25_basis192": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
-        "RUST_NFS_DEP_BASIS_LIMIT": "192",
-        "RUST_NFS_DEP_RANDOM_COUNT": "64",
-        "RUST_NFS_MAX_DEPS_TRY": "32",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "192",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "64",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "32",
     },
     "matrix_1p25_basis320": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
-        "RUST_NFS_DEP_BASIS_LIMIT": "320",
-        "RUST_NFS_DEP_RANDOM_COUNT": "128",
-        "RUST_NFS_MAX_DEPS_TRY": "64",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.25",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "320",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "128",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "64",
     },
     "matrix_1p15_basis128": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.15",
-        "RUST_NFS_DEP_BASIS_LIMIT": "128",
-        "RUST_NFS_DEP_RANDOM_COUNT": "64",
-        "RUST_NFS_MAX_DEPS_TRY": "32",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.15",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "128",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "64",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "32",
     },
     "matrix_1p30_basis256": {
-        "RUST_NFS_ADAPTIVE_USE_MATRIX": "1",
-        "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.30",
-        "RUST_NFS_DEP_BASIS_LIMIT": "256",
-        "RUST_NFS_DEP_RANDOM_COUNT": "96",
-        "RUST_NFS_MAX_DEPS_TRY": "48",
+        "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": "1",
+        "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": "1.30",
+        "POTAPOV_NFS_DEP_BASIS_LIMIT": "256",
+        "POTAPOV_NFS_DEP_RANDOM_COUNT": "96",
+        "POTAPOV_NFS_MAX_DEPS_TRY": "48",
     },
 }
 
@@ -112,7 +112,7 @@ def run_profile(
     env.setdefault("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
     env.update(
         {
-            "RUST_NFS_MAX_VARIANTS": "1",
+            "POTAPOV_NFS_MAX_VARIANTS": "1",
         }
     )
     if threads > 0:
@@ -158,7 +158,7 @@ def run_profile(
                 "env": {
                     k: env[k]
                     for k in sorted(env)
-                    if k.startswith("RUST_NFS_") or k.startswith("GNFS_")
+                    if k.startswith("POTAPOV_NFS_") or k.startswith("GNFS_")
                 },
             },
             indent=2,
@@ -225,8 +225,8 @@ def main() -> None:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
     profiles = [p.strip() for p in args.profiles.split(",") if p.strip()]
     unknown = [p for p in profiles if p not in PROFILE_ENVS]
     if unknown:

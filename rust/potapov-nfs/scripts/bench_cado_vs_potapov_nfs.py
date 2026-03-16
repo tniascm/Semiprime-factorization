@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Reproducible CADO vs rust-nfs benchmark harness.
+Reproducible CADO vs potapov-nfs benchmark harness.
 
 Writes:
 - parsed benchmark JSON
 - raw stdout/stderr logs for each case and engine
-- rust-nfs structured run logs (if RUST_NFS_LOG_DIR is configured)
+- potapov-nfs structured run logs (if POTAPOV_NFS_LOG_DIR is configured)
 """
 
 from __future__ import annotations
@@ -144,7 +144,7 @@ def parse_cado(stdout: str, stderr: str) -> dict[str, Any]:
 
 
 def parse_rust(stdout: str, stderr: str) -> dict[str, Any]:
-    # rust-nfs writes final JSON to stdout; stderr contains progress logs.
+    # potapov-nfs writes final JSON to stdout; stderr contains progress logs.
     text = stdout.strip()
     if not text:
         return {}
@@ -169,7 +169,7 @@ def main() -> None:
         "--q-windows",
         type=int,
         default=0,
-        help="Cap special-q windows for rust-nfs (0 = uncapped, default).",
+        help="Cap special-q windows for potapov-nfs (0 = uncapped, default).",
     )
     ap.add_argument("--dep-seed", type=int, default=42)
     ap.add_argument("--dep-xor-k", type=int, default=0)
@@ -196,7 +196,7 @@ def main() -> None:
 
     repo = Path(args.repo)
     cado_dir = Path(args.cado_dir)
-    rust_bin = repo / "rust/rust-nfs/target/release/rust-nfs"
+    rust_bin = repo / "rust/potapov-nfs/target/release/potapov-nfs"
     cado_py = cado_dir / "cado-nfs.py"
     cado_python = cado_dir / "cado-nfs.venv/bin/python"
 
@@ -216,15 +216,15 @@ def main() -> None:
     env_base.setdefault("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
 
     if not args.skip_build_rust:
-        print("[bench] building rust-nfs release binary", flush=True)
+        print("[bench] building potapov-nfs release binary", flush=True)
         build_rc, _, _, _ = run_cmd(
             ["cargo", "build", "--release"],
-            cwd=repo / "rust/rust-nfs",
+            cwd=repo / "rust/potapov-nfs",
             env=env_base,
             log_path=raw_dir / "build_rust.json",
         )
         if build_rc != 0:
-            raise SystemExit("rust-nfs build failed; see raw/build_rust.json")
+            raise SystemExit("potapov-nfs build failed; see raw/build_rust.json")
 
     benchmark: dict[str, Any] = {
         "timestamp_unix": ts,
@@ -312,49 +312,49 @@ def main() -> None:
 
             rust_env = env_base.copy()
             rust_env["RAYON_NUM_THREADS"] = str(args.threads)
-            rust_env["RUST_NFS_MAX_VARIANTS"] = str(args.variants)
+            rust_env["POTAPOV_NFS_MAX_VARIANTS"] = str(args.variants)
             if args.q_windows > 0:
-                rust_env["RUST_NFS_MAX_Q_WINDOWS"] = str(args.q_windows)
-            rust_env["RUST_NFS_DEP_SEED"] = str(args.dep_seed)
-            rust_env["RUST_NFS_LOG_DIR"] = str(rust_log_root)
+                rust_env["POTAPOV_NFS_MAX_Q_WINDOWS"] = str(args.q_windows)
+            rust_env["POTAPOV_NFS_DEP_SEED"] = str(args.dep_seed)
+            rust_env["POTAPOV_NFS_LOG_DIR"] = str(rust_log_root)
             if args.dep_xor_k > 0:
-                rust_env["RUST_NFS_DEP_XOR_K"] = str(args.dep_xor_k)
+                rust_env["POTAPOV_NFS_DEP_XOR_K"] = str(args.dep_xor_k)
             if args.dep_random_count > 0:
-                rust_env["RUST_NFS_DEP_RANDOM_COUNT"] = str(args.dep_random_count)
+                rust_env["POTAPOV_NFS_DEP_RANDOM_COUNT"] = str(args.dep_random_count)
             if args.max_deps_try > 0:
-                rust_env["RUST_NFS_MAX_DEPS_TRY"] = str(args.max_deps_try)
+                rust_env["POTAPOV_NFS_MAX_DEPS_TRY"] = str(args.max_deps_try)
             if args.trivial_bail > 0:
-                rust_env["RUST_NFS_TRIVIAL_BAIL"] = str(args.trivial_bail)
+                rust_env["POTAPOV_NFS_TRIVIAL_BAIL"] = str(args.trivial_bail)
             if args.norm_block > 0:
-                rust_env["RUST_NFS_NORM_BLOCK"] = str(args.norm_block)
+                rust_env["POTAPOV_NFS_NORM_BLOCK"] = str(args.norm_block)
             if args.rel_target_mult > 0:
-                rust_env["RUST_NFS_REL_TARGET_MULT"] = str(args.rel_target_mult)
+                rust_env["POTAPOV_NFS_REL_TARGET_MULT"] = str(args.rel_target_mult)
             if args.rel_target_min > 0:
-                rust_env["RUST_NFS_REL_TARGET_MIN"] = str(args.rel_target_min)
+                rust_env["POTAPOV_NFS_REL_TARGET_MIN"] = str(args.rel_target_min)
             if args.adaptive_rows_ratio > 0:
-                rust_env["RUST_NFS_ADAPTIVE_ROWS_RATIO"] = str(args.adaptive_rows_ratio)
+                rust_env["POTAPOV_NFS_ADAPTIVE_ROWS_RATIO"] = str(args.adaptive_rows_ratio)
             if args.adaptive_rows_min > 0:
-                rust_env["RUST_NFS_ADAPTIVE_ROWS_MIN"] = str(args.adaptive_rows_min)
+                rust_env["POTAPOV_NFS_ADAPTIVE_ROWS_MIN"] = str(args.adaptive_rows_min)
             if args.adaptive_margin_pct > 0:
-                rust_env["RUST_NFS_ADAPTIVE_MARGIN_PCT"] = str(args.adaptive_margin_pct)
+                rust_env["POTAPOV_NFS_ADAPTIVE_MARGIN_PCT"] = str(args.adaptive_margin_pct)
             if args.adaptive_check_every > 0:
-                rust_env["RUST_NFS_ADAPTIVE_CHECK_EVERY"] = str(args.adaptive_check_every)
+                rust_env["POTAPOV_NFS_ADAPTIVE_CHECK_EVERY"] = str(args.adaptive_check_every)
             if args.adaptive_check_min_raw > 0:
-                rust_env["RUST_NFS_ADAPTIVE_CHECK_MIN_RAW"] = str(args.adaptive_check_min_raw)
+                rust_env["POTAPOV_NFS_ADAPTIVE_CHECK_MIN_RAW"] = str(args.adaptive_check_min_raw)
             if args.adaptive_raw_step > 0:
-                rust_env["RUST_NFS_ADAPTIVE_RAW_STEP"] = str(args.adaptive_raw_step)
+                rust_env["POTAPOV_NFS_ADAPTIVE_RAW_STEP"] = str(args.adaptive_raw_step)
             if args.max_raw_rels > 0:
-                rust_env["RUST_NFS_MAX_RAW_RELS"] = str(args.max_raw_rels)
+                rust_env["POTAPOV_NFS_MAX_RAW_RELS"] = str(args.max_raw_rels)
             if args.sq_batch_size > 0:
-                rust_env["RUST_NFS_SQ_BATCH_SIZE"] = str(args.sq_batch_size)
+                rust_env["POTAPOV_NFS_SQ_BATCH_SIZE"] = str(args.sq_batch_size)
             if args.max_lp_keys > 0:
-                rust_env["RUST_NFS_MAX_LP_KEYS"] = str(args.max_lp_keys)
+                rust_env["POTAPOV_NFS_MAX_LP_KEYS"] = str(args.max_lp_keys)
             if args.partial_merge_maxsets > 0:
-                rust_env["RUST_NFS_PARTIAL_MERGE_MAXSETS"] = str(args.partial_merge_maxsets)
+                rust_env["POTAPOV_NFS_PARTIAL_MERGE_MAXSETS"] = str(args.partial_merge_maxsets)
             rust_cmd = [str(rust_bin), "--factor", n, "--threads", str(args.threads)]
             rust_rc, rust_out, rust_err, rust_wall = run_cmd(
                 rust_cmd,
-                cwd=repo / "rust/rust-nfs",
+                cwd=repo / "rust/potapov-nfs",
                 env=rust_env,
                 log_path=raw_dir / f"{case_id}_rust.json",
             )

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Front-half viability ablation runner for rust-nfs.
+Front-half viability ablation runner for potapov-nfs.
 
 Purpose:
 - keep sqrt out of the loop
@@ -28,37 +28,37 @@ FIXED_CASES: dict[str, list[str]] = {
 PROFILE_ENVS: dict[str, dict[str, str]] = {
     "baseline": {},
     "singleton_off": {
-        "RUST_NFS_SINGLETON_PRUNE": "0",
+        "POTAPOV_NFS_SINGLETON_PRUNE": "0",
     },
     "ignore_special_q": {
-        "RUST_NFS_IGNORE_SPECIAL_Q_COLUMN": "1",
+        "POTAPOV_NFS_IGNORE_SPECIAL_Q_COLUMN": "1",
     },
     "qc0": {
-        "RUST_NFS_QC_COUNT": "0",
+        "POTAPOV_NFS_QC_COUNT": "0",
     },
     "higher_rel_target": {
-        "RUST_NFS_REL_TARGET_MULT": "0.35",
-        "RUST_NFS_REL_TARGET_MIN": "3000",
+        "POTAPOV_NFS_REL_TARGET_MULT": "0.35",
+        "POTAPOV_NFS_REL_TARGET_MIN": "3000",
     },
     "direct_matrix": {
-        "RUST_NFS_PARTIAL_MERGE_2LP": "0",
+        "POTAPOV_NFS_PARTIAL_MERGE_2LP": "0",
     },
     "ignore_special_q_singleton_off": {
-        "RUST_NFS_IGNORE_SPECIAL_Q_COLUMN": "1",
-        "RUST_NFS_SINGLETON_PRUNE": "0",
+        "POTAPOV_NFS_IGNORE_SPECIAL_Q_COLUMN": "1",
+        "POTAPOV_NFS_SINGLETON_PRUNE": "0",
     },
     "qc0_singleton_off": {
-        "RUST_NFS_QC_COUNT": "0",
-        "RUST_NFS_SINGLETON_PRUNE": "0",
+        "POTAPOV_NFS_QC_COUNT": "0",
+        "POTAPOV_NFS_SINGLETON_PRUNE": "0",
     },
     "higher_rel_target_singleton_off": {
-        "RUST_NFS_REL_TARGET_MULT": "0.35",
-        "RUST_NFS_REL_TARGET_MIN": "3000",
-        "RUST_NFS_SINGLETON_PRUNE": "0",
+        "POTAPOV_NFS_REL_TARGET_MULT": "0.35",
+        "POTAPOV_NFS_REL_TARGET_MIN": "3000",
+        "POTAPOV_NFS_SINGLETON_PRUNE": "0",
     },
     "direct_matrix_singleton_off": {
-        "RUST_NFS_PARTIAL_MERGE_2LP": "0",
-        "RUST_NFS_SINGLETON_PRUNE": "0",
+        "POTAPOV_NFS_PARTIAL_MERGE_2LP": "0",
+        "POTAPOV_NFS_SINGLETON_PRUNE": "0",
     },
 }
 
@@ -145,7 +145,7 @@ def run_case(
                 "env": {
                     k: env[k]
                     for k in sorted(env)
-                    if k.startswith("RUST_NFS_") or k.startswith("GNFS_")
+                    if k.startswith("POTAPOV_NFS_") or k.startswith("GNFS_")
                 },
             },
             indent=2,
@@ -202,8 +202,8 @@ def main() -> None:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
 
     profile_names = [name.strip() for name in args.profiles.split(",") if name.strip()]
     if not profile_names:
@@ -249,10 +249,10 @@ def main() -> None:
             raise SystemExit("build failed")
 
     base_env = {
-        "RUST_NFS_SKIP_SQRT": "1",
-        "RUST_NFS_MAX_Q_WINDOWS": str(args.max_q_windows),
-        "RUST_NFS_MAX_VARIANTS": str(args.max_variants),
-        "RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT": str(args.hd_residual_samples),
+        "POTAPOV_NFS_SKIP_SQRT": "1",
+        "POTAPOV_NFS_MAX_Q_WINDOWS": str(args.max_q_windows),
+        "POTAPOV_NFS_MAX_VARIANTS": str(args.max_variants),
+        "POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT": str(args.hd_residual_samples),
     }
 
     artifact: dict[str, Any] = {

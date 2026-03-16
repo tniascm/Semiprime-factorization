@@ -40,7 +40,7 @@ def run_case(rust_bin: Path, cwd: Path, timeout: int) -> dict[str, Any]:
     env.setdefault("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
     env.update(
         {
-            "RUST_NFS_MAX_VARIANTS": "1",
+            "POTAPOV_NFS_MAX_VARIANTS": "1",
         }
     )
     proc = subprocess.run(
@@ -69,8 +69,8 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
 
     if not args.skip_build:
         subprocess.run(

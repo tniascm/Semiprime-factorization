@@ -5,7 +5,7 @@ Sweep exact c45 polynomial variants and rank them by matrix viability.
 This uses the fixed c45 quality-probe settings:
 - sqrt disabled
 - fixed q-window cap
-- exact variant selection via RUST_NFS_VARIANT_START + MAX_VARIANTS=1
+- exact variant selection via POTAPOV_NFS_VARIANT_START + MAX_VARIANTS=1
 
 Primary ranking:
 1. deps_found
@@ -100,11 +100,11 @@ def run_variant(
     env.setdefault("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
     env.update(
         {
-            "RUST_NFS_SKIP_SQRT": "1",
-            "RUST_NFS_FALLBACK_RHO": "0",
-            "RUST_NFS_MAX_VARIANTS": "1",
-            "RUST_NFS_VARIANT_START": str(variant),
-            "RUST_NFS_MAX_Q_WINDOWS": str(max_q_windows),
+            "POTAPOV_NFS_SKIP_SQRT": "1",
+            "POTAPOV_NFS_FALLBACK_RHO": "0",
+            "POTAPOV_NFS_MAX_VARIANTS": "1",
+            "POTAPOV_NFS_VARIANT_START": str(variant),
+            "POTAPOV_NFS_MAX_Q_WINDOWS": str(max_q_windows),
         }
     )
 
@@ -147,7 +147,7 @@ def run_variant(
                 "env": {
                     k: env[k]
                     for k in sorted(env)
-                    if k.startswith("RUST_NFS_") or k.startswith("GNFS_")
+                    if k.startswith("POTAPOV_NFS_") or k.startswith("GNFS_")
                 },
             },
             indent=2,
@@ -206,8 +206,8 @@ def main() -> None:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
     variants = parse_csv_ints(args.variants)
     ts = int(time.time())
     out_path = (

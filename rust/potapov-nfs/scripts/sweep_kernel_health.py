@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Reproducible kernel-health sweep for rust-nfs.
+Reproducible kernel-health sweep for potapov-nfs.
 
 Purpose:
 - quickly scan sieve/LA parameter combinations without entering expensive sqrt
@@ -66,7 +66,7 @@ def run_case(
                 "env": {
                     k: env.get(k)
                     for k in sorted(env)
-                    if k.startswith("RUST_NFS_") or k.startswith("GNFS_")
+                    if k.startswith("POTAPOV_NFS_") or k.startswith("GNFS_")
                 },
             },
             indent=2,
@@ -98,14 +98,14 @@ def main() -> None:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
 
     ts = int(time.time())
     out_path = (
         Path(args.output)
         if args.output
-        else repo / f"rust/data/rust_nfs_kernel_sweep_{ts}.json"
+        else repo / f"rust/data/potapov_nfs_kernel_sweep_{ts}.json"
     )
     run_root = out_path.with_suffix("")
     raw_dir = run_root / "raw"
@@ -155,26 +155,26 @@ def main() -> None:
             env = env_base.copy()
             env.update(
                 {
-                    "RUST_NFS_MAX_VARIANTS": str(args.variants),
-                    "RUST_NFS_MAX_Q_WINDOWS": str(q_windows),
-                    "RUST_NFS_OVR_LOG_I": str(log_i),
-                    "RUST_NFS_QC_COUNT": str(args.qc_count),
-                    "RUST_NFS_DEP_SEED": str(args.dep_seed),
-                    "RUST_NFS_DEP_RANDOM_COUNT": str(args.dep_random_count),
-                    "RUST_NFS_DEP_XOR_K": str(args.dep_xor_k),
-                    "RUST_NFS_SKIP_SQRT": "1",
-                    "RUST_NFS_LOG_DIR": str(run_logs),
+                    "POTAPOV_NFS_MAX_VARIANTS": str(args.variants),
+                    "POTAPOV_NFS_MAX_Q_WINDOWS": str(q_windows),
+                    "POTAPOV_NFS_OVR_LOG_I": str(log_i),
+                    "POTAPOV_NFS_QC_COUNT": str(args.qc_count),
+                    "POTAPOV_NFS_DEP_SEED": str(args.dep_seed),
+                    "POTAPOV_NFS_DEP_RANDOM_COUNT": str(args.dep_random_count),
+                    "POTAPOV_NFS_DEP_XOR_K": str(args.dep_xor_k),
+                    "POTAPOV_NFS_SKIP_SQRT": "1",
+                    "POTAPOV_NFS_LOG_DIR": str(run_logs),
                 }
             )
-            env["RUST_NFS_SPARSE_PREMERGE"] = "1" if args.sparse_premerge else "0"
-            env["RUST_NFS_SINGLETON_PRUNE"] = "1" if args.singleton_prune else "0"
-            env["RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT"] = str(args.singleton_min_weight)
+            env["POTAPOV_NFS_SPARSE_PREMERGE"] = "1" if args.sparse_premerge else "0"
+            env["POTAPOV_NFS_SINGLETON_PRUNE"] = "1" if args.singleton_prune else "0"
+            env["POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT"] = str(args.singleton_min_weight)
             if args.require_coprime:
-                env["RUST_NFS_REQUIRE_COPRIME_AB"] = "1"
+                env["POTAPOV_NFS_REQUIRE_COPRIME_AB"] = "1"
             if args.full_only:
-                env["RUST_NFS_FULL_ONLY"] = "1"
+                env["POTAPOV_NFS_FULL_ONLY"] = "1"
             if args.ignore_special_q:
-                env["RUST_NFS_IGNORE_SPECIAL_Q_COLUMN"] = "1"
+                env["POTAPOV_NFS_IGNORE_SPECIAL_Q_COLUMN"] = "1"
 
             tag = f"logi{log_i}_qw{q_windows}"
             rc, wall_s, stdout, stderr = run_case(

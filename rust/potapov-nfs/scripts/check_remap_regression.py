@@ -58,14 +58,14 @@ def parse_result_json(stdout: str) -> dict[str, Any]:
 
 def run_case(rust_bin: Path, cwd: Path, n: str, timeout: int) -> dict[str, Any]:
     env = os.environ.copy()
-    env.pop("RUST_NFS_MAX_RAW_RELS", None)
+    env.pop("POTAPOV_NFS_MAX_RAW_RELS", None)
     env.update(
         {
-            "RUST_NFS_SKIP_SQRT": "1",
-            "RUST_NFS_SINGLETON_PRUNE": "0",
-            "RUST_NFS_MAX_VARIANTS": "1",
-            "RUST_NFS_MAX_Q_WINDOWS": "5",
-            "RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT": "4",
+            "POTAPOV_NFS_SKIP_SQRT": "1",
+            "POTAPOV_NFS_SINGLETON_PRUNE": "0",
+            "POTAPOV_NFS_MAX_VARIANTS": "1",
+            "POTAPOV_NFS_MAX_Q_WINDOWS": "5",
+            "POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT": "4",
         }
     )
     proc = subprocess.run(
@@ -94,8 +94,8 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
 
     if not args.skip_build:
         subprocess.run(

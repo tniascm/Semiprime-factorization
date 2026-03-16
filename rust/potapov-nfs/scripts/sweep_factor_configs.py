@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Reproducible rust-nfs config sweep with raw logs and parsed metrics.
+Reproducible potapov-nfs config sweep with raw logs and parsed metrics.
 
 Designed for fast tuning loops:
 - keeps max_variants fixed (default 1) for apples-to-apples comparisons
@@ -113,7 +113,7 @@ def run_case(
                 "env": {
                     k: env[k]
                     for k in sorted(env)
-                    if k.startswith("RUST_NFS_") or k.startswith("GNFS_")
+                    if k.startswith("POTAPOV_NFS_") or k.startswith("GNFS_")
                 },
             },
             indent=2,
@@ -156,14 +156,14 @@ def main() -> None:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
 
     ts = int(time.time())
     out_path = (
         Path(args.output)
         if args.output
-        else repo / f"rust/data/rust_nfs_factor_sweep_{ts}.json"
+        else repo / f"rust/data/potapov_nfs_factor_sweep_{ts}.json"
     )
     run_root = out_path.with_suffix("")
     raw_dir = run_root / "raw"
@@ -181,7 +181,7 @@ def main() -> None:
 
     env_base = os.environ.copy()
     if not args.skip_build:
-        print("[sweep] building rust-nfs release", flush=True)
+        print("[sweep] building potapov-nfs release", flush=True)
         proc = subprocess.run(
             ["cargo", "build", "--release"],
             cwd=rust_dir,
@@ -213,27 +213,27 @@ def main() -> None:
                 env = env_base.copy()
                 env.update(
                     {
-                        "RUST_NFS_LOG_DIR": str(rust_logs),
-                        "RUST_NFS_MAX_VARIANTS": str(args.max_variants),
-                        "RUST_NFS_OVR_LOG_I": str(log_i),
-                        "RUST_NFS_MAX_Q_WINDOWS": str(qw),
-                        "RUST_NFS_SPARSE_PREMERGE": str(args.sparse_premerge),
-                        "RUST_NFS_SINGLETON_PRUNE": str(args.singleton_prune),
-                        "RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT": str(
+                        "POTAPOV_NFS_LOG_DIR": str(rust_logs),
+                        "POTAPOV_NFS_MAX_VARIANTS": str(args.max_variants),
+                        "POTAPOV_NFS_OVR_LOG_I": str(log_i),
+                        "POTAPOV_NFS_MAX_Q_WINDOWS": str(qw),
+                        "POTAPOV_NFS_SPARSE_PREMERGE": str(args.sparse_premerge),
+                        "POTAPOV_NFS_SINGLETON_PRUNE": str(args.singleton_prune),
+                        "POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT": str(
                             args.singleton_min_weight
                         ),
-                        "RUST_NFS_REQUIRE_COPRIME_AB": str(args.require_coprime),
-                        "RUST_NFS_FULL_ONLY": str(full_only),
-                        "RUST_NFS_MAX_DEP_LEN": str(args.max_dep_len),
-                        "RUST_NFS_DEP_REQUIRE_COPRIME_REL": str(
+                        "POTAPOV_NFS_REQUIRE_COPRIME_AB": str(args.require_coprime),
+                        "POTAPOV_NFS_FULL_ONLY": str(full_only),
+                        "POTAPOV_NFS_MAX_DEP_LEN": str(args.max_dep_len),
+                        "POTAPOV_NFS_DEP_REQUIRE_COPRIME_REL": str(
                             args.dep_require_coprime_rel
                         ),
-                        "RUST_NFS_MAX_DEPS_TRY": str(args.max_deps_try),
-                        "RUST_NFS_TRIVIAL_BAIL": str(args.trivial_bail),
+                        "POTAPOV_NFS_MAX_DEPS_TRY": str(args.max_deps_try),
+                        "POTAPOV_NFS_TRIVIAL_BAIL": str(args.trivial_bail),
                     }
                 )
                 if args.dep_len_tiers:
-                    env["RUST_NFS_DEP_LEN_TIERS"] = args.dep_len_tiers
+                    env["POTAPOV_NFS_DEP_LEN_TIERS"] = args.dep_len_tiers
                 if args.nf_mode:
                     env["GNFS_NF_ELEMENT_MODE"] = args.nf_mode
                 if args.try_neg_m in (0, 1):

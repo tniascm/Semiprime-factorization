@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Sweep sqrt/debug modes for rust-nfs with reproducible settings.
+Sweep sqrt/debug modes for potapov-nfs with reproducible settings.
 
 Produces one JSON artifact with per-config:
-- runtime metrics (from rust-nfs stdout JSON)
+- runtime metrics (from potapov-nfs stdout JSON)
 - parsed gcd diagnostic signatures (from stderr)
 - raw logs per config under <output_dir>/raw/
 """
@@ -78,7 +78,7 @@ def run_case(
                 "wall_s": wall,
                 "stdout": proc.stdout,
                 "stderr": proc.stderr,
-                "env": {k: env.get(k) for k in sorted(env) if k.startswith("RUST_NFS_") or k.startswith("GNFS_")},
+                "env": {k: env.get(k) for k in sorted(env) if k.startswith("POTAPOV_NFS_") or k.startswith("GNFS_")},
             },
             indent=2,
         )
@@ -99,11 +99,11 @@ def main() -> None:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
 
     ts = int(time.time())
-    out_path = Path(args.output) if args.output else repo / f"rust/data/rust_nfs_sqrt_sweep_{ts}.json"
+    out_path = Path(args.output) if args.output else repo / f"rust/data/potapov_nfs_sqrt_sweep_{ts}.json"
     run_root = out_path.with_suffix("")
     raw_dir = run_root / "raw"
     run_logs = run_root / "rust_logs"
@@ -121,7 +121,7 @@ def main() -> None:
             "env": {
                 "GNFS_NF_ELEMENT_MODE": "a_minus_ba",
                 "GNFS_TRY_NEG_M": "0",
-                "RUST_NFS_QC_COUNT": "30",
+                "POTAPOV_NFS_QC_COUNT": "30",
             },
         },
         {
@@ -129,7 +129,7 @@ def main() -> None:
             "env": {
                 "GNFS_NF_ELEMENT_MODE": "a_plus_ba",
                 "GNFS_TRY_NEG_M": "0",
-                "RUST_NFS_QC_COUNT": "30",
+                "POTAPOV_NFS_QC_COUNT": "30",
             },
         },
         {
@@ -137,7 +137,7 @@ def main() -> None:
             "env": {
                 "GNFS_NF_ELEMENT_MODE": "b_alpha_minus_a",
                 "GNFS_TRY_NEG_M": "0",
-                "RUST_NFS_QC_COUNT": "30",
+                "POTAPOV_NFS_QC_COUNT": "30",
             },
         },
         {
@@ -145,7 +145,7 @@ def main() -> None:
             "env": {
                 "GNFS_NF_ELEMENT_MODE": "a_minus_ba",
                 "GNFS_TRY_NEG_M": "0",
-                "RUST_NFS_QC_COUNT": "0",
+                "POTAPOV_NFS_QC_COUNT": "0",
             },
         },
         {
@@ -153,7 +153,7 @@ def main() -> None:
             "env": {
                 "GNFS_NF_ELEMENT_MODE": "a_minus_ba",
                 "GNFS_TRY_NEG_M": "1",
-                "RUST_NFS_QC_COUNT": "30",
+                "POTAPOV_NFS_QC_COUNT": "30",
             },
         },
     ]
@@ -176,13 +176,13 @@ def main() -> None:
         env.update(cfg["env"])
         env.update(
             {
-                "RUST_NFS_MAX_VARIANTS": str(args.variants),
-                "RUST_NFS_MAX_Q_WINDOWS": str(args.q_windows),
-                "RUST_NFS_DEP_SEED": str(args.dep_seed),
-                "RUST_NFS_MAX_DEPS_TRY": str(args.max_deps),
-                "RUST_NFS_TRIVIAL_BAIL": str(args.max_deps),
-                "RUST_NFS_SQRT_VERBOSE_DEPS": str(args.verbose_deps),
-                "RUST_NFS_LOG_DIR": str(run_logs),
+                "POTAPOV_NFS_MAX_VARIANTS": str(args.variants),
+                "POTAPOV_NFS_MAX_Q_WINDOWS": str(args.q_windows),
+                "POTAPOV_NFS_DEP_SEED": str(args.dep_seed),
+                "POTAPOV_NFS_MAX_DEPS_TRY": str(args.max_deps),
+                "POTAPOV_NFS_TRIVIAL_BAIL": str(args.max_deps),
+                "POTAPOV_NFS_SQRT_VERBOSE_DEPS": str(args.verbose_deps),
+                "POTAPOV_NFS_LOG_DIR": str(run_logs),
             }
         )
 

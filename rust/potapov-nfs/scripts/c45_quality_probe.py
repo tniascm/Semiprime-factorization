@@ -48,9 +48,9 @@ def probe_run(
     env.setdefault("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
     env.update(
         {
-            "RUST_NFS_SKIP_SQRT": "1",
-            "RUST_NFS_MAX_VARIANTS": "1",
-            "RUST_NFS_MAX_Q_WINDOWS": str(max_q_windows),
+            "POTAPOV_NFS_SKIP_SQRT": "1",
+            "POTAPOV_NFS_MAX_VARIANTS": "1",
+            "POTAPOV_NFS_MAX_Q_WINDOWS": str(max_q_windows),
         }
     )
 
@@ -99,8 +99,8 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = Path(args.repo)
-    rust_dir = repo / "rust/rust-nfs"
-    rust_bin = rust_dir / "target/release/rust-nfs"
+    rust_dir = repo / "rust/potapov-nfs"
+    rust_bin = rust_dir / "target/release/potapov-nfs"
     ts = int(time.time())
     out_path = (
         Path(args.output)
