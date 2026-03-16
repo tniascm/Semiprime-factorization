@@ -141,7 +141,9 @@ impl NfsParams {
     ///
     /// Based on CADO-NFS c60 reference (degree=4, I=10), with higher lpb
     /// following the same tuning pattern as c45 (our lpb > CADO's to exploit
-    /// 2LP cofactoring).
+    /// 2LP cofactoring). Empirical testing shows lpb=22/23 gives best
+    /// relation yield (275 raw/s vs 10-130 raw/s at lower lpb).
+    /// Wider qrange=10000 for better SQ coverage.
     pub fn c60() -> Self {
         Self {
             name: "c60",
@@ -156,7 +158,7 @@ impl NfsParams {
             sieve_mfb1: 32,
             log_i: 10,
             qmin: 62_000,
-            qrange: 2_000,
+            qrange: 10_000,
             rels_wanted: 80_000,
         }
     }

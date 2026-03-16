@@ -1855,9 +1855,17 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         // This catches ~95% of balanced c45 semiprimes before NFS fallback.
         (50_000, 5_000_000, 500)
     } else if bits <= 180 {
-        (250_000, 25_000_000, 400)
+        // ~74-90 bit factors. U192/U256 fast path at ~5-10ms/curve.
+        // 400 curves on 10 cores ≈ 2-4s MT.
+        (100_000, 10_000_000, 400)
+    } else if bits <= 210 {
+        // c60 range: ~100 bit factors. U256 fast path at ~15-20ms/curve.
+        // B1=200K keeps Phase 1 manageable (~100ms/curve).
+        // 600 curves on 10 cores ≈ 1-2s MT, ~60-90s ST.
+        (200_000, 20_000_000, 600)
     } else {
-        (1_000_000, 100_000_000, 800)
+        // >210 bits: GMP fallback likely. Keep bounds moderate.
+        (500_000, 50_000_000, 800)
     };
 
     let b1: u64 = std::env::var("POTAPOV_NFS_ECM_B1")
