@@ -190,11 +190,15 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
+    // With fast trivial_bail (200 deps), degenerate variants fail in <1s instead
+    // of 30-45s. This makes trying more variants cheap. For degree>=4 (c45+),
+    // 15 variants increases success rate on hard numbers at ~1s cost per failed variant.
+    let default_max_variants: u32 = if params.degree >= 4 { 15 } else { 5 };
     let max_variants: u32 = std::env::var("RUST_NFS_MAX_VARIANTS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
-        .unwrap_or(5);
+        .unwrap_or(default_max_variants);
     let mut run_logger = RunLogger::new(n, params, max_variants);
     let fallback_enabled = std::env::var("RUST_NFS_FALLBACK_RHO")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -1947,8 +1951,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .filter(|&v| v > 0)
         .unwrap_or(default_max_deps_to_try);
     let default_trivial_bail = if sqrt_success_mode {
-        // In success mode we do not early-bail on trivial gcd too aggressively.
-        max_deps_to_try
+        // Early-bail if ALL of the first N deps give trivial GCD.
+        // With a good polynomial, each dep has ~50% chance of non-trivial GCD,
+        // so 200 consecutive trivial GCDs indicates a degenerate polynomial
+        // (probability 2^{-200} of false positive). Bailing quickly saves
+        // 30-45s per failed variant instead of exhausting all 5000 deps.
+        200usize
     } else if degree >= 4 {
         60usize
     } else {
