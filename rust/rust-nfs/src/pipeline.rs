@@ -229,6 +229,29 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
             return result;
         }
     }
+
+    // Try ECM before NFS for numbers up to ~200 bits.
+    // For c45 (~148-bit balanced semiprimes), ECM with B1=50000 typically
+    // succeeds in 1-4s, which is competitive with NFS and has lower overhead.
+    // Disable with RUST_NFS_ECM=0.
+    let ecm_enabled = std::env::var("RUST_NFS_ECM")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
+    let ecm_max_bits = std::env::var("RUST_NFS_ECM_MAX_BITS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(200u32);
+    if ecm_enabled && n.significant_bits() <= ecm_max_bits {
+        if let Some((factor, ecm_ms)) = crate::ecm::try_ecm_factor(n) {
+            let result = fallback_result(n, factor, ecm_ms);
+            if let Some(logger) = run_logger.as_mut() {
+                logger.finish(&result);
+            }
+            return result;
+        }
+    }
+
     let mut last_result = None;
 
     // Murphy E-based polyselect sweeps over leading coefficients and picks

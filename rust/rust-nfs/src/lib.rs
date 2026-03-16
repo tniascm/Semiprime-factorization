@@ -2,6 +2,7 @@
 
 pub mod arith;
 pub mod cofactor;
+pub mod ecm;
 pub mod factorbase;
 pub mod filter;
 pub mod lp_key;
