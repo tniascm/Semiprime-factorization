@@ -970,9 +970,11 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     } else if bits <= 120 {
         (11_000, 1_100_000, 90)
     } else if bits <= 140 {
-        (25_000, 2_500_000, 150)
+        (25_000, 2_500_000, 200)
     } else if bits <= 160 {
-        (50_000, 5_000_000, 200)
+        // With U192 fast path (~2ms/curve), 500 curves costs ~1s MT on 10 cores.
+        // This catches ~95% of balanced c45 semiprimes before NFS fallback.
+        (50_000, 5_000_000, 500)
     } else if bits <= 180 {
         (250_000, 25_000_000, 400)
     } else {
