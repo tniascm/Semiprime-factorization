@@ -293,6 +293,11 @@ pub fn sieve_specialq(
                     alg_buckets.clear();
                     survivors_this_sq.clear();
 
+                    // Look up the special-q in the algebraic FB so we can fold
+                    // it into the regular algebraic factor columns instead of
+                    // creating a separate SQ column (avoids O(#SQ) column growth).
+                    let sq_alg_fb_idx = alg_fb.primes.binary_search(&q).ok().map(|idx| idx as u32);
+
                     let mut local_rels = Vec::new();
                     let mut local_survivors = 0usize;
                     let sieve_start = std::time::Instant::now();
@@ -683,8 +688,31 @@ pub fn sieve_specialq(
                             )
                         };
 
+                        // Fold SQ into algebraic factors to avoid separate SQ matrix columns.
+                        // Since q < lim1, it's in the algebraic FB and belongs there.
+                        let alg_result = if let Some(sq_idx) = sq_alg_fb_idx {
+                            match alg_result {
+                                cofactor::CofactResult::Smooth(mut f) => {
+                                    f.push((sq_idx, 1));
+                                    cofactor::CofactResult::Smooth(f)
+                                }
+                                cofactor::CofactResult::OneLargePrime(mut f, lp) => {
+                                    f.push((sq_idx, 1));
+                                    cofactor::CofactResult::OneLargePrime(f, lp)
+                                }
+                                cofactor::CofactResult::TwoLargePrimes(mut f, lp1, lp2) => {
+                                    f.push((sq_idx, 1));
+                                    cofactor::CofactResult::TwoLargePrimes(f, lp1, lp2)
+                                }
+                                other => other,
+                            }
+                        } else {
+                            alg_result
+                        };
+
+                        let sq_for_rel = if sq_alg_fb_idx.is_some() { None } else { Some((q, r)) };
                         if let Some(rel) =
-                            build_relation(a, b, Some((q, r)), rat_result, alg_result)
+                            build_relation(a, b, sq_for_rel, rat_result, alg_result)
                         {
                             local_rels.push(rel);
                         }
@@ -966,6 +994,11 @@ pub fn line_sieve_specialq(
                   rat_running, alg_running), (q, r)| {
                     survivors_buf.clear();
                     let sq_start = std::time::Instant::now();
+
+                    // Look up the special-q in the algebraic FB so we can fold
+                    // it into the regular algebraic factor columns instead of
+                    // creating a separate SQ column (avoids O(#SQ) column growth).
+                    let sq_alg_fb_idx = alg_fb.primes.binary_search(&q).ok().map(|idx| idx as u32);
 
                     // 1. Reduce q-lattice
                     let skewness = 1.0;
@@ -1265,7 +1298,30 @@ pub fn line_sieve_specialq(
                             )
                         };
 
-                        if let Some(rel) = build_relation(a, b, Some((q, r)), rat_result, alg_result) {
+                        // Fold SQ into algebraic factors to avoid separate SQ matrix columns.
+                        // Since q < lim1, it's in the algebraic FB and belongs there.
+                        let alg_result = if let Some(sq_idx) = sq_alg_fb_idx {
+                            match alg_result {
+                                cofactor::CofactResult::Smooth(mut f) => {
+                                    f.push((sq_idx, 1));
+                                    cofactor::CofactResult::Smooth(f)
+                                }
+                                cofactor::CofactResult::OneLargePrime(mut f, lp) => {
+                                    f.push((sq_idx, 1));
+                                    cofactor::CofactResult::OneLargePrime(f, lp)
+                                }
+                                cofactor::CofactResult::TwoLargePrimes(mut f, lp1, lp2) => {
+                                    f.push((sq_idx, 1));
+                                    cofactor::CofactResult::TwoLargePrimes(f, lp1, lp2)
+                                }
+                                other => other,
+                            }
+                        } else {
+                            alg_result
+                        };
+
+                        let sq_for_rel = if sq_alg_fb_idx.is_some() { None } else { Some((q, r)) };
+                        if let Some(rel) = build_relation(a, b, sq_for_rel, rat_result, alg_result) {
                             local_rels.push(rel);
                         }
                     }
