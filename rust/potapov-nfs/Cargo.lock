@@ -219,6 +219,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "potapov-nfs"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "gnfs",
+ "rand",
+ "rayon",
+ "rug",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -305,19 +318,6 @@ dependencies = [
  "gmp-mpfr-sys",
  "libc",
  "libm",
-]
-
-[[package]]
-name = "rust-nfs"
-version = "0.1.0"
-dependencies = [
- "clap",
- "gnfs",
- "rand",
- "rayon",
- "rug",
- "serde",
- "serde_json",
 ]
 
 [[package]]
