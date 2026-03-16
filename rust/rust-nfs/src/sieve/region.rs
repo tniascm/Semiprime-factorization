@@ -22,18 +22,13 @@ pub struct Survivor {
 /// This is critical for performance: the inner loop runs billions of times.
 /// Each update subtracts `logp` from `sieve[pos]`, clamping at zero.
 ///
-/// # Safety note
-///
-/// `BucketUpdate` is `#[repr(C, packed)]`. We read fields via the by-value
-/// accessor methods (`position()`, `log_prime()`) to avoid creating unaligned
-/// references.
+/// `BucketUpdate` is a 4-byte aligned `u32`, so reads are naturally aligned
+/// single-instruction loads.
 #[inline(always)]
 pub fn apply_bucket_updates(sieve: &mut [u8], updates: &[BucketUpdate]) {
     for u in updates {
-        // Copy out of the packed struct to avoid unaligned access.
-        let upd = *u;
-        let pos = upd.position() as usize;
-        let logp = upd.log_prime();
+        let pos = u.position() as usize;
+        let logp = u.log_prime();
         debug_assert!(pos < sieve.len());
         unsafe {
             let cell = sieve.get_unchecked_mut(pos);
@@ -207,9 +202,9 @@ mod tests {
     fn test_apply_bucket_updates() {
         let mut sieve = vec![100u8; 10];
         let updates = vec![
-            BucketUpdate { pos: 2, logp: 10 },
-            BucketUpdate { pos: 5, logp: 20 },
-            BucketUpdate { pos: 2, logp: 15 }, // same position, accumulates
+            BucketUpdate::new(2, 10),
+            BucketUpdate::new(5, 20),
+            BucketUpdate::new(2, 15), // same position, accumulates
         ];
         apply_bucket_updates(&mut sieve, &updates);
         assert_eq!(sieve[2], 75); // 100 - 10 - 15
@@ -220,7 +215,7 @@ mod tests {
     #[test]
     fn test_apply_bucket_updates_saturates() {
         let mut sieve = vec![5u8; 10];
-        let updates = vec![BucketUpdate { pos: 3, logp: 20 }];
+        let updates = vec![BucketUpdate::new(3, 20)];
         apply_bucket_updates(&mut sieve, &updates);
         assert_eq!(sieve[3], 0); // saturates at 0, doesn't wrap
     }
@@ -273,10 +268,10 @@ mod tests {
         let mut rat = vec![50u8; 10];
         let mut alg = vec![50u8; 10];
         let rat_updates = vec![
-            BucketUpdate { pos: 3, logp: 45 }, // rat[3] = 50 - 45 = 5
+            BucketUpdate::new(3, 45), // rat[3] = 50 - 45 = 5
         ];
         let alg_updates = vec![
-            BucketUpdate { pos: 3, logp: 48 }, // alg[3] = 50 - 48 = 2
+            BucketUpdate::new(3, 48), // alg[3] = 50 - 48 = 2
         ];
         let survivors =
             process_bucket_region(&mut rat, &mut alg, &rat_updates, &alg_updates, 10, 10);

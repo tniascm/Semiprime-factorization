@@ -1454,10 +1454,10 @@ fn scatter_bucket_updates_for_prime(
                     let global_pos = row_base + i_pos;
                     buckets.push(
                         global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (global_pos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
             }
@@ -1483,10 +1483,10 @@ fn scatter_bucket_updates_for_prime(
                 if (global_pos & even_mask) != 0 {
                     buckets.push(
                         global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (global_pos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
             }
@@ -1503,10 +1503,10 @@ fn scatter_bucket_updates_for_prime(
                 if (global_pos & even_mask) != 0 {
                     buckets.push(
                         global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (global_pos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
                 i_pos += p_usize;
@@ -1542,10 +1542,10 @@ fn scatter_row_by_row_with_rprime(
                 if (global_pos & even_mask) != 0 {
                     buckets.push(
                         global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (global_pos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
             }
@@ -1562,10 +1562,10 @@ fn scatter_row_by_row_with_rprime(
                 if (global_pos & even_mask) != 0 {
                     buckets.push(
                         global_pos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (global_pos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (global_pos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
                 i_pos += p_usize;
@@ -1783,10 +1783,10 @@ fn scatter_bucket_updates_fk(
                 let gpos = x as usize;
                 buckets.push(
                     gpos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                    BucketUpdate::new(
+                        (gpos & (BUCKET_REGION - 1)) as u16,
                         logp,
-                    },
+                    ),
                 );
             }
 
@@ -1796,10 +1796,10 @@ fn scatter_bucket_updates_fk(
                     let gpos = mid_x as usize;
                     buckets.push(
                         gpos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (gpos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
             }
@@ -1820,10 +1820,10 @@ fn scatter_bucket_updates_fk(
                 let gpos = x as usize;
                 buckets.push(
                     gpos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                    BucketUpdate::new(
+                        (gpos & (BUCKET_REGION - 1)) as u16,
                         logp,
-                    },
+                    ),
                 );
             }
 
@@ -1833,10 +1833,10 @@ fn scatter_bucket_updates_fk(
                     let gpos = mid_x as usize;
                     buckets.push(
                         gpos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (gpos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
             }
@@ -2215,10 +2215,10 @@ fn scatter_bucket_updates_fk_batch(
                     let gpos = x as usize;
                     buckets.push(
                         gpos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (gpos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
 
@@ -2232,10 +2232,10 @@ fn scatter_bucket_updates_fk_batch(
                         let gpos = mid_x as usize;
                         buckets.push(
                             gpos >> LOG_BUCKET_REGION,
-                            BucketUpdate {
-                                pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                            BucketUpdate::new(
+                                (gpos & (BUCKET_REGION - 1)) as u16,
                                 logp,
-                            },
+                            ),
                         );
                     }
                 }
@@ -2260,10 +2260,10 @@ fn scatter_bucket_updates_fk_batch(
                     let gpos = x as usize;
                     buckets.push(
                         gpos >> LOG_BUCKET_REGION,
-                        BucketUpdate {
-                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        BucketUpdate::new(
+                            (gpos & (BUCKET_REGION - 1)) as u16,
                             logp,
-                        },
+                        ),
                     );
                 }
 
@@ -2273,10 +2273,10 @@ fn scatter_bucket_updates_fk_batch(
                         let gpos = mid_x as usize;
                         buckets.push(
                             gpos >> LOG_BUCKET_REGION,
-                            BucketUpdate {
-                                pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                            BucketUpdate::new(
+                                (gpos & (BUCKET_REGION - 1)) as u16,
                                 logp,
-                            },
+                            ),
                         );
                     }
                 }

@@ -2,7 +2,7 @@
 //!
 //! The sieve region is split into "bucket regions" of size 2^LOG_BUCKET_REGION.
 //! For each large FB prime, instead of striding through the sieve array (cache-hostile),
-//! we push compact 3-byte updates into the target bucket. Then for each bucket region
+//! we push compact 4-byte updates into the target bucket. Then for each bucket region
 //! (which fits in L1 cache), we gather all updates and apply them locally.
 
 /// Log2 of bucket region size. 16 = 64KB for x86, 17 = 128KB for Apple Silicon.
@@ -10,26 +10,49 @@ pub const LOG_BUCKET_REGION: u32 = 16;
 pub const BUCKET_REGION: usize = 1 << LOG_BUCKET_REGION;
 
 /// A compact sieve update: position within bucket region + log contribution.
+///
+/// Layout: bits 0..15 = pos (u16), bits 16..23 = logp (u8), bits 24..31 = unused.
+/// 4-byte aligned for single-instruction store on aarch64 (`str w, [base, idx, lsl #2]`)
+/// instead of the previous 3-byte packed layout that required multiply-by-3 address
+/// computation and separate strh + strb stores.
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct BucketUpdate {
-    /// Position within the bucket region (0..BUCKET_REGION-1).
-    pub pos: u16,
-    /// Quantized log2(p) to subtract from sieve array.
-    pub logp: u8,
+    packed: u32,
 }
 
 impl BucketUpdate {
-    /// Read the position field safely from the packed struct (returns a copy).
+    /// Construct a BucketUpdate from position and log-prime.
     #[inline(always)]
-    pub fn position(self) -> u16 {
-        self.pos
+    pub fn new(pos: u16, logp: u8) -> Self {
+        Self {
+            packed: pos as u32 | ((logp as u32) << 16),
+        }
     }
 
-    /// Read the log-prime field safely from the packed struct (returns a copy).
+    /// Read the position field (bits 0..15).
+    #[inline(always)]
+    pub fn position(self) -> u16 {
+        self.packed as u16
+    }
+
+    /// Read the log-prime field (bits 16..23).
     #[inline(always)]
     pub fn log_prime(self) -> u8 {
-        self.logp
+        (self.packed >> 16) as u8
+    }
+
+    /// Access the raw packed u32 value.
+    #[inline(always)]
+    pub fn packed_raw(self) -> u32 {
+        self.packed
+    }
+
+    /// Construct directly from a pre-packed u32.
+    /// Caller must ensure bits 0..15 = pos, bits 16..23 = logp.
+    #[inline(always)]
+    pub fn from_packed(packed: u32) -> Self {
+        Self { packed }
     }
 }
 
@@ -66,7 +89,7 @@ impl BucketArray {
         assert!(n_buckets > 0, "BucketArray: n_buckets must be > 0");
 
         let total = n_buckets * updates_per_bucket;
-        let data = vec![BucketUpdate { pos: 0, logp: 0 }; total];
+        let data = vec![BucketUpdate::new(0, 0); total];
 
         let mut starts = Vec::with_capacity(n_buckets);
         let mut ends = Vec::with_capacity(n_buckets);
@@ -163,9 +186,9 @@ mod tests {
     #[test]
     fn test_bucket_push_and_read() {
         let mut ba = BucketArray::new(4, 100);
-        ba.push(0, BucketUpdate { pos: 10, logp: 5 });
-        ba.push(0, BucketUpdate { pos: 20, logp: 3 });
-        ba.push(2, BucketUpdate { pos: 15, logp: 7 });
+        ba.push(0, BucketUpdate::new(10, 5));
+        ba.push(0, BucketUpdate::new(20, 3));
+        ba.push(2, BucketUpdate::new(15, 7));
 
         let b0 = ba.updates_for_bucket(0);
         assert_eq!(b0.len(), 2);
@@ -185,7 +208,7 @@ mod tests {
     #[test]
     fn test_bucket_clear() {
         let mut ba = BucketArray::new(4, 100);
-        ba.push(0, BucketUpdate { pos: 10, logp: 5 });
+        ba.push(0, BucketUpdate::new(10, 5));
         ba.clear();
         assert_eq!(ba.updates_for_bucket(0).len(), 0);
         assert_eq!(ba.total_updates(), 0);
@@ -195,7 +218,7 @@ mod tests {
     fn test_bucket_many_updates() {
         let mut ba = BucketArray::new(8, 1000);
         for i in 0..1000u16 {
-            ba.push((i % 8) as usize, BucketUpdate { pos: i, logp: 5 });
+            ba.push((i % 8) as usize, BucketUpdate::new(i, 5));
         }
         assert_eq!(ba.total_updates(), 1000);
         for b in 0..8 {
@@ -211,15 +234,16 @@ mod tests {
 
     #[test]
     fn test_bucket_update_size() {
-        // BucketUpdate must be exactly 3 bytes (compact for cache efficiency).
-        assert_eq!(std::mem::size_of::<BucketUpdate>(), 3);
+        // BucketUpdate must be exactly 4 bytes (aligned u32 for single-instruction store).
+        assert_eq!(std::mem::size_of::<BucketUpdate>(), 4);
+        assert_eq!(std::mem::align_of::<BucketUpdate>(), 4);
     }
 
     #[test]
     fn test_bucket_reuse_after_clear() {
         let mut ba = BucketArray::new(2, 50);
         for i in 0..50u16 {
-            ba.push(0, BucketUpdate { pos: i, logp: 1 });
+            ba.push(0, BucketUpdate::new(i, 1));
         }
         assert_eq!(ba.total_updates(), 50);
 
@@ -228,7 +252,7 @@ mod tests {
 
         // Re-fill after clear should work identically.
         for i in 0..30u16 {
-            ba.push(1, BucketUpdate { pos: i, logp: 2 });
+            ba.push(1, BucketUpdate::new(i, 2));
         }
         assert_eq!(ba.total_updates(), 30);
         assert_eq!(ba.updates_for_bucket(0).len(), 0);
@@ -241,7 +265,7 @@ mod tests {
         let mut ba = BucketArray::new(1, 100);
         let positions: Vec<u16> = vec![42, 7, 100, 3, 65535];
         for &p in &positions {
-            ba.push(0, BucketUpdate { pos: p, logp: 10 });
+            ba.push(0, BucketUpdate::new(p, 10));
         }
         let updates = ba.updates_for_bucket(0);
         for (i, &p) in positions.iter().enumerate() {
@@ -260,9 +284,9 @@ mod tests {
     #[should_panic]
     fn test_bucket_overflow_panics() {
         let mut ba = BucketArray::new(1, 2);
-        ba.push(0, BucketUpdate { pos: 0, logp: 1 });
-        ba.push(0, BucketUpdate { pos: 1, logp: 1 });
+        ba.push(0, BucketUpdate::new(0, 1));
+        ba.push(0, BucketUpdate::new(1, 1));
         // Third push should panic via debug_assert: capacity is 2.
-        ba.push(0, BucketUpdate { pos: 2, logp: 1 });
+        ba.push(0, BucketUpdate::new(2, 1));
     }
 }
