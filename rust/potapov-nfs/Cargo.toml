@@ -1,5 +1,5 @@
 [package]
-name = "rust-nfs"
+name = "potapov-nfs"
 version = "0.1.0"
 edition = "2021"
 description = "Production NFS implementation — bucket sieve + special-q lattice sieve"
