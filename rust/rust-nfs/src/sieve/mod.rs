@@ -178,7 +178,7 @@ pub fn sieve_specialq(
     let mut total_region_scan_ns = 0u64;
     let mut total_cofact_ns = 0u64;
     let mut total_norm_ns = 0u64;
-    let mut total_small_sieve_ns = 0u64;
+    let mut _total_small_sieve_ns = 0u64;
     let mut total_bucket_apply_ns = 0u64;
     let mut total_small_precomp_ns = 0u64;
     let mut total_fk_scatter_alg_ns = 0u64;
@@ -403,7 +403,6 @@ pub fn sieve_specialq(
                     // 4. Process each bucket region (sequentially)
                     let region_start_time = std::time::Instant::now();
                     let mut norm_ns: u64 = 0;
-                    let mut small_sieve_ns: u64 = 0;
                     let mut bucket_apply_ns: u64 = 0;
                     let rat_bound = ((params.sieve_mfb0 as f64) * scale).min(255.0) as u8;
                     let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
@@ -434,6 +433,7 @@ pub fn sieve_specialq(
                         // Phase 1: Norm init + SIMD small primes (row-major).
                         // SIMD entries (p<=7) and projective entries are processed
                         // per-row, interleaved with norm initialization.
+                        let t_row_phase = std::time::Instant::now();
                         for j_row in first_j..=last_j {
                             let row_start_global = j_row * sieve_width;
                             let row_end_global = row_start_global + sieve_width;
@@ -449,7 +449,6 @@ pub fn sieve_specialq(
                             let overlap_len = local_end - local_start;
                             let i_offset_in_row = overlap_start - row_start_global;
 
-                            let t_norm = std::time::Instant::now();
                             let slope_rat = g1 * (qlat.a0 as f64) + g0 * (qlat.b0 as f64);
                             let intercept_rat =
                                 (g1 * (qlat.a1 as f64) + g0 * (qlat.b1 as f64)) * (j_row as f64);
@@ -504,10 +503,7 @@ pub fn sieve_specialq(
                                 }
                             }
 
-                            norm_ns += t_norm.elapsed().as_nanos() as u64;
-
                             // SIMD primes + projective entries (row-major).
-                            let t_ss = std::time::Instant::now();
                             let region_offset = i_offset_in_row;
                             small_sieve_simd_only(
                                 &mut rat_sieve[local_start..local_end],
@@ -525,14 +521,15 @@ pub fn sieve_specialq(
                                 overlap_len,
                                 sieve_width,
                             );
-                            small_sieve_ns += t_ss.elapsed().as_nanos() as u64;
                         }
+                        norm_ns += t_row_phase.elapsed().as_nanos() as u64;
 
-                        // Phase 2: Scalar small sieve (prime-major).
+                        // Phase 2: Scalar small sieve (prime-major) + bucket apply + scan.
+                        // Timed as a single per-bucket measurement to avoid Instant::now() overhead.
+                        let t_bucket_phase = std::time::Instant::now();
                         // Each scalar prime processes ALL rows in the region consecutively,
                         // keeping (p, logp, root_i) in registers and eliminating per-row
                         // entry reload overhead.
-                        let t_ss2 = std::time::Instant::now();
                         small_sieve_prime_major(
                             &mut rat_sieve[..region_len],
                             &small_rat,
@@ -553,9 +550,7 @@ pub fn sieve_specialq(
                             prev_j_alg_pm,
                         );
                         prev_j_alg_pm = Some(last_j as i32);
-                        small_sieve_ns += t_ss2.elapsed().as_nanos() as u64;
 
-                        let t_ba = std::time::Instant::now();
                         let rat_updates = rat_buckets.updates_for_bucket(bucket_idx);
                         let alg_updates = alg_buckets.updates_for_bucket(bucket_idx);
                         apply_bucket_updates(&mut rat_sieve[..region_len], rat_updates);
@@ -597,7 +592,7 @@ pub fn sieve_specialq(
 
                             survivors_this_sq.push((a as i64, b as u64));
                         }
-                        bucket_apply_ns += t_ba.elapsed().as_nanos() as u64;
+                        bucket_apply_ns += t_bucket_phase.elapsed().as_nanos() as u64;
                     }
 
                     let region_scan_elapsed = region_start_time.elapsed().as_nanos() as u64;
@@ -695,7 +690,7 @@ pub fn sieve_specialq(
                         region_scan_elapsed,
                         cofact_elapsed,
                         norm_ns,
-                        small_sieve_ns,
+                        0u64, // small_sieve_ns: folded into norm_ns and bucket_apply_ns
                         bucket_apply_ns,
                         small_precomp_ns,
                         fk_scatter_alg_ns,
@@ -705,14 +700,13 @@ pub fn sieve_specialq(
             )
             .collect();
 
-        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, ss_ns, ba_ns, sp_ns, fk_alg_ns, fk_rat_ns) in chunk_results {
+        for (rels, survivors, bucket_setup_ns, region_scan_ns, cofact_ns, n_ns, _ss_ns, ba_ns, sp_ns, fk_alg_ns, fk_rat_ns) in chunk_results {
             all_relations.extend(rels);
             total_survivors += survivors;
             total_bucket_setup_ns += bucket_setup_ns;
             total_region_scan_ns += region_scan_ns;
             total_cofact_ns += cofact_ns;
             total_norm_ns += n_ns;
-            total_small_sieve_ns += ss_ns;
             total_bucket_apply_ns += ba_ns;
             total_small_precomp_ns += sp_ns;
             total_fk_scatter_alg_ns += fk_alg_ns;
@@ -737,9 +731,8 @@ pub fn sieve_specialq(
         .unwrap_or(false);
     if sieve_profile {
         eprintln!(
-            "  sieve-profile: norm={:.0}ms small_sieve={:.0}ms bucket_apply+scan={:.0}ms (of region_scan={:.0}ms)",
+            "  sieve-profile: norm+simd_ss={:.0}ms pm_ss+bucket+scan={:.0}ms (of region_scan={:.0}ms)",
             total_norm_ns as f64 / 1_000_000.0,
-            total_small_sieve_ns as f64 / 1_000_000.0,
             total_bucket_apply_ns as f64 / 1_000_000.0,
             total_region_scan_ns as f64 / 1_000_000.0,
         );

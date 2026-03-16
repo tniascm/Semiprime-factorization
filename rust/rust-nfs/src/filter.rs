@@ -24,14 +24,12 @@ fn alg_lp_ideal_key(a: i64, b: u64, p: u64) -> Option<(u64, u64)> {
 
 fn relation_lp_keys(rel: &Relation) -> Vec<LpKey> {
     if !rel.lp_keys.is_empty() {
-        let mut parity = HashSet::new();
-        for &k in &rel.lp_keys {
-            if !parity.remove(&k) {
-                parity.insert(k);
-            }
-        }
-        let mut keys: Vec<LpKey> = parity.into_iter().collect();
+        // lp_keys is already GF(2)-canonical from the sieve: each key appears
+        // with odd multiplicity iff it is a true large-prime ideal. Sort+dedup
+        // suffices; no HashSet parity extraction needed.
+        let mut keys = rel.lp_keys.clone();
         keys.sort_unstable();
+        keys.dedup();
         return keys;
     }
 
