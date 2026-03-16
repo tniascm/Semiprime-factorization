@@ -1981,13 +1981,11 @@ fn scatter_bucket_updates_fk_batch(
             continue;
         }
 
-        // Pre-filter: primes below sieve_width use row-by-row (original path).
-        if p < sieve_width as u64 {
-            scatter_bucket_updates_for_prime(
-                p, root, logp, qlat, log_i, buckets, sieve_width, max_j, half_i,
-            );
-            continue;
-        }
+        // Note: Previously primes below sieve_width were routed to the row-by-row
+        // scatter_for_prime path. With the FK walk, ALL primes >= bucket_thresh can
+        // be processed via partial-GCD + FK walk. For p < half_i, the partial-GCD
+        // trivially succeeds (|r'| < p < half_i). This enables larger sieve areas
+        // (I=11+) without quadratic scaling of the row-by-row scatter cost.
 
         // Root transform: use precomputed r_prime if available, otherwise compute.
         let r_prime = if let Some(rp_slice) = precomputed_rprimes {
