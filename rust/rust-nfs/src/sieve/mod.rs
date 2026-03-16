@@ -1719,8 +1719,6 @@ fn scatter_bucket_updates_fk(
         (inc_warp, u_warp, inc_step, u_step)
     };
 
-    let inc_diff = inc_b - inc_a;
-    let u_diff = u_b - u_a;
     let inc_sum = inc_a + inc_b;
 
     let total_area = (sieve_width * max_j) as i64;
@@ -1747,32 +1745,11 @@ fn scatter_bucket_updates_fk(
     let b_thresh = if u_b < 0 { -half_width - u_b } else { half_width - u_b };
     let u_a_neg = u_a < 0;
 
-    while x < total_area {
-        // Emit bucket update if position is coprime.
-        if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-            let gpos = x as usize;
-            buckets.push(
-                gpos >> LOG_BUCKET_REGION,
-                BucketUpdate {
-                    pos: (gpos & (BUCKET_REGION - 1)) as u16,
-                    logp,
-                },
-            );
-        }
-
-        // Single-comparison a_ok/b_ok: opposite-sign u vectors mean only
-        // one side of the bounds can be violated per vector.
-        let (a_ok, b_ok) = if u_a_neg {
-            (ic >= a_thresh, ic < b_thresh)
-        } else {
-            (ic < a_thresh, ic >= b_thresh)
-        };
-
-        if a_ok && b_ok {
-            x += inc_a;
-            ic += u_a;
-            // ic guaranteed in bounds by a_ok; only check x bound and coprimality.
-            if x < total_area && (x & even_mask) != 0 {
+    // Branchless step selection with hoisted u_a_neg branch.
+    // See scatter_bucket_updates_fk_batch Phase 2 for detailed rationale.
+    if u_a_neg {
+        while x < total_area {
+            if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
                 let gpos = x as usize;
                 buckets.push(
                     gpos >> LOG_BUCKET_REGION,
@@ -1782,17 +1759,67 @@ fn scatter_bucket_updates_fk(
                     },
                 );
             }
-            x += inc_diff;
-            ic += u_diff;
-        } else if a_ok {
-            x += inc_a;
-            ic += u_a;
-        } else if b_ok {
-            x += inc_b;
-            ic += u_b;
-        } else {
-            x += inc_sum;
-            ic += u_sum;
+
+            if ic >= a_thresh && ic < b_thresh {
+                let mid_x = x + inc_a;
+                if mid_x < total_area && (mid_x & even_mask) != 0 {
+                    let gpos = mid_x as usize;
+                    buckets.push(
+                        gpos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
+            }
+
+            let (s_inc, s_u) = if ic < b_thresh {
+                (inc_b, u_b)
+            } else if ic >= a_thresh {
+                (inc_a, u_a)
+            } else {
+                (inc_sum, u_sum)
+            };
+            x += s_inc;
+            ic += s_u;
+        }
+    } else {
+        while x < total_area {
+            if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+                let gpos = x as usize;
+                buckets.push(
+                    gpos >> LOG_BUCKET_REGION,
+                    BucketUpdate {
+                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                        logp,
+                    },
+                );
+            }
+
+            if ic < a_thresh && ic >= b_thresh {
+                let mid_x = x + inc_a;
+                if mid_x < total_area && (mid_x & even_mask) != 0 {
+                    let gpos = mid_x as usize;
+                    buckets.push(
+                        gpos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
+            }
+
+            let (s_inc, s_u) = if ic >= b_thresh {
+                (inc_b, u_b)
+            } else if ic < a_thresh {
+                (inc_a, u_a)
+            } else {
+                (inc_sum, u_sum)
+            };
+            x += s_inc;
+            ic += s_u;
         }
     }
 }
@@ -1934,9 +1961,9 @@ fn batch_precompute_rprimes(
 /// Compact FK walk parameters for batch processing (56 bytes, cache-friendly).
 ///
 /// Pre-computed from root transform + partial-GCD; consumed by the FK walk loop.
-/// Derived fields (inc_diff, inc_sum, u_diff, u_sum, a_thresh, b_thresh) are
-/// computed on-the-fly in Phase 2 to reduce struct size from 104 → 56 bytes,
-/// cutting walk_buf memory from 468KB to 255KB per side per SQ.
+/// Derived fields (inc_sum, u_sum, a_thresh, b_thresh) are computed on-the-fly
+/// in Phase 2 to reduce struct size from 104 → 56 bytes, cutting walk_buf
+/// memory from 468KB to 255KB per side per SQ.
 struct FkWalkParams {
     inc_a: i64,
     inc_b: i64,
@@ -2128,15 +2155,21 @@ fn scatter_bucket_updates_fk_batch(
     // Derived fields computed on-the-fly to keep walk_buf small (56 vs 104 bytes/entry).
     // walk_buf.len() = number of entries that passed all FK setup checks.
     // entries.len() - walk_buf.len() = entries that used fallback or small prime paths.
+    //
+    // The inner loop uses branchless step selection: instead of a 4-way if/else chain
+    // to pick (inc_a, inc_b, inc_sum), we use nested conditionals on direct comparisons
+    // that compile to CSEL instructions on aarch64. The double-push case (a_ok && b_ok)
+    // is handled as a separate predictable branch before the step.
+    //
+    // Two code paths (u_a_neg true/false) hoist the comparison-direction branch out of
+    // the inner loop entirely.
     for params in walk_buf.iter() {
         let logp = params.logp;
         let inc_a = params.inc_a;
         let inc_b = params.inc_b;
-        let inc_diff = inc_b - inc_a;
         let inc_sum = inc_a + inc_b;
         let u_a = params.u_a;
         let u_b = params.u_b;
-        let u_diff = u_b - u_a;
         let u_sum = u_a + u_b;
         let a_thresh = if u_a < 0 { -half_width - u_a } else { half_width - u_a };
         let b_thresh = if u_b < 0 { -half_width - u_b } else { half_width - u_b };
@@ -2144,28 +2177,11 @@ fn scatter_bucket_updates_fk_batch(
         let mut x = params.start_x;
         let mut ic = params.start_ic;
 
-        while x < total_area {
-            if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
-                let gpos = x as usize;
-                buckets.push(
-                    gpos >> LOG_BUCKET_REGION,
-                    BucketUpdate {
-                        pos: (gpos & (BUCKET_REGION - 1)) as u16,
-                        logp,
-                    },
-                );
-            }
-
-            let (a_ok, b_ok) = if params.u_a_neg {
-                (ic >= a_thresh, ic < b_thresh)
-            } else {
-                (ic < a_thresh, ic >= b_thresh)
-            };
-
-            if a_ok && b_ok {
-                x += inc_a;
-                ic += u_a;
-                if x < total_area && (x & even_mask) != 0 {
+        if params.u_a_neg {
+            // u_a < 0, u_b > 0: a_ok = (ic >= a_thresh), b_ok = (ic < b_thresh)
+            while x < total_area {
+                // Emit at current position (coprime check kept -- filters ~25% of pushes)
+                if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
                     let gpos = x as usize;
                     buckets.push(
                         gpos >> LOG_BUCKET_REGION,
@@ -2175,17 +2191,75 @@ fn scatter_bucket_updates_fk_batch(
                         },
                     );
                 }
-                x += inc_diff;
-                ic += u_diff;
-            } else if a_ok {
-                x += inc_a;
-                ic += u_a;
-            } else if b_ok {
-                x += inc_b;
-                ic += u_b;
-            } else {
-                x += inc_sum;
-                ic += u_sum;
+
+                // Double-push: when both a_ok and b_ok, the walk visits an intermediate
+                // position at x + inc_a before stepping to x + inc_b. Emit at that
+                // intermediate. This branch is highly predictable (same outcome for
+                // consecutive iterations of a given prime's walk).
+                if ic >= a_thresh && ic < b_thresh {
+                    let mid_x = x + inc_a;
+                    if mid_x < total_area && (mid_x & even_mask) != 0 {
+                        let gpos = mid_x as usize;
+                        buckets.push(
+                            gpos >> LOG_BUCKET_REGION,
+                            BucketUpdate {
+                                pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                                logp,
+                            },
+                        );
+                    }
+                }
+
+                // Branchless step selection: b_ok ? inc_b : (a_ok ? inc_a : inc_sum)
+                // When both a_ok and b_ok: net step is inc_b (= inc_a + inc_diff).
+                // Compiles to: cmp + csel + cmp + csel (4 instructions, no branches).
+                let (s_inc, s_u) = if ic < b_thresh {
+                    (inc_b, u_b)
+                } else if ic >= a_thresh {
+                    (inc_a, u_a)
+                } else {
+                    (inc_sum, u_sum)
+                };
+                x += s_inc;
+                ic += s_u;
+            }
+        } else {
+            // u_a > 0, u_b < 0: a_ok = (ic < a_thresh), b_ok = (ic >= b_thresh)
+            while x < total_area {
+                if ic >= -half_width && ic < half_width && (x & even_mask) != 0 {
+                    let gpos = x as usize;
+                    buckets.push(
+                        gpos >> LOG_BUCKET_REGION,
+                        BucketUpdate {
+                            pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                            logp,
+                        },
+                    );
+                }
+
+                if ic < a_thresh && ic >= b_thresh {
+                    let mid_x = x + inc_a;
+                    if mid_x < total_area && (mid_x & even_mask) != 0 {
+                        let gpos = mid_x as usize;
+                        buckets.push(
+                            gpos >> LOG_BUCKET_REGION,
+                            BucketUpdate {
+                                pos: (gpos & (BUCKET_REGION - 1)) as u16,
+                                logp,
+                            },
+                        );
+                    }
+                }
+
+                let (s_inc, s_u) = if ic >= b_thresh {
+                    (inc_b, u_b)
+                } else if ic < a_thresh {
+                    (inc_a, u_a)
+                } else {
+                    (inc_sum, u_sum)
+                };
+                x += s_inc;
+                ic += s_u;
             }
         }
     }
