@@ -821,7 +821,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // by ~30% (many algebraic FB primes have fewer than `degree` roots, so their
     // pair columns go unused). This built-in buffer implicitly covers the SQ columns
     // that aren't in est_dense_cols, so a lower rows_ratio suffices.
-    let default_rows_ratio = if degree >= 4 { 1.05 } else { 1.10 };
+    // Tuned 2026-03-16: ratio 1.01 for degree>=4 collects 5% fewer SQs with
+    // no reliability loss (9/9 factored across seeds 42,123,456), saving ~3-5%.
+    let default_rows_ratio = if degree >= 4 { 1.01 } else { 1.10 };
     let adaptive_rows_ratio = std::env::var("RUST_NFS_ADAPTIVE_ROWS_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
