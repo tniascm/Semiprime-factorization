@@ -602,56 +602,79 @@ pub fn sieve_specialq(
                     // drain to iterate by value while clearing out the vector for next iteration
                     for (a, b) in survivors_this_sq.drain(..) {
                         let rat_norm = compute_rat_norm_g(a, b, g0_param, g1_param);
-                        let Some(alg_norm) = compute_alg_norm(a, b, f_coeffs) else {
-                            continue;
+                        if rat_norm == 0 { continue; }
+
+                        // Algebraic norm: i128 fast path with BigInt overflow fallback
+                        let (alg_norm_reduced, alg_big_norm) = match compute_alg_norm(a, b, f_coeffs) {
+                            Some(alg_norm) => {
+                                if alg_norm == 0 { continue; }
+                                let q128 = q as u128;
+                                if alg_norm % q128 != 0 { continue; }
+                                (Some(alg_norm / q128), None)
+                            }
+                            None => {
+                                // BigInt fallback for i128 overflow (c60+)
+                                let mut big = compute_alg_norm_big(a, b, f_coeffs);
+                                if big == 0u32 { continue; }
+                                let q_int = rug::Integer::from(q);
+                                if !big.is_divisible(&q_int) { continue; }
+                                big /= &q_int;
+                                (None, Some(big))
+                            }
                         };
 
-                        if rat_norm == 0 || alg_norm == 0 {
-                            continue;
-                        }
+                        // Rational cofactoring with u128 dispatch
+                        let rat_result = if rat_norm <= u64::MAX as u128 {
+                            cofactor::cofactorize_with_config(
+                                rat_norm as u64,
+                                &rat_fb.trial_divisors,
+                                params.lpb0,
+                                params.mfb0,
+                                params.lim0,
+                                &cofact_config_rat,
+                            )
+                        } else {
+                            cofactor::cofactorize_u128_with_config(
+                                rat_norm,
+                                &rat_fb.trial_divisors,
+                                params.lpb0,
+                                params.mfb0,
+                                params.lim0,
+                                &cofact_config_rat,
+                            )
+                        };
 
-                        let mut alg_norm_reduced = alg_norm;
-                        let q128 = q as u128;
-                        if alg_norm_reduced % q128 != 0 {
-                            continue; // false survivor
-                        }
-                        alg_norm_reduced /= q128;
-
-                        let rat_result = cofactor::cofactorize_with_config(
-                            rat_norm,
-                            &rat_fb.trial_divisors,
-                            params.lpb0,
-                            params.mfb0,
-                            params.lim0,
-                            &cofact_config_rat,
-                        );
-
-                        // Early exit: skip expensive u128 algebraic cofactoring
+                        // Early exit: skip expensive algebraic cofactoring
                         // when rational side already failed (~91% of survivors).
                         if matches!(rat_result, cofactor::CofactResult::NotSmooth) {
                             continue;
                         }
 
-                        let alg_norm_to_factor = if alg_norm_reduced == 0 {
-                            1
+                        // Algebraic cofactoring: u128 fast path or BigInt fallback
+                        let alg_result = if let Some(alg_reduced) = alg_norm_reduced {
+                            let n = if alg_reduced == 0 { 1 } else { alg_reduced };
+                            if n <= u64::MAX as u128 {
+                                cofactor::cofactorize_with_config(
+                                    n as u64,
+                                    &alg_fb.trial_divisors,
+                                    params.lpb1,
+                                    params.mfb1,
+                                    params.lim1,
+                                    &cofact_config_alg,
+                                )
+                            } else {
+                                cofactor::cofactorize_u128_with_config(
+                                    n,
+                                    &alg_fb.trial_divisors,
+                                    params.lpb1,
+                                    params.mfb1,
+                                    params.lim1,
+                                    &cofact_config_alg,
+                                )
+                            }
                         } else {
-                            alg_norm_reduced
-                        };
-                        // Fast path: dispatch to u64 cofactoring when the
-                        // reduced algebraic norm fits, avoiding u128 trial
-                        // division overhead.
-                        let alg_result = if alg_norm_to_factor <= u64::MAX as u128 {
-                            cofactor::cofactorize_with_config(
-                                alg_norm_to_factor as u64,
-                                &alg_fb.trial_divisors,
-                                params.lpb1,
-                                params.mfb1,
-                                params.lim1,
-                                &cofact_config_alg,
-                            )
-                        } else {
-                            cofactor::cofactorize_u128_with_config(
-                                alg_norm_to_factor,
+                            cofactor::cofactorize_big_with_config(
+                                &alg_big_norm.unwrap(),
                                 &alg_fb.trial_divisors,
                                 params.lpb1,
                                 params.mfb1,
@@ -1164,43 +1187,76 @@ pub fn line_sieve_specialq(
                     let cofact_start = std::time::Instant::now();
                     for &(a, b) in survivors_buf.iter() {
                         let rat_norm = compute_rat_norm_g(a, b, g0_param, g1_param);
-                        let Some(alg_norm) = compute_alg_norm(a, b, f_coeffs) else {
-                            continue;
+                        if rat_norm == 0 { continue; }
+
+                        // Algebraic norm: i128 fast path with BigInt overflow fallback
+                        let (alg_norm_reduced, alg_big_norm) = match compute_alg_norm(a, b, f_coeffs) {
+                            Some(alg_norm) => {
+                                if alg_norm == 0 { continue; }
+                                let q128 = q as u128;
+                                if alg_norm % q128 != 0 { continue; }
+                                (Some(alg_norm / q128), None)
+                            }
+                            None => {
+                                let mut big = compute_alg_norm_big(a, b, f_coeffs);
+                                if big == 0u32 { continue; }
+                                let q_int = rug::Integer::from(q);
+                                if !big.is_divisible(&q_int) { continue; }
+                                big /= &q_int;
+                                (None, Some(big))
+                            }
                         };
 
-                        if rat_norm == 0 || alg_norm == 0 { continue; }
-
-                        let mut alg_norm_reduced = alg_norm;
-                        let q128 = q as u128;
-                        if alg_norm_reduced % q128 != 0 { continue; }
-                        alg_norm_reduced /= q128;
-
-                        let rat_result = cofactor::cofactorize_with_config(
-                            rat_norm,
-                            &rat_fb.trial_divisors,
-                            params.lpb0,
-                            params.mfb0,
-                            params.lim0,
-                            &cofact_config_rat,
-                        );
+                        // Rational cofactoring with u128 dispatch
+                        let rat_result = if rat_norm <= u64::MAX as u128 {
+                            cofactor::cofactorize_with_config(
+                                rat_norm as u64,
+                                &rat_fb.trial_divisors,
+                                params.lpb0,
+                                params.mfb0,
+                                params.lim0,
+                                &cofact_config_rat,
+                            )
+                        } else {
+                            cofactor::cofactorize_u128_with_config(
+                                rat_norm,
+                                &rat_fb.trial_divisors,
+                                params.lpb0,
+                                params.mfb0,
+                                params.lim0,
+                                &cofact_config_rat,
+                            )
+                        };
 
                         if matches!(rat_result, cofactor::CofactResult::NotSmooth) {
                             continue;
                         }
 
-                        let alg_norm_to_factor = if alg_norm_reduced == 0 { 1 } else { alg_norm_reduced };
-                        let alg_result = if alg_norm_to_factor <= u64::MAX as u128 {
-                            cofactor::cofactorize_with_config(
-                                alg_norm_to_factor as u64,
-                                &alg_fb.trial_divisors,
-                                params.lpb1,
-                                params.mfb1,
-                                params.lim1,
-                                &cofact_config_alg,
-                            )
+                        // Algebraic cofactoring: u128 fast path or BigInt fallback
+                        let alg_result = if let Some(alg_reduced) = alg_norm_reduced {
+                            let n = if alg_reduced == 0 { 1 } else { alg_reduced };
+                            if n <= u64::MAX as u128 {
+                                cofactor::cofactorize_with_config(
+                                    n as u64,
+                                    &alg_fb.trial_divisors,
+                                    params.lpb1,
+                                    params.mfb1,
+                                    params.lim1,
+                                    &cofact_config_alg,
+                                )
+                            } else {
+                                cofactor::cofactorize_u128_with_config(
+                                    n,
+                                    &alg_fb.trial_divisors,
+                                    params.lpb1,
+                                    params.mfb1,
+                                    params.lim1,
+                                    &cofact_config_alg,
+                                )
+                            }
                         } else {
-                            cofactor::cofactorize_u128_with_config(
-                                alg_norm_to_factor,
+                            cofactor::cofactorize_big_with_config(
+                                &alg_big_norm.unwrap(),
                                 &alg_fb.trial_divisors,
                                 params.lpb1,
                                 params.mfb1,
@@ -2352,9 +2408,9 @@ fn log_norm_to_u8(abs_f: f64, scale: f64) -> u8 {
 ///
 /// For monic polynomials: g1=1, g0=-m, so this gives |a - m*b|.
 /// For Kleinjung polynomials: g1=ad, g0=-m, so this gives |ad*a - m*b|.
-fn compute_rat_norm_g(a: i64, b: u64, g0: i64, g1: i64) -> u64 {
+fn compute_rat_norm_g(a: i64, b: u64, g0: i64, g1: i64) -> u128 {
     let val = (g1 as i128) * (a as i128) + (g0 as i128) * (b as i128);
-    val.unsigned_abs() as u64
+    val.unsigned_abs()
 }
 
 /// Compute the rational root mod p for the general rational polynomial
@@ -2430,6 +2486,50 @@ fn compute_alg_norm(a: i64, b: u64, f_coeffs: &[i64]) -> Option<u128> {
     }
 
     Some(result.unsigned_abs())
+}
+
+/// Compute |F(a, b)| using rug::Integer for overflow safety.
+///
+/// Fallback for when i128 arithmetic in `compute_alg_norm` overflows (c60+).
+/// Same algorithm as `compute_alg_norm` but with arbitrary-precision integers.
+fn compute_alg_norm_big(a: i64, b: u64, f_coeffs: &[i64]) -> rug::Integer {
+    let d = f_coeffs.len() - 1;
+    let a_big = rug::Integer::from(a);
+    let b_big = rug::Integer::from(b);
+
+    if b == 0 {
+        let mut a_pow = rug::Integer::from(1i32);
+        for _ in 0..d {
+            a_pow *= &a_big;
+        }
+        a_pow *= f_coeffs[d];
+        a_pow.abs_mut();
+        return a_pow;
+    }
+
+    let mut b_pow = rug::Integer::from(1i32);
+    for _ in 0..d {
+        b_pow *= &b_big;
+    }
+
+    let mut result = rug::Integer::new();
+    let mut a_pow = rug::Integer::from(1i32);
+
+    for k in 0..=d {
+        let mut term = rug::Integer::from(f_coeffs[k]);
+        term *= &a_pow;
+        term *= &b_pow;
+        result += &term;
+
+        a_pow *= &a_big;
+        if k < d {
+            // exact division: b_pow goes from b^d to b^0
+            b_pow /= &b_big;
+        }
+    }
+
+    result.abs_mut();
+    result
 }
 
 /// Build a Relation from cofactorization results, or None if not smooth enough.

@@ -137,13 +137,38 @@ impl NfsParams {
         }
     }
 
+    /// Parameters for ~60-digit (171+ bit) semiprimes.
+    ///
+    /// Based on CADO-NFS c60 reference (degree=4, I=10), with higher lpb
+    /// following the same tuning pattern as c45 (our lpb > CADO's to exploit
+    /// 2LP cofactoring).
+    pub fn c60() -> Self {
+        Self {
+            name: "c60",
+            degree: 4,
+            lim0: 80_000,
+            lim1: 115_000,
+            lpb0: 22,
+            lpb1: 23,
+            mfb0: 30,
+            mfb1: 32,
+            sieve_mfb0: 30,
+            sieve_mfb1: 32,
+            log_i: 10,
+            qmin: 62_000,
+            qrange: 2_000,
+            rels_wanted: 80_000,
+        }
+    }
+
     /// Select parameters automatically based on semiprime bit-size.
     pub fn for_bits(bits: u32) -> Self {
         match bits {
             0..=105 => Self::c30(),
             106..=120 => Self::c35(),
             121..=140 => Self::c40(),
-            _ => Self::c45(),
+            141..=170 => Self::c45(),
+            _ => Self::c60(),
         }
     }
 
@@ -199,5 +224,37 @@ mod tests {
 
         let p128 = NfsParams::for_bits(128);
         assert_eq!(p128.name, "c40");
+    }
+
+    #[test]
+    fn test_params_for_bits_c45_range() {
+        let p148 = NfsParams::for_bits(148);
+        assert_eq!(p148.name, "c45");
+
+        let p170 = NfsParams::for_bits(170);
+        assert_eq!(p170.name, "c45");
+    }
+
+    #[test]
+    fn test_params_for_bits_c60() {
+        let p171 = NfsParams::for_bits(171);
+        assert_eq!(p171.name, "c60");
+
+        let p199 = NfsParams::for_bits(199);
+        assert_eq!(p199.name, "c60");
+    }
+
+    #[test]
+    fn test_params_c60() {
+        let p = NfsParams::c60();
+        assert_eq!(p.degree, 4);
+        assert_eq!(p.log_i, 10);
+        assert_eq!(p.lim0, 80_000);
+        assert_eq!(p.lim1, 115_000);
+        assert_eq!(p.lpb0, 22);
+        assert_eq!(p.lpb1, 23);
+        assert_eq!(p.large_prime_bound_0(), 1 << 22);
+        assert_eq!(p.large_prime_bound_1(), 1 << 23);
+        assert_eq!(p.sieve_half_width(), 1024);
     }
 }

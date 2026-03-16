@@ -326,6 +326,69 @@ fn accept_large_prime_candidate(
     }
 }
 
+/// BigInt variant of cofactorization for norms that overflow u128.
+///
+/// Trial divides the `rug::Integer` norm by FB primes, then falls back to
+/// the u64 pipeline (P-1/P+1/ECM) once the cofactor fits.
+pub fn cofactorize_big_with_config(
+    norm: &rug::Integer,
+    divisors: &[TrialDivisor],
+    lpb: u32,
+    mfb: u32,
+    _lim: u64,
+    config: &CofactorConfig,
+) -> CofactResult {
+    let (factors, cofactor_big) = trialdiv::trial_divide_big(norm, divisors);
+
+    if cofactor_big <= 1u32 {
+        return CofactResult::Smooth(factors);
+    }
+
+    let cofactor_bits = cofactor_big.significant_bits();
+
+    // Reject if cofactor exceeds mfb (too large to be valid large primes)
+    if cofactor_bits > mfb {
+        return CofactResult::NotSmooth;
+    }
+
+    let lp_bound = 1u64 << lpb;
+
+    // Cofactor must fit in u64 for P-1/P+1/ECM splitting
+    if cofactor_bits > 64 {
+        return CofactResult::NotSmooth;
+    }
+    let c = cofactor_big.to_u64().unwrap_or(u64::MAX);
+
+    if c <= lp_bound && is_probable_prime(c) {
+        return CofactResult::OneLargePrime(factors, c);
+    }
+
+    if is_probable_prime(c) {
+        return CofactResult::NotSmooth;
+    }
+
+    if let Some(f) = pm1::pm1_with_primes(c, 315, 2205, &config.pm1_primes) {
+        let other = c / f;
+        return check_split(factors, f, other, lp_bound);
+    }
+
+    if let Some(f) = pp1::pp1_with_primes(c, 525, 3255, &config.pp1_primes) {
+        let other = c / f;
+        return check_split(factors, f, other, lp_bound);
+    }
+
+    for (i, &(b1, b2)) in config.ecm_bounds.iter().enumerate() {
+        let sigma = b1.wrapping_add(i as u64).max(6);
+        let primes = &config.ecm_primes[i];
+        if let Some(f) = ecm::ecm_one_curve_with_primes(c, b1, b2, sigma, primes) {
+            let other = c / f;
+            return check_split(factors, f, other, lp_bound);
+        }
+    }
+
+    CofactResult::NotSmooth
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================

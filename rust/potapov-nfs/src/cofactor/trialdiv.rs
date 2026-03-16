@@ -92,6 +92,36 @@ pub fn trial_divide_u128(mut n: u128, divisors: &[TrialDivisor]) -> (Vec<(u32, u
     (factors, n)
 }
 
+/// Trial divide a `rug::Integer` value by u64 factor-base divisors.
+///
+/// Used for algebraic norms that overflow u128 (c60+ semiprimes).
+/// Returns `(factored_exponents, cofactor)`.
+pub fn trial_divide_big(
+    n: &rug::Integer,
+    divisors: &[TrialDivisor],
+) -> (Vec<(u32, u8)>, rug::Integer) {
+    let mut n = n.clone();
+    let mut factors = Vec::new();
+
+    for (i, td) in divisors.iter().enumerate() {
+        if n <= 1u32 {
+            break;
+        }
+        let p = td.p;
+        // All FB primes fit u32 (max ~115000)
+        if n.is_divisible_u(p as u32) {
+            let mut exp = 0u8;
+            while n.is_divisible_u(p as u32) {
+                n /= p as u32;
+                exp += 1;
+            }
+            factors.push((i as u32, exp));
+        }
+    }
+
+    (factors, n)
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
