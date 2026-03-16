@@ -129,13 +129,14 @@ def run_cmd(cmd: list[str], cwd: Path, env: dict[str, str], log_path: Path) -> t
 def parse_cado(stdout: str, stderr: str) -> dict[str, Any]:
     clean = ANSI_RE.sub("", stdout + "\n" + stderr)
     total = re.search(
-        r"Total cpu/elapsed time for entire Complete Factorization\s+[0-9.]+/([0-9.]+)",
+        r"Total cpu/elapsed time for entire Complete Factorization\s+([0-9.]+)/([0-9.]+)",
         clean,
     )
     sieve = re.findall(r"Lattice Sieving: Total time: ([0-9.]+)s", clean)
     factors = re.search(r"Factors:\s+([0-9]+)\s+([0-9]+)", clean)
     return {
-        "elapsed_s": float(total.group(1)) if total else None,
+        "cpu_s": float(total.group(1)) if total else None,
+        "elapsed_s": float(total.group(2)) if total else None,
         "sieve_s": float(sieve[-1]) if sieve else None,
         "success": bool(factors),
         "factors": [factors.group(1), factors.group(2)] if factors else [],
