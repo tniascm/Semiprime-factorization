@@ -956,8 +956,8 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
 /// Try ECM factoring for `n`, with parameters tuned by bit-size.
 ///
 /// B1/B2/max_curves are chosen based on `n.significant_bits()`, but can be
-/// overridden via environment variables `RUST_NFS_ECM_B1`, `RUST_NFS_ECM_B2`,
-/// and `RUST_NFS_ECM_CURVES`.
+/// overridden via environment variables `POTAPOV_NFS_ECM_B1`, `POTAPOV_NFS_ECM_B2`,
+/// and `POTAPOV_NFS_ECM_CURVES`.
 ///
 /// Returns `Some((factor, elapsed_ms))` on success, `None` on failure.
 pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
@@ -981,15 +981,15 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         (1_000_000, 100_000_000, 800)
     };
 
-    let b1: u64 = std::env::var("RUST_NFS_ECM_B1")
+    let b1: u64 = std::env::var("POTAPOV_NFS_ECM_B1")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(default_b1);
-    let b2: u64 = std::env::var("RUST_NFS_ECM_B2")
+    let b2: u64 = std::env::var("POTAPOV_NFS_ECM_B2")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(default_b2);
-    let max_curves: usize = std::env::var("RUST_NFS_ECM_CURVES")
+    let max_curves: usize = std::env::var("POTAPOV_NFS_ECM_CURVES")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(default_curves);

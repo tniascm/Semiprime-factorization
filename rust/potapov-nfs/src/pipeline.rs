@@ -186,7 +186,7 @@ fn effective_max_raw_rels(
 ///   4. Linear algebra (GF(2) Gaussian elimination)
 ///   5. Square root and factor extraction
 pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
-    let variant_start: u32 = std::env::var("RUST_NFS_VARIANT_START")
+    let variant_start: u32 = std::env::var("POTAPOV_NFS_VARIANT_START")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
@@ -194,19 +194,19 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
     // of 30-45s. This makes trying more variants cheap. For degree>=4 (c45+),
     // 15 variants increases success rate on hard numbers at ~1s cost per failed variant.
     let default_max_variants: u32 = if params.degree >= 4 { 15 } else { 5 };
-    let max_variants: u32 = std::env::var("RUST_NFS_MAX_VARIANTS")
+    let max_variants: u32 = std::env::var("POTAPOV_NFS_MAX_VARIANTS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(default_max_variants);
     let mut run_logger = RunLogger::new(n, params, max_variants);
-    let fallback_enabled = std::env::var("RUST_NFS_FALLBACK_RHO")
+    let fallback_enabled = std::env::var("POTAPOV_NFS_FALLBACK_RHO")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
-    let fallback_first = std::env::var("RUST_NFS_FALLBACK_FIRST")
+    let fallback_first = std::env::var("POTAPOV_NFS_FALLBACK_FIRST")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
-    let fallback_max_bits = std::env::var("RUST_NFS_FALLBACK_MAX_BITS")
+    let fallback_max_bits = std::env::var("POTAPOV_NFS_FALLBACK_MAX_BITS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
@@ -215,7 +215,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
     // Only try Pollard-rho first for small numbers (< 80 bits).
     // For c30+ (100+ bits with balanced factors), rho needs O(2^25) steps
     // which exceeds the 200ms time limit, wasting time on every attempt.
-    let rho_first_max_bits = std::env::var("RUST_NFS_RHO_FIRST_MAX_BITS")
+    let rho_first_max_bits = std::env::var("POTAPOV_NFS_RHO_FIRST_MAX_BITS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
@@ -233,11 +233,11 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
     // Try ECM before NFS for numbers up to ~200 bits.
     // For c45 (~148-bit balanced semiprimes), ECM with B1=50000 typically
     // succeeds in 1-4s, which is competitive with NFS and has lower overhead.
-    // Disable with RUST_NFS_ECM=0.
-    let ecm_enabled = std::env::var("RUST_NFS_ECM")
+    // Disable with POTAPOV_NFS_ECM=0.
+    let ecm_enabled = std::env::var("POTAPOV_NFS_ECM")
         .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
         .unwrap_or(true);
-    let ecm_max_bits = std::env::var("RUST_NFS_ECM_MAX_BITS")
+    let ecm_max_bits = std::env::var("POTAPOV_NFS_ECM_MAX_BITS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
@@ -256,18 +256,18 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
 
     // Murphy E-based polyselect sweeps over leading coefficients and picks
     // the polynomial with the best Murphy E-value. Disable with
-    // RUST_NFS_POLYSELECT=basem to fall back to monic base-m selection.
-    let use_murphy = std::env::var("RUST_NFS_POLYSELECT")
+    // POTAPOV_NFS_POLYSELECT=basem to fall back to monic base-m selection.
+    let use_murphy = std::env::var("POTAPOV_NFS_POLYSELECT")
         .map(|v| v != "basem")
         .unwrap_or(true);
 
     let polyselect_start = std::time::Instant::now();
     let variant_polys: Vec<(u32, Option<gnfs::types::PolynomialPair>)> = if use_murphy {
-        let admax: u64 = std::env::var("RUST_NFS_ADMAX")
+        let admax: u64 = std::env::var("POTAPOV_NFS_ADMAX")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(5000);
-        let ad_incr: u64 = std::env::var("RUST_NFS_AD_INCR")
+        let ad_incr: u64 = std::env::var("POTAPOV_NFS_AD_INCR")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(20);
-        let ropteffort: f64 = std::env::var("RUST_NFS_ROPTEFFORT")
+        let ropteffort: f64 = std::env::var("POTAPOV_NFS_ROPTEFFORT")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(1.0);
         let ranked = gnfs::polyselect::select_best_polynomial(
             n, params.degree, admax, ad_incr, ropteffort,
@@ -326,7 +326,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
 
 /// Optional structured logger for reproducible run debugging.
 ///
-/// Enabled by setting `RUST_NFS_LOG_DIR=/path/to/logs`.
+/// Enabled by setting `POTAPOV_NFS_LOG_DIR=/path/to/logs`.
 /// Writes:
 /// - `run_config.json` (N, params, env knobs)
 /// - `variants.jsonl` (one JSON record per polynomial variant)
@@ -338,7 +338,7 @@ struct RunLogger {
 
 impl RunLogger {
     fn new(n: &Integer, params: &NfsParams, max_variants: u32) -> Option<Self> {
-        let base = std::env::var("RUST_NFS_LOG_DIR").ok()?;
+        let base = std::env::var("POTAPOV_NFS_LOG_DIR").ok()?;
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .ok()
@@ -357,71 +357,71 @@ impl RunLogger {
         }
 
         let env_cfg = serde_json::json!({
-            "RUST_NFS_MAX_VARIANTS": std::env::var("RUST_NFS_MAX_VARIANTS").ok(),
-            "RUST_NFS_VARIANT_START": std::env::var("RUST_NFS_VARIANT_START").ok(),
-            "RUST_NFS_DEP_SEED": std::env::var("RUST_NFS_DEP_SEED").ok(),
-            "RUST_NFS_DEP_XOR_K": std::env::var("RUST_NFS_DEP_XOR_K").ok(),
-            "RUST_NFS_DEP_RANDOM_COUNT": std::env::var("RUST_NFS_DEP_RANDOM_COUNT").ok(),
-            "RUST_NFS_MAX_DEPS_TRY": std::env::var("RUST_NFS_MAX_DEPS_TRY").ok(),
-            "RUST_NFS_MAX_DEP_LEN": std::env::var("RUST_NFS_MAX_DEP_LEN").ok(),
-            "RUST_NFS_DEP_LEN_TIERS": std::env::var("RUST_NFS_DEP_LEN_TIERS").ok(),
-            "RUST_NFS_DEP_AUTO_RELAX": std::env::var("RUST_NFS_DEP_AUTO_RELAX").ok(),
-            "RUST_NFS_DEP_REQUIRE_COPRIME_REL": std::env::var("RUST_NFS_DEP_REQUIRE_COPRIME_REL").ok(),
-            "RUST_NFS_SQRT_SUCCESS_MODE": std::env::var("RUST_NFS_SQRT_SUCCESS_MODE").ok(),
-            "RUST_NFS_TRIVIAL_BAIL": std::env::var("RUST_NFS_TRIVIAL_BAIL").ok(),
-            "RUST_NFS_SKIP_SQRT": std::env::var("RUST_NFS_SKIP_SQRT").ok(),
-            "RUST_NFS_SQRT_VERBOSE_DEPS": std::env::var("RUST_NFS_SQRT_VERBOSE_DEPS").ok(),
-            "RUST_NFS_QC_COUNT": std::env::var("RUST_NFS_QC_COUNT").ok(),
-            "RUST_NFS_REQUIRE_COPRIME_AB": std::env::var("RUST_NFS_REQUIRE_COPRIME_AB").ok(),
-            "RUST_NFS_FULL_ONLY": std::env::var("RUST_NFS_FULL_ONLY").ok(),
-            "RUST_NFS_IGNORE_SPECIAL_Q_COLUMN": std::env::var("RUST_NFS_IGNORE_SPECIAL_Q_COLUMN").ok(),
-            "RUST_NFS_SPARSE_PREMERGE": std::env::var("RUST_NFS_SPARSE_PREMERGE").ok(),
-            "RUST_NFS_SPARSE_PREMERGE_MAXSETS": std::env::var("RUST_NFS_SPARSE_PREMERGE_MAXSETS").ok(),
-            "RUST_NFS_COMPACT_ZERO_COLS": std::env::var("RUST_NFS_COMPACT_ZERO_COLS").ok(),
-            "RUST_NFS_SINGLETON_PRUNE": std::env::var("RUST_NFS_SINGLETON_PRUNE").ok(),
-            "RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT": std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT").ok(),
-            "RUST_NFS_PARTIAL_MERGE_2LP": std::env::var("RUST_NFS_PARTIAL_MERGE_2LP").ok(),
-            "RUST_NFS_PARTIAL_MERGE_MAXSETS": std::env::var("RUST_NFS_PARTIAL_MERGE_MAXSETS").ok(),
-            "RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT": std::env::var("RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT").ok(),
-            "RUST_NFS_MAX_LP_KEYS": std::env::var("RUST_NFS_MAX_LP_KEYS").ok(),
-            "RUST_NFS_REL_TARGET_MULT": std::env::var("RUST_NFS_REL_TARGET_MULT").ok(),
-            "RUST_NFS_REL_TARGET_MIN": std::env::var("RUST_NFS_REL_TARGET_MIN").ok(),
-            "RUST_NFS_ADAPTIVE_ROWS_RATIO": std::env::var("RUST_NFS_ADAPTIVE_ROWS_RATIO").ok(),
-            "RUST_NFS_ADAPTIVE_ROWS_MIN": std::env::var("RUST_NFS_ADAPTIVE_ROWS_MIN").ok(),
-            "RUST_NFS_ADAPTIVE_MARGIN_PCT": std::env::var("RUST_NFS_ADAPTIVE_MARGIN_PCT").ok(),
-            "RUST_NFS_ADAPTIVE_CHECK_EVERY": std::env::var("RUST_NFS_ADAPTIVE_CHECK_EVERY").ok(),
-            "RUST_NFS_ADAPTIVE_CHECK_MIN_RAW": std::env::var("RUST_NFS_ADAPTIVE_CHECK_MIN_RAW").ok(),
-            "RUST_NFS_ADAPTIVE_RAW_STEP": std::env::var("RUST_NFS_ADAPTIVE_RAW_STEP").ok(),
-            "RUST_NFS_ADAPTIVE_USE_MATRIX": std::env::var("RUST_NFS_ADAPTIVE_USE_MATRIX").ok(),
-            "RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": std::env::var("RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO").ok(),
-            "RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP": std::env::var("RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP").ok(),
-            "RUST_NFS_MAX_RAW_RELS": std::env::var("RUST_NFS_MAX_RAW_RELS").ok(),
-            "RUST_NFS_SQ_BATCH_SIZE": std::env::var("RUST_NFS_SQ_BATCH_SIZE").ok(),
-            "RUST_NFS_SQ_ROOT_CACHE_WINDOWS": std::env::var("RUST_NFS_SQ_ROOT_CACHE_WINDOWS").ok(),
-            "RUST_NFS_NORM_BLOCK": std::env::var("RUST_NFS_NORM_BLOCK").ok(),
-            "RUST_NFS_MAX_Q_WINDOWS": std::env::var("RUST_NFS_MAX_Q_WINDOWS").ok(),
-            "RUST_NFS_OVR_LIM0": std::env::var("RUST_NFS_OVR_LIM0").ok(),
-            "RUST_NFS_OVR_LIM1": std::env::var("RUST_NFS_OVR_LIM1").ok(),
-            "RUST_NFS_OVR_LPB0": std::env::var("RUST_NFS_OVR_LPB0").ok(),
-            "RUST_NFS_OVR_LPB1": std::env::var("RUST_NFS_OVR_LPB1").ok(),
-            "RUST_NFS_OVR_MFB0": std::env::var("RUST_NFS_OVR_MFB0").ok(),
-            "RUST_NFS_OVR_MFB1": std::env::var("RUST_NFS_OVR_MFB1").ok(),
-            "RUST_NFS_OVR_LOG_I": std::env::var("RUST_NFS_OVR_LOG_I").ok(),
-            "RUST_NFS_OVR_QMIN": std::env::var("RUST_NFS_OVR_QMIN").ok(),
-            "RUST_NFS_OVR_QRANGE": std::env::var("RUST_NFS_OVR_QRANGE").ok(),
-            "RUST_NFS_OVR_RELS_WANTED": std::env::var("RUST_NFS_OVR_RELS_WANTED").ok(),
-            "RUST_NFS_OVR_DEGREE": std::env::var("RUST_NFS_OVR_DEGREE").ok(),
-            "RUST_NFS_FALLBACK_RHO": std::env::var("RUST_NFS_FALLBACK_RHO").ok(),
-            "RUST_NFS_FALLBACK_FIRST": std::env::var("RUST_NFS_FALLBACK_FIRST").ok(),
-            "RUST_NFS_FALLBACK_MAX_BITS": std::env::var("RUST_NFS_FALLBACK_MAX_BITS").ok(),
-            "RUST_NFS_FALLBACK_RHO_ROUNDS": std::env::var("RUST_NFS_FALLBACK_RHO_ROUNDS").ok(),
-            "RUST_NFS_FALLBACK_RHO_ITERS": std::env::var("RUST_NFS_FALLBACK_RHO_ITERS").ok(),
-            "RUST_NFS_DEP_BASIS_LIMIT": std::env::var("RUST_NFS_DEP_BASIS_LIMIT").ok(),
+            "POTAPOV_NFS_MAX_VARIANTS": std::env::var("POTAPOV_NFS_MAX_VARIANTS").ok(),
+            "POTAPOV_NFS_VARIANT_START": std::env::var("POTAPOV_NFS_VARIANT_START").ok(),
+            "POTAPOV_NFS_DEP_SEED": std::env::var("POTAPOV_NFS_DEP_SEED").ok(),
+            "POTAPOV_NFS_DEP_XOR_K": std::env::var("POTAPOV_NFS_DEP_XOR_K").ok(),
+            "POTAPOV_NFS_DEP_RANDOM_COUNT": std::env::var("POTAPOV_NFS_DEP_RANDOM_COUNT").ok(),
+            "POTAPOV_NFS_MAX_DEPS_TRY": std::env::var("POTAPOV_NFS_MAX_DEPS_TRY").ok(),
+            "POTAPOV_NFS_MAX_DEP_LEN": std::env::var("POTAPOV_NFS_MAX_DEP_LEN").ok(),
+            "POTAPOV_NFS_DEP_LEN_TIERS": std::env::var("POTAPOV_NFS_DEP_LEN_TIERS").ok(),
+            "POTAPOV_NFS_DEP_AUTO_RELAX": std::env::var("POTAPOV_NFS_DEP_AUTO_RELAX").ok(),
+            "POTAPOV_NFS_DEP_REQUIRE_COPRIME_REL": std::env::var("POTAPOV_NFS_DEP_REQUIRE_COPRIME_REL").ok(),
+            "POTAPOV_NFS_SQRT_SUCCESS_MODE": std::env::var("POTAPOV_NFS_SQRT_SUCCESS_MODE").ok(),
+            "POTAPOV_NFS_TRIVIAL_BAIL": std::env::var("POTAPOV_NFS_TRIVIAL_BAIL").ok(),
+            "POTAPOV_NFS_SKIP_SQRT": std::env::var("POTAPOV_NFS_SKIP_SQRT").ok(),
+            "POTAPOV_NFS_SQRT_VERBOSE_DEPS": std::env::var("POTAPOV_NFS_SQRT_VERBOSE_DEPS").ok(),
+            "POTAPOV_NFS_QC_COUNT": std::env::var("POTAPOV_NFS_QC_COUNT").ok(),
+            "POTAPOV_NFS_REQUIRE_COPRIME_AB": std::env::var("POTAPOV_NFS_REQUIRE_COPRIME_AB").ok(),
+            "POTAPOV_NFS_FULL_ONLY": std::env::var("POTAPOV_NFS_FULL_ONLY").ok(),
+            "POTAPOV_NFS_IGNORE_SPECIAL_Q_COLUMN": std::env::var("POTAPOV_NFS_IGNORE_SPECIAL_Q_COLUMN").ok(),
+            "POTAPOV_NFS_SPARSE_PREMERGE": std::env::var("POTAPOV_NFS_SPARSE_PREMERGE").ok(),
+            "POTAPOV_NFS_SPARSE_PREMERGE_MAXSETS": std::env::var("POTAPOV_NFS_SPARSE_PREMERGE_MAXSETS").ok(),
+            "POTAPOV_NFS_COMPACT_ZERO_COLS": std::env::var("POTAPOV_NFS_COMPACT_ZERO_COLS").ok(),
+            "POTAPOV_NFS_SINGLETON_PRUNE": std::env::var("POTAPOV_NFS_SINGLETON_PRUNE").ok(),
+            "POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT": std::env::var("POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT").ok(),
+            "POTAPOV_NFS_PARTIAL_MERGE_2LP": std::env::var("POTAPOV_NFS_PARTIAL_MERGE_2LP").ok(),
+            "POTAPOV_NFS_PARTIAL_MERGE_MAXSETS": std::env::var("POTAPOV_NFS_PARTIAL_MERGE_MAXSETS").ok(),
+            "POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT": std::env::var("POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT").ok(),
+            "POTAPOV_NFS_MAX_LP_KEYS": std::env::var("POTAPOV_NFS_MAX_LP_KEYS").ok(),
+            "POTAPOV_NFS_REL_TARGET_MULT": std::env::var("POTAPOV_NFS_REL_TARGET_MULT").ok(),
+            "POTAPOV_NFS_REL_TARGET_MIN": std::env::var("POTAPOV_NFS_REL_TARGET_MIN").ok(),
+            "POTAPOV_NFS_ADAPTIVE_ROWS_RATIO": std::env::var("POTAPOV_NFS_ADAPTIVE_ROWS_RATIO").ok(),
+            "POTAPOV_NFS_ADAPTIVE_ROWS_MIN": std::env::var("POTAPOV_NFS_ADAPTIVE_ROWS_MIN").ok(),
+            "POTAPOV_NFS_ADAPTIVE_MARGIN_PCT": std::env::var("POTAPOV_NFS_ADAPTIVE_MARGIN_PCT").ok(),
+            "POTAPOV_NFS_ADAPTIVE_CHECK_EVERY": std::env::var("POTAPOV_NFS_ADAPTIVE_CHECK_EVERY").ok(),
+            "POTAPOV_NFS_ADAPTIVE_CHECK_MIN_RAW": std::env::var("POTAPOV_NFS_ADAPTIVE_CHECK_MIN_RAW").ok(),
+            "POTAPOV_NFS_ADAPTIVE_RAW_STEP": std::env::var("POTAPOV_NFS_ADAPTIVE_RAW_STEP").ok(),
+            "POTAPOV_NFS_ADAPTIVE_USE_MATRIX": std::env::var("POTAPOV_NFS_ADAPTIVE_USE_MATRIX").ok(),
+            "POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO": std::env::var("POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO").ok(),
+            "POTAPOV_NFS_ADAPTIVE_MATRIX_PROBE_STEP": std::env::var("POTAPOV_NFS_ADAPTIVE_MATRIX_PROBE_STEP").ok(),
+            "POTAPOV_NFS_MAX_RAW_RELS": std::env::var("POTAPOV_NFS_MAX_RAW_RELS").ok(),
+            "POTAPOV_NFS_SQ_BATCH_SIZE": std::env::var("POTAPOV_NFS_SQ_BATCH_SIZE").ok(),
+            "POTAPOV_NFS_SQ_ROOT_CACHE_WINDOWS": std::env::var("POTAPOV_NFS_SQ_ROOT_CACHE_WINDOWS").ok(),
+            "POTAPOV_NFS_NORM_BLOCK": std::env::var("POTAPOV_NFS_NORM_BLOCK").ok(),
+            "POTAPOV_NFS_MAX_Q_WINDOWS": std::env::var("POTAPOV_NFS_MAX_Q_WINDOWS").ok(),
+            "POTAPOV_NFS_OVR_LIM0": std::env::var("POTAPOV_NFS_OVR_LIM0").ok(),
+            "POTAPOV_NFS_OVR_LIM1": std::env::var("POTAPOV_NFS_OVR_LIM1").ok(),
+            "POTAPOV_NFS_OVR_LPB0": std::env::var("POTAPOV_NFS_OVR_LPB0").ok(),
+            "POTAPOV_NFS_OVR_LPB1": std::env::var("POTAPOV_NFS_OVR_LPB1").ok(),
+            "POTAPOV_NFS_OVR_MFB0": std::env::var("POTAPOV_NFS_OVR_MFB0").ok(),
+            "POTAPOV_NFS_OVR_MFB1": std::env::var("POTAPOV_NFS_OVR_MFB1").ok(),
+            "POTAPOV_NFS_OVR_LOG_I": std::env::var("POTAPOV_NFS_OVR_LOG_I").ok(),
+            "POTAPOV_NFS_OVR_QMIN": std::env::var("POTAPOV_NFS_OVR_QMIN").ok(),
+            "POTAPOV_NFS_OVR_QRANGE": std::env::var("POTAPOV_NFS_OVR_QRANGE").ok(),
+            "POTAPOV_NFS_OVR_RELS_WANTED": std::env::var("POTAPOV_NFS_OVR_RELS_WANTED").ok(),
+            "POTAPOV_NFS_OVR_DEGREE": std::env::var("POTAPOV_NFS_OVR_DEGREE").ok(),
+            "POTAPOV_NFS_FALLBACK_RHO": std::env::var("POTAPOV_NFS_FALLBACK_RHO").ok(),
+            "POTAPOV_NFS_FALLBACK_FIRST": std::env::var("POTAPOV_NFS_FALLBACK_FIRST").ok(),
+            "POTAPOV_NFS_FALLBACK_MAX_BITS": std::env::var("POTAPOV_NFS_FALLBACK_MAX_BITS").ok(),
+            "POTAPOV_NFS_FALLBACK_RHO_ROUNDS": std::env::var("POTAPOV_NFS_FALLBACK_RHO_ROUNDS").ok(),
+            "POTAPOV_NFS_FALLBACK_RHO_ITERS": std::env::var("POTAPOV_NFS_FALLBACK_RHO_ITERS").ok(),
+            "POTAPOV_NFS_DEP_BASIS_LIMIT": std::env::var("POTAPOV_NFS_DEP_BASIS_LIMIT").ok(),
             "GNFS_TRY_COUVEIGNES_ON_TRIVIAL": std::env::var("GNFS_TRY_COUVEIGNES_ON_TRIVIAL").ok(),
             "GNFS_TRY_NEG_M": std::env::var("GNFS_TRY_NEG_M").ok(),
             "GNFS_NF_ELEMENT_MODE": std::env::var("GNFS_NF_ELEMENT_MODE").ok(),
             "GNFS_SQRT_RELAX_EXACT": std::env::var("GNFS_SQRT_RELAX_EXACT").ok(),
-            "RUST_NFS_VERBOSE_SQ": std::env::var("RUST_NFS_VERBOSE_SQ").ok()
+            "POTAPOV_NFS_VERBOSE_SQ": std::env::var("POTAPOV_NFS_VERBOSE_SQ").ok()
         });
         let run_cfg = serde_json::json!({
             "n": n_str,
@@ -507,15 +507,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     };
 
     // --- Observability: timeout and timing configuration ---
-    let sieve_timeout_ms: Option<u64> = std::env::var("RUST_NFS_SIEVE_TIMEOUT_MS")
+    let sieve_timeout_ms: Option<u64> = std::env::var("POTAPOV_NFS_SIEVE_TIMEOUT_MS")
         .ok().and_then(|s| s.parse().ok());
-    let la_timeout_ms: Option<u64> = std::env::var("RUST_NFS_LA_TIMEOUT_MS")
+    let la_timeout_ms: Option<u64> = std::env::var("POTAPOV_NFS_LA_TIMEOUT_MS")
         .ok().and_then(|s| s.parse().ok());
-    let sqrt_timeout_ms: Option<u64> = std::env::var("RUST_NFS_SQRT_TIMEOUT_MS")
+    let sqrt_timeout_ms: Option<u64> = std::env::var("POTAPOV_NFS_SQRT_TIMEOUT_MS")
         .ok().and_then(|s| s.parse().ok());
-    let total_timeout_ms: Option<u64> = std::env::var("RUST_NFS_TOTAL_TIMEOUT_MS")
+    let total_timeout_ms: Option<u64> = std::env::var("POTAPOV_NFS_TOTAL_TIMEOUT_MS")
         .ok().and_then(|s| s.parse().ok());
-    let emit_timing_json = std::env::var("RUST_NFS_TIMING_JSON")
+    let emit_timing_json = std::env::var("POTAPOV_NFS_TIMING_JSON")
         .map(|v| v == "1").unwrap_or(false);
     let mut timings = PipelineTimings::new();
     if ext_polyselect_ms > 0.0 {
@@ -531,70 +531,70 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
 
     // Optional runtime parameter overrides for reproducible tuning experiments.
     let mut params = params.clone();
-    let partial_merge_2lp = std::env::var("RUST_NFS_PARTIAL_MERGE_2LP")
+    let partial_merge_2lp = std::env::var("POTAPOV_NFS_PARTIAL_MERGE_2LP")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
-    if let Some(v) = std::env::var("RUST_NFS_OVR_LIM0")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LIM0")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
     {
         params.lim0 = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_LIM1")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LIM1")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
     {
         params.lim1 = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_LPB0")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LPB0")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
         params.lpb0 = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_LPB1")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LPB1")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
         params.lpb1 = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_MFB0")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_MFB0")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
         params.mfb0 = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_MFB1")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_MFB1")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
         params.mfb1 = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_LOG_I")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LOG_I")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
         params.log_i = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_QMIN")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_QMIN")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
     {
         params.qmin = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_QRANGE")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_QRANGE")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
     {
         params.qrange = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_RELS_WANTED")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_RELS_WANTED")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
     {
         params.rels_wanted = v;
     }
-    if let Some(v) = std::env::var("RUST_NFS_OVR_DEGREE")
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_DEGREE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v >= 2 && v <= 6)
@@ -624,10 +624,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         // positive survivors while still accepting most valid 2LP candidates.
         // The sieve is an approximate screen — the full cofactoring at mfb
         // will find relations that narrowly pass the tighter sieve threshold.
-        let sieve_mfb0_env = std::env::var("RUST_NFS_SIEVE_MFB0")
+        let sieve_mfb0_env = std::env::var("POTAPOV_NFS_SIEVE_MFB0")
             .ok()
             .and_then(|s| s.parse::<u32>().ok());
-        let sieve_mfb1_env = std::env::var("RUST_NFS_SIEVE_MFB1")
+        let sieve_mfb1_env = std::env::var("POTAPOV_NFS_SIEVE_MFB1")
             .ok()
             .and_then(|s| s.parse::<u32>().ok());
         // Default: 3/4 of cofactoring mfb. Empirically tuned via sweep on c45
@@ -708,14 +708,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     };
     let bad_root_offsets = compute_bad_root_offsets(&gnfs_fb, &f_coeffs_big);
     let alg_bad = bad_root_offsets.len();
-    let max_q_windows = std::env::var("RUST_NFS_MAX_Q_WINDOWS")
+    let max_q_windows = std::env::var("POTAPOV_NFS_MAX_Q_WINDOWS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0);
     // Build an optional root lookup table for special-q primes above lim1.
     // By default this is only prebuilt when the q-window horizon is explicit,
     // which avoids doing large startup work for runs that stop much earlier.
-    let sq_root_cache_windows = std::env::var("RUST_NFS_SQ_ROOT_CACHE_WINDOWS")
+    let sq_root_cache_windows = std::env::var("POTAPOV_NFS_SQ_ROOT_CACHE_WINDOWS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|&v| v > 0)
@@ -765,18 +765,18 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let mut total_region_scan_ms = 0.0;
     let mut total_cofactor_ms = 0.0;
 
-    let require_coprime_ab = std::env::var("RUST_NFS_REQUIRE_COPRIME_AB")
+    let require_coprime_ab = std::env::var("POTAPOV_NFS_REQUIRE_COPRIME_AB")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let full_only = std::env::var("RUST_NFS_FULL_ONLY")
+    let full_only = std::env::var("POTAPOV_NFS_FULL_ONLY")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let partial_merge_max_sets = std::env::var("RUST_NFS_PARTIAL_MERGE_MAXSETS")
+    let partial_merge_max_sets = std::env::var("POTAPOV_NFS_PARTIAL_MERGE_MAXSETS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(200_000usize);
-    let special_q_premerge = std::env::var("RUST_NFS_SPECIAL_Q_PREMERGE")
+    let special_q_premerge = std::env::var("POTAPOV_NFS_SPECIAL_Q_PREMERGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
@@ -785,26 +785,26 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let mut final_partial_sets = None;
     let mut filter_time_ms = 0.0;
 
-    let qc_count = std::env::var("RUST_NFS_QC_COUNT")
+    let qc_count = std::env::var("POTAPOV_NFS_QC_COUNT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(30usize);
     let quad_chars = select_quad_char_primes_fast(&f_coeffs_i64, &gnfs_fb.primes, qc_count);
-    let compact_zero_cols = std::env::var("RUST_NFS_COMPACT_ZERO_COLS")
+    let compact_zero_cols = std::env::var("POTAPOV_NFS_COMPACT_ZERO_COLS")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
-    let singleton_prune = std::env::var("RUST_NFS_SINGLETON_PRUNE")
+    let singleton_prune = std::env::var("POTAPOV_NFS_SINGLETON_PRUNE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
-    let singleton_min_weight = std::env::var("RUST_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
+    let singleton_min_weight = std::env::var("POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v >= 2)
         .unwrap_or(2usize);
-    let adaptive_use_matrix = std::env::var("RUST_NFS_ADAPTIVE_USE_MATRIX")
+    let adaptive_use_matrix = std::env::var("POTAPOV_NFS_ADAPTIVE_USE_MATRIX")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let adaptive_matrix_rows_ratio = std::env::var("RUST_NFS_ADAPTIVE_MATRIX_ROWS_RATIO")
+    let adaptive_matrix_rows_ratio = std::env::var("POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v > 0.0)
@@ -829,17 +829,17 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             est_dense_cols, est_rat_fb_cols, est_alg_pair_cols, est_alg_hd_cols, alg_bad, actual_qc_cols
         );
     }
-    let adaptive_matrix_probe_step = std::env::var("RUST_NFS_ADAPTIVE_MATRIX_PROBE_STEP")
+    let adaptive_matrix_probe_step = std::env::var("POTAPOV_NFS_ADAPTIVE_MATRIX_PROBE_STEP")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or_else(|| (est_dense_cols / 20).max(250usize));
-    let rel_target_mult = std::env::var("RUST_NFS_REL_TARGET_MULT")
+    let rel_target_mult = std::env::var("POTAPOV_NFS_REL_TARGET_MULT")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v > 0.0)
         .unwrap_or(1.0f64);
-    let rel_target_min = std::env::var("RUST_NFS_REL_TARGET_MIN")
+    let rel_target_min = std::env::var("POTAPOV_NFS_REL_TARGET_MIN")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
@@ -851,27 +851,27 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // Tuned 2026-03-16: ratio 1.01 for degree>=4 collects 5% fewer SQs with
     // no reliability loss (9/9 factored across seeds 42,123,456), saving ~3-5%.
     let default_rows_ratio = if degree >= 4 { 1.01 } else { 1.10 };
-    let adaptive_rows_ratio = std::env::var("RUST_NFS_ADAPTIVE_ROWS_RATIO")
+    let adaptive_rows_ratio = std::env::var("POTAPOV_NFS_ADAPTIVE_ROWS_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v > 0.0)
         .unwrap_or(default_rows_ratio);
-    let adaptive_rows_min = std::env::var("RUST_NFS_ADAPTIVE_ROWS_MIN")
+    let adaptive_rows_min = std::env::var("POTAPOV_NFS_ADAPTIVE_ROWS_MIN")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(500usize);
-    let adaptive_margin_pct = std::env::var("RUST_NFS_ADAPTIVE_MARGIN_PCT")
+    let adaptive_margin_pct = std::env::var("POTAPOV_NFS_ADAPTIVE_MARGIN_PCT")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|&v| v >= 0.0)
         .unwrap_or(0.0f64);
-    let adaptive_check_every = std::env::var("RUST_NFS_ADAPTIVE_CHECK_EVERY")
+    let adaptive_check_every = std::env::var("POTAPOV_NFS_ADAPTIVE_CHECK_EVERY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(1usize);
-    let adaptive_check_min_raw = std::env::var("RUST_NFS_ADAPTIVE_CHECK_MIN_RAW")
+    let adaptive_check_min_raw = std::env::var("POTAPOV_NFS_ADAPTIVE_CHECK_MIN_RAW")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
@@ -882,24 +882,24 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         params.rels_wanted as usize
     };
-    let raw_target_step = std::env::var("RUST_NFS_ADAPTIVE_RAW_STEP")
+    let raw_target_step = std::env::var("POTAPOV_NFS_ADAPTIVE_RAW_STEP")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or_else(|| (target_raw_rels / 4).max(1_000));
-    let configured_max_raw_rels = std::env::var("RUST_NFS_MAX_RAW_RELS")
+    let configured_max_raw_rels = std::env::var("POTAPOV_NFS_MAX_RAW_RELS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0);
     let mut last_matrix_probe_rows: Option<usize> = None;
 
-    // Line sieve toggle: opt-in via RUST_NFS_LINE_SIEVE=1.
+    // Line sieve toggle: opt-in via POTAPOV_NFS_LINE_SIEVE=1.
     // The line sieve processes one row at a time with stride-based
     // prime subtraction instead of bucket scatter.  Currently ~1.5x
     // slower than the scatter sieve due to per-row large-prime overhead,
     // but has better cache locality and may be useful for tuning or
     // when the scatter sieve's memory footprint is a constraint.
-    let use_line_sieve = std::env::var("RUST_NFS_LINE_SIEVE")
+    let use_line_sieve = std::env::var("POTAPOV_NFS_LINE_SIEVE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     if use_line_sieve {
@@ -1420,15 +1420,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     eprintln!("  LA: partial remap {:.0}ms", partial_remap_ms);
 
     let matrix_build_start = std::time::Instant::now();
-    let sparse_premerge = std::env::var("RUST_NFS_SPARSE_PREMERGE")
+    let sparse_premerge = std::env::var("POTAPOV_NFS_SPARSE_PREMERGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let premerge_max_sets = std::env::var("RUST_NFS_SPARSE_PREMERGE_MAXSETS")
+    let premerge_max_sets = std::env::var("POTAPOV_NFS_SPARSE_PREMERGE_MAXSETS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(50_000);
-    let compare_matrix_modes = std::env::var("RUST_NFS_COMPARE_MATRIX_MODES")
+    let compare_matrix_modes = std::env::var("POTAPOV_NFS_COMPARE_MATRIX_MODES")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
@@ -1771,7 +1771,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.rows_minus_cols = result.matrix_rows as isize - result.matrix_cols as isize;
 
     let matrix_premerged = sparse_premerge || partial_merge_active;
-    let sqrt_success_mode = std::env::var("RUST_NFS_SQRT_SUCCESS_MODE")
+    let sqrt_success_mode = std::env::var("POTAPOV_NFS_SQRT_SUCCESS_MODE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(degree >= 4);
 
@@ -1800,11 +1800,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
 
     // Use BW for very large matrices (O(n^2) vs GE O(n^3)),
     // pre-elimination + GE for medium, plain GE for small.
-    let bw_threshold: usize = std::env::var("RUST_NFS_BW_THRESHOLD")
+    let bw_threshold: usize = std::env::var("POTAPOV_NFS_BW_THRESHOLD")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(20_000);
-    let max_deps: Option<usize> = std::env::var("RUST_NFS_MAX_DEPS")
+    let max_deps: Option<usize> = std::env::var("POTAPOV_NFS_MAX_DEPS")
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&v| v > 0)
@@ -1818,7 +1818,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let ge_ms = ge_start.elapsed().as_secs_f64() * 1000.0;
     let ge_deps_total = ge_deps.len();
     eprintln!("  LA: GE+preelim {:.0}ms -> {} basis deps (max_deps={:?})", ge_ms, ge_deps_total, max_deps);
-    let ge_dep_basis_limit = std::env::var("RUST_NFS_DEP_BASIS_LIMIT")
+    let ge_dep_basis_limit = std::env::var("POTAPOV_NFS_DEP_BASIS_LIMIT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0);
@@ -1839,7 +1839,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         500
     };
-    let n_random = std::env::var("RUST_NFS_DEP_RANDOM_COUNT")
+    let n_random = std::env::var("POTAPOV_NFS_DEP_RANDOM_COUNT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
@@ -1849,12 +1849,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         (ge_deps.len() / 8).max(8).min(64)
     };
-    let k = std::env::var("RUST_NFS_DEP_XOR_K")
+    let k = std::env::var("POTAPOV_NFS_DEP_XOR_K")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 1)
         .unwrap_or(default_k);
-    let dep_seed = std::env::var("RUST_NFS_DEP_SEED")
+    let dep_seed = std::env::var("POTAPOV_NFS_DEP_SEED")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(42);
@@ -1895,11 +1895,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         return result;
     }
 
-    let skip_sqrt = std::env::var("RUST_NFS_SKIP_SQRT")
+    let skip_sqrt = std::env::var("POTAPOV_NFS_SKIP_SQRT")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     if skip_sqrt {
-        eprintln!("  sqrt: skipped (RUST_NFS_SKIP_SQRT=1)");
+        eprintln!("  sqrt: skipped (POTAPOV_NFS_SKIP_SQRT=1)");
         result.total_ms = start.elapsed().as_secs_f64() * 1000.0;
         return result;
     }
@@ -1910,11 +1910,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // Prioritize randomized deps before basis deps (basis vectors are often
     // short/correlated) and within each class by descending expanded length.
     // Longer deps are empirically much more likely to yield nontrivial gcd.
-    let max_dep_len = std::env::var("RUST_NFS_MAX_DEP_LEN")
+    let max_dep_len = std::env::var("POTAPOV_NFS_MAX_DEP_LEN")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0);
-    let dep_auto_relax = std::env::var("RUST_NFS_DEP_AUTO_RELAX")
+    let dep_auto_relax = std::env::var("POTAPOV_NFS_DEP_AUTO_RELAX")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
     let dep_len_tiers = parse_dep_len_tiers(max_dep_len, dep_auto_relax);
@@ -1968,7 +1968,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         300usize
     };
-    let max_deps_to_try = std::env::var("RUST_NFS_MAX_DEPS_TRY")
+    let max_deps_to_try = std::env::var("POTAPOV_NFS_MAX_DEPS_TRY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
@@ -1985,7 +1985,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         200usize
     };
-    let trivial_bail = std::env::var("RUST_NFS_TRIVIAL_BAIL")
+    let trivial_bail = std::env::var("POTAPOV_NFS_TRIVIAL_BAIL")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .map(|v| v.min(max_deps_to_try))
@@ -1996,11 +1996,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .filter(|cand| cand.dep_idx < ge_deps.len())
         .count();
     let useful_rand = useful_deps.len().saturating_sub(useful_ge);
-    let verbose_deps = std::env::var("RUST_NFS_SQRT_VERBOSE_DEPS")
+    let verbose_deps = std::env::var("POTAPOV_NFS_SQRT_VERBOSE_DEPS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
-    let dep_require_coprime_rel = std::env::var("RUST_NFS_DEP_REQUIRE_COPRIME_REL")
+    let dep_require_coprime_rel = std::env::var("POTAPOV_NFS_DEP_REQUIRE_COPRIME_REL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     // Use raw_weight as proxy for expanded length stats (avoids expanding all deps)
@@ -2036,19 +2036,19 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     );
 
     // Diversity-aware scheduler settings
-    let div_history_max = std::env::var("RUST_NFS_SQRT_DIVERSITY_HISTORY")
+    let div_history_max = std::env::var("POTAPOV_NFS_SQRT_DIVERSITY_HISTORY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(32);
-    let div_pool_size = std::env::var("RUST_NFS_SQRT_DIVERSITY_POOL")
+    let div_pool_size = std::env::var("POTAPOV_NFS_SQRT_DIVERSITY_POOL")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(300);
-    let max_similarity_cutoff = std::env::var("RUST_NFS_SQRT_MAX_SIMILARITY")
+    let max_similarity_cutoff = std::env::var("POTAPOV_NFS_SQRT_MAX_SIMILARITY")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(1.0); // 1.0 = disabled
-    let enable_sim_log = std::env::var("RUST_NFS_SQRT_LOG_SIMILARITY")
+    let enable_sim_log = std::env::var("POTAPOV_NFS_SQRT_LOG_SIMILARITY")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
 
@@ -2122,7 +2122,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // entering the sequential diversity-aware scheduler. In MT mode this
     // exploits available cores to cut sqrt latency when a factor is found
     // within the first few attempts (the common case for c30).
-    let par_sqrt_batch = std::env::var("RUST_NFS_SQRT_PAR_BATCH")
+    let par_sqrt_batch = std::env::var("POTAPOV_NFS_SQRT_PAR_BATCH")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(rayon::current_num_threads().min(8).max(1));
@@ -2659,18 +2659,18 @@ fn try_pollard_rho_factor(n: &Integer) -> Option<(Integer, f64)> {
     if n.is_probably_prime(30) != rug::integer::IsPrime::No {
         return None;
     }
-    let rounds = std::env::var("RUST_NFS_FALLBACK_RHO_ROUNDS")
+    let rounds = std::env::var("POTAPOV_NFS_FALLBACK_RHO_ROUNDS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(48u32);
-    let iter_limit = std::env::var("RUST_NFS_FALLBACK_RHO_ITERS")
+    let iter_limit = std::env::var("POTAPOV_NFS_FALLBACK_RHO_ITERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(500_000usize);
 
-    let time_limit_ms = std::env::var("RUST_NFS_FALLBACK_RHO_TIME_MS")
+    let time_limit_ms = std::env::var("POTAPOV_NFS_FALLBACK_RHO_TIME_MS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|&v| v > 0)
@@ -3640,7 +3640,7 @@ fn dependency_length_stats(lengths: &[usize]) -> Option<(usize, usize, usize, us
 }
 
 fn parse_dep_len_tiers(max_dep_len: Option<usize>, auto_relax: bool) -> Vec<Option<usize>> {
-    if let Ok(raw) = std::env::var("RUST_NFS_DEP_LEN_TIERS") {
+    if let Ok(raw) = std::env::var("POTAPOV_NFS_DEP_LEN_TIERS") {
         let mut caps: Vec<usize> = Vec::new();
         let mut has_none = false;
         for tok in raw.split(',').map(|t| t.trim()).filter(|t| !t.is_empty()) {
@@ -3821,10 +3821,10 @@ fn remap_hybrid(
     g0_i64: i64,
     g1_i64: i64,
 ) -> (Vec<gnfs::types::Relation>, Vec<usize>, RemapHybridStats) {
-    let ignore_special_q = std::env::var("RUST_NFS_IGNORE_SPECIAL_Q_COLUMN")
+    let ignore_special_q = std::env::var("POTAPOV_NFS_IGNORE_SPECIAL_Q_COLUMN")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let hd_residual_sample_limit = std::env::var("RUST_NFS_HD_RESIDUAL_SAMPLE_LIMIT")
+    let hd_residual_sample_limit = std::env::var("POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0usize);

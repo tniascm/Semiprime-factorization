@@ -89,7 +89,7 @@ pub fn sieve_specialq(
     // Bucket threshold: primes below this use small sieve, above use bucket sieve.
     // Default: half_i (512 for log_i=9). Higher values push more primes to the
     // optimized small sieve (incremental tracking), reducing FK scatter overhead.
-    let bucket_thresh = std::env::var("RUST_NFS_BUCKET_THRESH")
+    let bucket_thresh = std::env::var("POTAPOV_NFS_BUCKET_THRESH")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or((half_i as u64).max(64));
@@ -184,12 +184,12 @@ pub fn sieve_specialq(
     let mut total_fk_scatter_alg_ns = 0u64;
     let mut total_fk_scatter_rat_ns = 0u64;
     let mut sq_count = 0usize;
-    let norm_block = std::env::var("RUST_NFS_NORM_BLOCK")
+    let norm_block = std::env::var("POTAPOV_NFS_NORM_BLOCK")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(16usize);
-    let verbose_sq = std::env::var("RUST_NFS_VERBOSE_SQ")
+    let verbose_sq = std::env::var("POTAPOV_NFS_VERBOSE_SQ")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
@@ -236,7 +236,7 @@ pub fn sieve_specialq(
     }
     let root_enum_ms = root_enum_start.elapsed().as_secs_f64() * 1000.0;
 
-    let batch_size = std::env::var("RUST_NFS_SQ_BATCH_SIZE")
+    let batch_size = std::env::var("POTAPOV_NFS_SQ_BATCH_SIZE")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
@@ -726,7 +726,7 @@ pub fn sieve_specialq(
         }
     }
 
-    let sieve_profile = std::env::var("RUST_NFS_SIEVE_PROFILE")
+    let sieve_profile = std::env::var("POTAPOV_NFS_SIEVE_PROFILE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     if sieve_profile {
@@ -847,7 +847,7 @@ pub fn line_sieve_specialq(
     let rat_bound = ((params.sieve_mfb0 as f64) * scale).min(255.0) as u8;
     let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
 
-    let verbose_sq = std::env::var("RUST_NFS_VERBOSE_SQ")
+    let verbose_sq = std::env::var("POTAPOV_NFS_VERBOSE_SQ")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
@@ -911,7 +911,7 @@ pub fn line_sieve_specialq(
         .flat_map(|(idx, _)| alg_fb.roots[idx].iter().enumerate().map(move |(ri, _)| (idx, ri)))
         .collect();
 
-    let batch_size = std::env::var("RUST_NFS_SQ_BATCH_SIZE")
+    let batch_size = std::env::var("POTAPOV_NFS_SQ_BATCH_SIZE")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
@@ -2440,7 +2440,7 @@ fn build_relation(
     rat_result: CofactResult,
     alg_result: CofactResult,
 ) -> Option<Relation> {
-    let max_lp_keys = std::env::var("RUST_NFS_MAX_LP_KEYS")
+    let max_lp_keys = std::env::var("POTAPOV_NFS_MAX_LP_KEYS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)

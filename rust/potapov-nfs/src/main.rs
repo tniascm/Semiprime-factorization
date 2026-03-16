@@ -1,11 +1,11 @@
 use clap::Parser;
 use rug::Integer;
-use rust_nfs::params::NfsParams;
-use rust_nfs::pipeline::factor_nfs;
+use potapov_nfs::params::NfsParams;
+use potapov_nfs::pipeline::factor_nfs;
 
 #[derive(Parser)]
 #[command(
-    name = "rust-nfs",
+    name = "potapov-nfs",
     about = "Production NFS factorization — beats CADO-NFS"
 )]
 struct Cli {
@@ -50,7 +50,7 @@ fn main() {
         return;
     }
 
-    eprintln!("Usage: rust-nfs --factor N  or  rust-nfs --bits 96,112,128");
+    eprintln!("Usage: potapov-nfs --factor N  or  potapov-nfs --bits 96,112,128");
 }
 
 /// Factor a single number and output the result as JSON on stdout.
@@ -59,7 +59,7 @@ fn factor_mode(n_str: &str) {
     let bits = n.significant_bits();
     let params = NfsParams::for_bits(bits);
     eprintln!(
-        "=== rust-nfs: factoring {} ({} bits, {} params) ===",
+        "=== potapov-nfs: factoring {} ({} bits, {} params) ===",
         n, bits, params.name
     );
 
@@ -77,7 +77,7 @@ fn factor_mode(n_str: &str) {
 
 /// Run a benchmark across multiple bit sizes, generating random semiprimes.
 fn benchmark(bit_sizes: &[u32], semiprimes_per_size: usize, seed: u64) {
-    eprintln!("=== rust-nfs Benchmark ===");
+    eprintln!("=== potapov-nfs Benchmark ===");
     eprintln!("Threads: {}", rayon::current_num_threads());
     eprintln!("Bit sizes: {:?}", bit_sizes);
     eprintln!("Semiprimes per size: {}", semiprimes_per_size);
