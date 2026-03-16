@@ -1,10 +1,12 @@
 //! Standalone ECM (Elliptic Curve Method) for multi-precision integers.
 //!
-//! Two implementations:
-//! - **Fast path**: Fixed-width 192-bit Montgomery arithmetic for n <= 192 bits.
+//! Three implementations:
+//! - **Fast path (U192)**: Fixed-width 192-bit Montgomery arithmetic for n <= 192 bits.
 //!   Uses `U192` (3 x u64 limbs) with hand-written REDC, avoiding all GMP overhead.
 //!   Targets c45 (~148-bit balanced semiprimes) at ~2-3ms per curve.
-//! - **Fallback path**: `rug::Integer` (GMP-backed) for n > 192 bits.
+//! - **Fast path (U256)**: Fixed-width 256-bit Montgomery arithmetic for 193-256 bit n.
+//!   Uses `U256` (4 x u64 limbs) with hand-written REDC for larger composites.
+//! - **Fallback path**: `rug::Integer` (GMP-backed) for n > 256 bits.
 //!
 //! Montgomery curve `By^2 = x^3 + Ax^2 + x` in projective coordinates `(X : Z)`,
 //! with Suyama parameterization for 12-torsion starting points.
@@ -884,9 +886,857 @@ impl MontScratch {
     }
 }
 
+// ===========================================================================
+// Fixed-width 256-bit Montgomery arithmetic
+// ===========================================================================
+
+/// 256-bit unsigned integer, stored as 4 little-endian u64 limbs: [lo, mid_lo, mid_hi, hi].
+type U256 = [u64; 4];
+
+/// Zero constant.
+const U256_ZERO: U256 = [0, 0, 0, 0];
+/// One constant.
+const U256_ONE: U256 = [1, 0, 0, 0];
+
+/// Montgomery form parameters for 256-bit modular arithmetic.
+///
+/// For modulus n (must be odd), R = 2^256. We store:
+/// - `n`: the modulus
+/// - `n_inv`: -n^{-1} mod 2^64 (single limb, used in REDC)
+/// - `r_squared`: R^2 mod n (used to convert into Montgomery form)
+#[derive(Clone, Debug)]
+struct Mont256 {
+    n: U256,
+    n_inv: u64,
+    r_squared: U256,
+}
+
+impl Mont256 {
+    /// Build Montgomery parameters for odd modulus `n`.
+    fn new(n: &U256) -> Self {
+        debug_assert!(n[0] & 1 == 1, "Mont256: n must be odd");
+
+        // Compute n_inv = -n^{-1} mod 2^64 via Newton's method.
+        let n0 = n[0];
+        let mut x: u64 = 1;
+        for _ in 0..6 {
+            x = x.wrapping_mul(2u64.wrapping_sub(n0.wrapping_mul(x)));
+        }
+        let n_inv = x.wrapping_neg();
+
+        // Compute R mod n = 2^256 mod n.
+        let r_mod_n = Self::compute_r_mod_n(n);
+
+        // Compute R^2 mod n = (R mod n) doubled 256 more times.
+        let r_squared = Self::compute_r_squared(n, &r_mod_n);
+
+        Mont256 {
+            n: *n,
+            n_inv,
+            r_squared,
+        }
+    }
+
+    /// Compute 2^256 mod n by repeated doubling.
+    fn compute_r_mod_n(n: &U256) -> U256 {
+        let mut r = U256_ONE;
+        for _ in 0..256 {
+            r = add_mod_256(&r, &r, n);
+        }
+        r
+    }
+
+    /// Compute R^2 mod n = (R mod n) doubled 256 more times.
+    fn compute_r_squared(n: &U256, r_mod_n: &U256) -> U256 {
+        let mut r2 = *r_mod_n;
+        for _ in 0..256 {
+            r2 = add_mod_256(&r2, &r2, n);
+        }
+        r2
+    }
+}
+
+/// Compare two U256 values: returns Ordering.
+#[inline]
+fn cmp_256(a: &U256, b: &U256) -> std::cmp::Ordering {
+    if a[3] != b[3] {
+        return a[3].cmp(&b[3]);
+    }
+    if a[2] != b[2] {
+        return a[2].cmp(&b[2]);
+    }
+    if a[1] != b[1] {
+        return a[1].cmp(&b[1]);
+    }
+    a[0].cmp(&b[0])
+}
+
+/// a + b mod n, where a, b < n.
+#[inline]
+fn add_mod_256(a: &U256, b: &U256, n: &U256) -> U256 {
+    let (s0, c0) = a[0].overflowing_add(b[0]);
+    let (s1, c1a) = a[1].overflowing_add(b[1]);
+    let (s1, c1b) = s1.overflowing_add(c0 as u64);
+    let c1 = c1a | c1b;
+    let (s2, c2a) = a[2].overflowing_add(b[2]);
+    let (s2, c2b) = s2.overflowing_add(c1 as u64);
+    let c2 = c2a | c2b;
+    let (s3, c3a) = a[3].overflowing_add(b[3]);
+    let (s3, c3b) = s3.overflowing_add(c2 as u64);
+    let carry = c3a | c3b;
+
+    let mut s = [s0, s1, s2, s3];
+
+    if carry || cmp_256(&s, n) != std::cmp::Ordering::Less {
+        let (d0, borrow0) = s[0].overflowing_sub(n[0]);
+        let (d1, borrow1a) = s[1].overflowing_sub(n[1]);
+        let (d1, borrow1b) = d1.overflowing_sub(borrow0 as u64);
+        let borrow1 = borrow1a | borrow1b;
+        let (d2, borrow2a) = s[2].overflowing_sub(n[2]);
+        let (d2, borrow2b) = d2.overflowing_sub(borrow1 as u64);
+        let borrow2 = borrow2a | borrow2b;
+        let d3 = s[3]
+            .wrapping_sub(n[3])
+            .wrapping_sub(borrow2 as u64);
+        s = [d0, d1, d2, d3];
+    }
+
+    s
+}
+
+/// a - b mod n, where a, b < n. Returns a + n - b if a < b.
+#[inline]
+fn sub_mod_256(a: &U256, b: &U256, n: &U256) -> U256 {
+    if cmp_256(a, b) != std::cmp::Ordering::Less {
+        // a >= b: just subtract.
+        let (d0, borrow0) = a[0].overflowing_sub(b[0]);
+        let (d1, borrow1a) = a[1].overflowing_sub(b[1]);
+        let (d1, borrow1b) = d1.overflowing_sub(borrow0 as u64);
+        let borrow1 = borrow1a | borrow1b;
+        let (d2, borrow2a) = a[2].overflowing_sub(b[2]);
+        let (d2, borrow2b) = d2.overflowing_sub(borrow1 as u64);
+        let borrow2 = borrow2a | borrow2b;
+        let d3 = a[3]
+            .wrapping_sub(b[3])
+            .wrapping_sub(borrow2 as u64);
+        [d0, d1, d2, d3]
+    } else {
+        // a < b: compute a + n - b.
+        let (t0, c0) = a[0].overflowing_add(n[0]);
+        let (t1, c1a) = a[1].overflowing_add(n[1]);
+        let (t1, c1b) = t1.overflowing_add(c0 as u64);
+        let c1 = c1a | c1b;
+        let (t2, c2a) = a[2].overflowing_add(n[2]);
+        let (t2, c2b) = t2.overflowing_add(c1 as u64);
+        let c2 = c2a | c2b;
+        let t3 = a[3].wrapping_add(n[3]).wrapping_add(c2 as u64);
+        // Then subtract b.
+        let (d0, borrow0) = t0.overflowing_sub(b[0]);
+        let (d1, borrow1a) = t1.overflowing_sub(b[1]);
+        let (d1, borrow1b) = d1.overflowing_sub(borrow0 as u64);
+        let borrow1 = borrow1a | borrow1b;
+        let (d2, borrow2a) = t2.overflowing_sub(b[2]);
+        let (d2, borrow2b) = d2.overflowing_sub(borrow1 as u64);
+        let borrow2 = borrow2a | borrow2b;
+        let d3 = t3
+            .wrapping_sub(b[3])
+            .wrapping_sub(borrow2 as u64);
+        [d0, d1, d2, d3]
+    }
+}
+
+/// 4-limb x 4-limb multiplication producing an 8-limb result.
+///
+/// Uses the classic schoolbook method with u128 intermediates.
+#[inline]
+fn mul_4x4(a: &U256, b: &U256) -> [u64; 8] {
+    let mut t = [0u64; 8];
+
+    for i in 0..4 {
+        let mut carry: u64 = 0;
+        for j in 0..4 {
+            let prod = a[i] as u128 * b[j] as u128 + t[i + j] as u128 + carry as u128;
+            t[i + j] = prod as u64;
+            carry = (prod >> 64) as u64;
+        }
+        t[i + 4] = carry;
+    }
+
+    t
+}
+
+/// Multiply-accumulate: t[offset..offset+4] += m * n, returning the carry out.
+///
+/// Computes the 4-limb product m * n[0..3] and adds it into t starting at `offset`.
+/// Returns the carry that propagates past t[offset+3].
+#[inline]
+fn mac_4_at(t: &mut [u64; 8], offset: usize, m: u64, n: &U256) -> u64 {
+    let m128 = m as u128;
+
+    // Limb 0
+    let p = m128 * n[0] as u128 + t[offset] as u128;
+    t[offset] = p as u64;
+    let mut carry = (p >> 64) as u128;
+
+    // Limb 1
+    let p = m128 * n[1] as u128 + t[offset + 1] as u128 + carry;
+    t[offset + 1] = p as u64;
+    carry = p >> 64;
+
+    // Limb 2
+    let p = m128 * n[2] as u128 + t[offset + 2] as u128 + carry;
+    t[offset + 2] = p as u64;
+    carry = p >> 64;
+
+    // Limb 3
+    let p = m128 * n[3] as u128 + t[offset + 3] as u128 + carry;
+    t[offset + 3] = p as u64;
+    (p >> 64) as u64
+}
+
+/// Montgomery multiplication: compute a * b * R^{-1} mod n (REDC).
+///
+/// Input: a, b in Montgomery form (< n).
+/// Output: a*b*R^{-1} mod n, also in Montgomery form.
+///
+/// Algorithm:
+///   1. Compute 8-limb product t = a * b.
+///   2. For i = 0, 1, 2, 3: m = t[i] * n_inv mod 2^64; add m*n to t at position i.
+///   3. Result = upper 4 limbs (t[4..7]), conditionally subtract n.
+#[inline]
+fn mont_mul_256(a: &U256, b: &U256, mont: &Mont256) -> U256 {
+    let mut t = mul_4x4(a, b);
+
+    // REDC loop: for each of the 4 lower limbs, cancel them out.
+
+    // Iteration i=0:
+    let m = t[0].wrapping_mul(mont.n_inv);
+    let mut carry = mac_4_at(&mut t, 0, m, &mont.n);
+    // Propagate carry into t[4..7].
+    let (v, c) = t[4].overflowing_add(carry);
+    t[4] = v;
+    carry = c as u64;
+    let (v, c) = t[5].overflowing_add(carry);
+    t[5] = v;
+    carry = c as u64;
+    let (v, c) = t[6].overflowing_add(carry);
+    t[6] = v;
+    t[7] = t[7].wrapping_add(c as u64);
+
+    // Iteration i=1:
+    let m = t[1].wrapping_mul(mont.n_inv);
+    carry = mac_4_at(&mut t, 1, m, &mont.n);
+    let (v, c) = t[5].overflowing_add(carry);
+    t[5] = v;
+    carry = c as u64;
+    let (v, c) = t[6].overflowing_add(carry);
+    t[6] = v;
+    t[7] = t[7].wrapping_add(c as u64);
+
+    // Iteration i=2:
+    let m = t[2].wrapping_mul(mont.n_inv);
+    carry = mac_4_at(&mut t, 2, m, &mont.n);
+    let (v, c) = t[6].overflowing_add(carry);
+    t[6] = v;
+    t[7] = t[7].wrapping_add(c as u64);
+
+    // Iteration i=3:
+    let m = t[3].wrapping_mul(mont.n_inv);
+    carry = mac_4_at(&mut t, 3, m, &mont.n);
+    t[7] = t[7].wrapping_add(carry);
+
+    // Result is the upper half [t[4], t[5], t[6], t[7]].
+    let mut result = [t[4], t[5], t[6], t[7]];
+
+    // Conditional subtraction if result >= n.
+    if cmp_256(&result, &mont.n) != std::cmp::Ordering::Less {
+        let (d0, borrow0) = result[0].overflowing_sub(mont.n[0]);
+        let (d1, borrow1a) = result[1].overflowing_sub(mont.n[1]);
+        let (d1, borrow1b) = d1.overflowing_sub(borrow0 as u64);
+        let borrow1 = borrow1a | borrow1b;
+        let (d2, borrow2a) = result[2].overflowing_sub(mont.n[2]);
+        let (d2, borrow2b) = d2.overflowing_sub(borrow1 as u64);
+        let borrow2 = borrow2a | borrow2b;
+        let d3 = result[3]
+            .wrapping_sub(mont.n[3])
+            .wrapping_sub(borrow2 as u64);
+        result = [d0, d1, d2, d3];
+    }
+
+    result
+}
+
+/// Montgomery squaring: a^2 * R^{-1} mod n. Delegates to mont_mul_256.
+#[inline]
+fn mont_sqr_256(a: &U256, mont: &Mont256) -> U256 {
+    mont_mul_256(a, a, mont)
+}
+
+/// Convert a regular value into Montgomery form: a * R mod n.
+#[inline]
+fn to_mont_256(a: &U256, mont: &Mont256) -> U256 {
+    mont_mul_256(a, &mont.r_squared, mont)
+}
+
+/// Convert from Montgomery form back to regular: a * R^{-1} mod n.
+#[inline]
+fn from_mont_256(a: &U256, mont: &Mont256) -> U256 {
+    mont_mul_256(a, &U256_ONE, mont)
+}
+
+/// Binary GCD for U256 values. Both inputs are in regular (non-Montgomery) form.
+fn gcd_256(a: &U256, b: &U256) -> U256 {
+    if *a == U256_ZERO {
+        return *b;
+    }
+    if *b == U256_ZERO {
+        return *a;
+    }
+
+    let mut u = *a;
+    let mut v = *b;
+
+    let shift_u = trailing_zeros_256(&u);
+    let shift_v = trailing_zeros_256(&v);
+    let shift = shift_u.min(shift_v);
+
+    shr_256_inplace(&mut u, shift_u);
+    shr_256_inplace(&mut v, shift_v);
+
+    loop {
+        match cmp_256(&u, &v) {
+            std::cmp::Ordering::Equal => break,
+            std::cmp::Ordering::Greater => {
+                sub_inplace_256(&mut u, &v);
+                let tz = trailing_zeros_256(&u);
+                shr_256_inplace(&mut u, tz);
+            }
+            std::cmp::Ordering::Less => {
+                sub_inplace_256(&mut v, &u);
+                let tz = trailing_zeros_256(&v);
+                shr_256_inplace(&mut v, tz);
+            }
+        }
+    }
+
+    shl_256_inplace(&mut u, shift);
+    u
+}
+
+/// Count trailing zero bits of a U256.
+#[inline]
+fn trailing_zeros_256(a: &U256) -> u32 {
+    if a[0] != 0 {
+        a[0].trailing_zeros()
+    } else if a[1] != 0 {
+        64 + a[1].trailing_zeros()
+    } else if a[2] != 0 {
+        128 + a[2].trailing_zeros()
+    } else if a[3] != 0 {
+        192 + a[3].trailing_zeros()
+    } else {
+        256
+    }
+}
+
+/// Right shift a U256 in place by `shift` bits (0..256).
+#[inline]
+fn shr_256_inplace(a: &mut U256, shift: u32) {
+    if shift == 0 {
+        return;
+    }
+    if shift >= 256 {
+        *a = U256_ZERO;
+        return;
+    }
+    if shift >= 192 {
+        let s = shift - 192;
+        a[0] = if s == 0 { a[3] } else { a[3] >> s };
+        a[1] = 0;
+        a[2] = 0;
+        a[3] = 0;
+    } else if shift >= 128 {
+        let s = shift - 128;
+        if s == 0 {
+            a[0] = a[2];
+            a[1] = a[3];
+        } else {
+            a[0] = (a[2] >> s) | (a[3] << (64 - s));
+            a[1] = a[3] >> s;
+        }
+        a[2] = 0;
+        a[3] = 0;
+    } else if shift >= 64 {
+        let s = shift - 64;
+        if s == 0 {
+            a[0] = a[1];
+            a[1] = a[2];
+            a[2] = a[3];
+        } else {
+            a[0] = (a[1] >> s) | (a[2] << (64 - s));
+            a[1] = (a[2] >> s) | (a[3] << (64 - s));
+            a[2] = a[3] >> s;
+        }
+        a[3] = 0;
+    } else {
+        let new0 = (a[0] >> shift) | (a[1] << (64 - shift));
+        let new1 = (a[1] >> shift) | (a[2] << (64 - shift));
+        let new2 = (a[2] >> shift) | (a[3] << (64 - shift));
+        let new3 = a[3] >> shift;
+        a[0] = new0;
+        a[1] = new1;
+        a[2] = new2;
+        a[3] = new3;
+    }
+}
+
+/// Left shift a U256 in place by `shift` bits (0..256).
+#[inline]
+fn shl_256_inplace(a: &mut U256, shift: u32) {
+    if shift == 0 {
+        return;
+    }
+    if shift >= 256 {
+        *a = U256_ZERO;
+        return;
+    }
+    if shift >= 192 {
+        let s = shift - 192;
+        a[3] = if s == 0 { a[0] } else { a[0] << s };
+        a[2] = 0;
+        a[1] = 0;
+        a[0] = 0;
+    } else if shift >= 128 {
+        let s = shift - 128;
+        if s == 0 {
+            a[3] = a[1];
+            a[2] = a[0];
+        } else {
+            a[3] = (a[1] << s) | (a[0] >> (64 - s));
+            a[2] = a[0] << s;
+        }
+        a[1] = 0;
+        a[0] = 0;
+    } else if shift >= 64 {
+        let s = shift - 64;
+        if s == 0 {
+            a[3] = a[2];
+            a[2] = a[1];
+            a[1] = a[0];
+        } else {
+            a[3] = (a[2] << s) | (a[1] >> (64 - s));
+            a[2] = (a[1] << s) | (a[0] >> (64 - s));
+            a[1] = a[0] << s;
+        }
+        a[0] = 0;
+    } else {
+        let new3 = (a[3] << shift) | (a[2] >> (64 - shift));
+        let new2 = (a[2] << shift) | (a[1] >> (64 - shift));
+        let new1 = (a[1] << shift) | (a[0] >> (64 - shift));
+        let new0 = a[0] << shift;
+        a[0] = new0;
+        a[1] = new1;
+        a[2] = new2;
+        a[3] = new3;
+    }
+}
+
+/// u = u - v in place (assumes u >= v).
+#[inline]
+fn sub_inplace_256(u: &mut U256, v: &U256) {
+    let (d0, borrow0) = u[0].overflowing_sub(v[0]);
+    let (d1, borrow1a) = u[1].overflowing_sub(v[1]);
+    let (d1, borrow1b) = d1.overflowing_sub(borrow0 as u64);
+    let borrow1 = borrow1a | borrow1b;
+    let (d2, borrow2a) = u[2].overflowing_sub(v[2]);
+    let (d2, borrow2b) = d2.overflowing_sub(borrow1 as u64);
+    let borrow2 = borrow2a | borrow2b;
+    let d3 = u[3]
+        .wrapping_sub(v[3])
+        .wrapping_sub(borrow2 as u64);
+    u[0] = d0;
+    u[1] = d1;
+    u[2] = d2;
+    u[3] = d3;
+}
+
+// ---------------------------------------------------------------------------
+// Conversion between rug::Integer and U256
+// ---------------------------------------------------------------------------
+
+/// Convert a non-negative rug::Integer to U256. Panics if n > 2^256 - 1.
+fn integer_to_u256(n: &Integer) -> U256 {
+    debug_assert!(*n >= 0, "integer_to_u256: n must be non-negative");
+    debug_assert!(
+        n.significant_bits() <= 256,
+        "integer_to_u256: n must fit in 256 bits (got {} bits)",
+        n.significant_bits()
+    );
+
+    let digits = n.to_digits::<u8>(rug::integer::Order::LsfLe);
+    let mut limbs = [0u64; 4];
+    for (i, &byte) in digits.iter().enumerate().take(32) {
+        limbs[i / 8] |= (byte as u64) << ((i % 8) * 8);
+    }
+    limbs
+}
+
+/// Convert a U256 back to rug::Integer.
+fn u256_to_integer(a: &U256) -> Integer {
+    let mut bytes = [0u8; 32];
+    for i in 0..4 {
+        let limb = a[i];
+        for j in 0..8 {
+            bytes[i * 8 + j] = ((limb >> (j * 8)) & 0xFF) as u8;
+        }
+    }
+    Integer::from_digits(&bytes, rug::integer::Order::LsfLe)
+}
+
+// ---------------------------------------------------------------------------
+// U256 ECM curve point and operations
+// ---------------------------------------------------------------------------
+
+/// Point on a Montgomery curve in projective coordinates, using U256 Montgomery form.
+#[derive(Clone, Copy, Debug)]
+struct MontPoint256 {
+    x: U256,
+    z: U256,
+}
+
+/// Montgomery curve doubling for U256.
+#[inline]
+fn mont_double_256(
+    p: &MontPoint256,
+    a24: &U256,
+    mont: &Mont256,
+) -> MontPoint256 {
+    let sum = add_mod_256(&p.x, &p.z, &mont.n);
+    let diff = sub_mod_256(&p.x, &p.z, &mont.n);
+    let u = mont_sqr_256(&sum, mont);
+    let v = mont_sqr_256(&diff, mont);
+    let w = sub_mod_256(&u, &v, &mont.n);
+    let x2 = mont_mul_256(&u, &v, mont);
+    let t = mont_mul_256(a24, &w, mont);
+    let vt = add_mod_256(&v, &t, &mont.n);
+    let z2 = mont_mul_256(&w, &vt, mont);
+    MontPoint256 { x: x2, z: z2 }
+}
+
+/// Montgomery differential addition for U256.
+#[inline]
+fn mont_add_256(
+    p: &MontPoint256,
+    q: &MontPoint256,
+    diff: &MontPoint256,
+    mont: &Mont256,
+) -> MontPoint256 {
+    let d1 = sub_mod_256(&p.x, &p.z, &mont.n);
+    let s2 = add_mod_256(&q.x, &q.z, &mont.n);
+    let u1 = mont_mul_256(&d1, &s2, mont);
+
+    let s1 = add_mod_256(&p.x, &p.z, &mont.n);
+    let d2 = sub_mod_256(&q.x, &q.z, &mont.n);
+    let u2 = mont_mul_256(&s1, &d2, mont);
+
+    let sum = add_mod_256(&u1, &u2, &mont.n);
+    let dif = sub_mod_256(&u1, &u2, &mont.n);
+    let x3 = mont_mul_256(&diff.z, &mont_sqr_256(&sum, mont), mont);
+    let z3 = mont_mul_256(&diff.x, &mont_sqr_256(&dif, mont), mont);
+    MontPoint256 { x: x3, z: z3 }
+}
+
+/// Montgomery ladder: compute [k]P using U256 arithmetic.
+fn mont_ladder_256(p: &MontPoint256, k: u64, a24: &U256, mont: &Mont256) -> MontPoint256 {
+    if k == 0 {
+        return MontPoint256 {
+            x: to_mont_256(&U256_ONE, mont),
+            z: U256_ZERO,
+        };
+    }
+    if k == 1 {
+        return *p;
+    }
+
+    let mut r0 = *p;
+    let mut r1 = mont_double_256(p, a24, mont);
+
+    let bits = 64 - k.leading_zeros();
+    for i in (0..bits - 1).rev() {
+        if (k >> i) & 1 == 1 {
+            r0 = mont_add_256(&r0, &r1, p, mont);
+            r1 = mont_double_256(&r1, a24, mont);
+        } else {
+            r1 = mont_add_256(&r0, &r1, p, mont);
+            r0 = mont_double_256(&r0, a24, mont);
+        }
+    }
+
+    r0
+}
+
+/// Modular inverse for U256 via extended binary GCD.
+///
+/// Returns Ok(a^{-1} mod n) if gcd(a, n) == 1, or Err(gcd) otherwise.
+fn mod_inverse_256(a: &U256, n: &U256) -> Result<U256, U256> {
+    let g = gcd_256(a, n);
+    if g == U256_ONE {
+        let a_int = u256_to_integer(a);
+        let n_int = u256_to_integer(n);
+        match a_int.invert(&n_int) {
+            Ok(inv) => Ok(integer_to_u256(&inv)),
+            Err(_) => Err(g),
+        }
+    } else {
+        Err(g)
+    }
+}
+
+/// Modular multiplication without Montgomery form (for Suyama setup).
+/// Computes a * b mod n using the 8-limb product and reduction.
+fn mulmod_256(a: &U256, b: &U256, n: &U256) -> U256 {
+    let product = mul_4x4(a, b);
+    let mut p_int = Integer::new();
+    let mut bytes = [0u8; 64];
+    for i in 0..8 {
+        let limb = product[i];
+        for j in 0..8 {
+            bytes[i * 8 + j] = ((limb >> (j * 8)) & 0xFF) as u8;
+        }
+    }
+    p_int.assign(Integer::from_digits(&bytes, rug::integer::Order::LsfLe));
+    let n_int = u256_to_integer(n);
+    p_int.modulo_mut(&n_int);
+    integer_to_u256(&p_int)
+}
+
+/// Multiply a U256 by a small u64 modulo n (for Suyama setup).
+fn mul_u64_mod_256(a: &U256, b: u64, n: &U256) -> U256 {
+    let b_arr: U256 = [b, 0, 0, 0];
+    mulmod_256(a, &b_arr, n)
+}
+
+/// Modular subtraction for regular (non-Montgomery) values during setup.
+fn sub_mod_regular_256(a: &U256, b: &U256, n: &U256) -> U256 {
+    sub_mod_256(a, b, n)
+}
+
+// ---------------------------------------------------------------------------
+// Fast ECM implementation using U256
+// ---------------------------------------------------------------------------
+
+/// Run one ECM curve on `n` using fixed-width 256-bit Montgomery arithmetic.
+///
+/// This is the fast path for 193-256 bit n. Returns `Some(factor)` if a
+/// non-trivial factor is found in Phase 1 or Phase 2.
+fn ecm_one_curve_fast_256(
+    n_256: &U256,
+    n_int: &Integer,
+    b1: u64,
+    b2: u64,
+    sigma: u64,
+    primes: &[u64],
+    mont: &Mont256,
+) -> Option<Integer> {
+    // Suyama parameterization.
+    let sigma_arr: U256 = [sigma, 0, 0, 0];
+    let sig_mod: U256 = if cmp_256(&sigma_arr, n_256) == std::cmp::Ordering::Less {
+        sigma_arr
+    } else {
+        let s_int = Integer::from(sigma);
+        let n_i = u256_to_integer(n_256);
+        let s_mod = Integer::from(&s_int % &n_i);
+        integer_to_u256(&s_mod)
+    };
+
+    // u = sigma^2 - 5 mod n
+    let sig_sq = mulmod_256(&sig_mod, &sig_mod, n_256);
+    let five: U256 = [5, 0, 0, 0];
+    let u = sub_mod_regular_256(&sig_sq, &five, n_256);
+    // v = 4 * sigma mod n
+    let v = mul_u64_mod_256(&sig_mod, 4, n_256);
+
+    if u == U256_ZERO || v == U256_ZERO {
+        return None;
+    }
+
+    // Starting point Q = (u^3 : v^3)
+    let u3 = mulmod_256(&mulmod_256(&u, &u, n_256), &u, n_256);
+    let v3 = mulmod_256(&mulmod_256(&v, &v, n_256), &v, n_256);
+
+    // a24 = (v-u)^3 * (3u+v) / (16 * u^3 * v) mod n
+    let v_minus_u = sub_mod_regular_256(&v, &u, n_256);
+    let vmu3 = mulmod_256(
+        &mulmod_256(&v_minus_u, &v_minus_u, n_256),
+        &v_minus_u,
+        n_256,
+    );
+    let three_u = mul_u64_mod_256(&u, 3, n_256);
+    let three_u_plus_v = add_mod_256(&three_u, &v, n_256);
+    let numerator = mulmod_256(&vmu3, &three_u_plus_v, n_256);
+
+    let u3v = mulmod_256(&u3, &v, n_256);
+    let denom = mul_u64_mod_256(&u3v, 16, n_256);
+
+    let denom_inv = match mod_inverse_256(&denom, n_256) {
+        Ok(inv) => inv,
+        Err(g) => {
+            if g != U256_ONE && g != *n_256 {
+                return Some(u256_to_integer(&g));
+            }
+            return None;
+        }
+    };
+
+    let a24 = mulmod_256(&numerator, &denom_inv, n_256);
+
+    // Convert to Montgomery form.
+    let a24_mont = to_mont_256(&a24, mont);
+    let q0 = MontPoint256 {
+        x: to_mont_256(&u3, mont),
+        z: to_mont_256(&v3, mont),
+    };
+
+    // Phase 1: scalar multiply by lcm(1..B1).
+    let one_mont = to_mont_256(&U256_ONE, mont);
+    let mut q = q0;
+    let mut accum = one_mont;
+    let mut step_count = 0u32;
+
+    for &p in primes.iter() {
+        if p > b1 {
+            break;
+        }
+        let mut pk = p;
+        while pk <= b1 {
+            q = mont_ladder_256(&q, p, &a24_mont, mont);
+            pk = pk.saturating_mul(p);
+        }
+
+        // Accumulate Z into product for batched GCD.
+        accum = mont_mul_256(&accum, &q.z, mont);
+        step_count += 1;
+
+        if step_count % 32 == 0 {
+            let accum_reg = from_mont_256(&accum, mont);
+            let g = gcd_256(&accum_reg, n_256);
+            if g != U256_ONE && g != *n_256 {
+                return Some(u256_to_integer(&g));
+            }
+            if accum_reg == U256_ZERO {
+                return ecm_one_curve_careful(n_int, b1, b2, sigma, primes);
+            }
+        }
+    }
+
+    // Final Phase 1 GCD check.
+    let accum_reg = from_mont_256(&accum, mont);
+    let g = gcd_256(&accum_reg, n_256);
+    if g != U256_ONE && g != *n_256 {
+        return Some(u256_to_integer(&g));
+    }
+    if accum_reg == U256_ZERO {
+        return ecm_one_curve_careful(n_int, b1, b2, sigma, primes);
+    }
+
+    // Phase 2: baby-step giant-step for primes in (B1, B2].
+    let mut accum2 = one_mont;
+    let mut batch_count = 0u32;
+    const PHASE2_BATCH: u32 = 64;
+
+    let q_base = q;
+
+    let d_step = ((b2 - b1) as f64).sqrt() as u64;
+    let d = if d_step < 2 { 2 } else { d_step | 1 };
+
+    // Precompute baby steps: [1]Q, [2]Q, ..., [d]Q.
+    let mut baby = Vec::with_capacity(d as usize);
+    baby.push(q_base);
+    if d >= 2 {
+        baby.push(mont_double_256(&q_base, &a24_mont, mont));
+    }
+    for i in 3..=d {
+        let len = baby.len();
+        let next = mont_add_256(&baby[len - 1], &baby[0], &baby[len - 2], mont);
+        baby.push(next);
+        let _ = i;
+    }
+
+    let d_q = baby[baby.len() - 1];
+
+    // Giant step: start at B1 rounded up to next multiple of d.
+    let first_giant = ((b1 / d) + 1) * d;
+    let mut giant_q = mont_ladder_256(&q_base, first_giant, &a24_mont, mont);
+    let mut prev_giant_q = if first_giant >= d {
+        mont_ladder_256(&q_base, first_giant - d, &a24_mont, mont)
+    } else {
+        MontPoint256 {
+            x: to_mont_256(&U256_ONE, mont),
+            z: U256_ZERO,
+        }
+    };
+
+    let mut giant_val = first_giant;
+    while giant_val <= b2 + d {
+        for b_idx in 0..baby.len() {
+            let b_offset = (b_idx + 1) as u64;
+            let val_plus = giant_val + b_offset;
+            let val_minus = if giant_val >= b_offset {
+                giant_val - b_offset
+            } else {
+                0
+            };
+
+            if val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes) {
+                let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
+                let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
+                let cross = sub_mod_256(&t1, &t2, &mont.n);
+                accum2 = mont_mul_256(&accum2, &cross, mont);
+                batch_count += 1;
+            }
+
+            if val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes) {
+                let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
+                let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
+                let cross = sub_mod_256(&t1, &t2, &mont.n);
+                accum2 = mont_mul_256(&accum2, &cross, mont);
+                batch_count += 1;
+            }
+
+            if batch_count >= PHASE2_BATCH {
+                let accum2_reg = from_mont_256(&accum2, mont);
+                let g = gcd_256(&accum2_reg, n_256);
+                if g != U256_ONE && g != *n_256 {
+                    return Some(u256_to_integer(&g));
+                }
+                batch_count = 0;
+            }
+        }
+
+        // Advance giant step.
+        let new_giant = mont_add_256(&giant_q, &d_q, &prev_giant_q, mont);
+        prev_giant_q = giant_q;
+        giant_q = new_giant;
+        giant_val += d;
+    }
+
+    // Final Phase 2 GCD check.
+    let accum2_reg = from_mont_256(&accum2, mont);
+    let g = gcd_256(&accum2_reg, n_256);
+    if g != U256_ONE && g != *n_256 {
+        return Some(u256_to_integer(&g));
+    }
+    None
+}
+
 /// Returns true if `n` fits in 192 bits and can use the fast U192 path.
 fn fits_in_192(n: &Integer) -> bool {
     n.significant_bits() <= 192
+}
+
+/// Returns true if `n` fits in 256 bits and can use the fast U256 path.
+fn fits_in_256(n: &Integer) -> bool {
+    n.significant_bits() <= 256
 }
 
 /// Factor `n` using ECM with the given parameters.
@@ -896,7 +1746,8 @@ fn fits_in_192(n: &Integer) -> bool {
 /// factor found, or `None` if all curves fail.
 ///
 /// Dispatches to fixed-width 192-bit Montgomery arithmetic for n <= 192 bits,
-/// falling back to rug::Integer (GMP) for larger inputs.
+/// 256-bit Montgomery arithmetic for 193-256 bit n, and falls back to
+/// rug::Integer (GMP) for larger inputs.
 ///
 /// Uses rayon for parallel curve evaluation.
 pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<Integer> {
@@ -904,6 +1755,7 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
     let primes = sieve_primes_vec(b2);
 
     if fits_in_192(n) && *n > 1u32 && n.is_odd() {
+        // U192 fast path
         let n_192 = integer_to_u192(n);
         let mont = Mont192::new(&n_192);
 
@@ -914,7 +1766,20 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
                 let sigma = 6u64 + idx as u64;
                 ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont)
             })
+    } else if fits_in_256(n) && *n > 1u32 && n.is_odd() {
+        // U256 fast path for 193-256 bit
+        let n_256 = integer_to_u256(n);
+        let mont = Mont256::new(&n_256);
+
+        use rayon::prelude::*;
+        (0..max_curves)
+            .into_par_iter()
+            .find_map_any(|idx| {
+                let sigma = 6u64 + idx as u64;
+                ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont)
+            })
     } else {
+        // GMP fallback
         use rayon::prelude::*;
         (0..max_curves)
             .into_par_iter()
@@ -932,6 +1797,7 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
     let primes = sieve_primes_vec(b2);
 
     if fits_in_192(n) && *n > 1u32 && n.is_odd() {
+        // U192 fast path
         let n_192 = integer_to_u192(n);
         let mont = Mont192::new(&n_192);
 
@@ -942,7 +1808,20 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
             }
         }
         None
+    } else if fits_in_256(n) && *n > 1u32 && n.is_odd() {
+        // U256 fast path for 193-256 bit
+        let n_256 = integer_to_u256(n);
+        let mont = Mont256::new(&n_256);
+
+        for idx in 0..max_curves {
+            let sigma = 6u64 + idx as u64;
+            if let Some(f) = ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont) {
+                return Some(f);
+            }
+        }
+        None
     } else {
+        // GMP fallback
         for idx in 0..max_curves {
             let sigma = 6u64 + idx as u64;
             if let Some(f) = ecm_one_curve(n, b1, b2, sigma, &primes) {
