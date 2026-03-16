@@ -521,6 +521,200 @@ fn small_sieve_simd(sieve: &mut [u8], p: usize, logp: u8, local_start: usize, re
     }
 }
 
+/// Apply only SIMD primes (p <= 7 on aarch64) and projective entries to a row slice.
+///
+/// Used in the prime-major restructured loop: norm init and SIMD sieving stay
+/// row-major (interleaved per row), while scalar primes switch to prime-major.
+///
+/// This function processes only:
+///   - Projective entries (must execute per-row, regardless of platform)
+///   - SIMD entries (p <= 7 on aarch64; these compute start from scratch each row)
+///
+/// Scalar affine entries (p > 7, or all non-projective entries on non-aarch64)
+/// are skipped -- they are handled by `small_sieve_prime_major`.
+///
+/// No position tracking is needed: SIMD entries always compute from scratch,
+/// and projective entries have no stride tracking.
+pub fn small_sieve_simd_only(
+    sieve: &mut [u8],
+    entries: &[SmallSieveEntry],
+    j: i32,
+    region_start: usize,
+    region_len: usize,
+    sieve_width: usize,
+) {
+    let _region_end = region_start + region_len;
+    let half_i = sieve_width / 2;
+
+    for entry in entries {
+        let logp = entry.logp;
+        let row_period = entry.projective_row_period;
+        if row_period != 0 {
+            // Projective entries: must be handled per-row.
+            if j.rem_euclid(row_period as i32) == 0 {
+                for cell in sieve.iter_mut() {
+                    *cell = cell.saturating_sub(logp);
+                }
+            }
+            continue;
+        }
+
+        let p = entry.p as usize;
+
+        #[cfg(target_arch = "aarch64")]
+        let is_simd_prime = p <= 7;
+        #[cfg(not(target_arch = "aarch64"))]
+        let is_simd_prime = false;
+
+        if !is_simd_prime {
+            continue;
+        }
+
+        // SIMD prime: compute start_in_row from scratch (SIMD is already fast).
+        let j_mod_p = ((j as i64).rem_euclid(p as i64)) as u64;
+        let start_in_row = ((half_i as u64 + entry.root_i * j_mod_p) % entry.p) as usize;
+
+        // Find the first hit at or after region_start.
+        let first_hit = if start_in_row >= region_start {
+            start_in_row
+        } else {
+            let gap = region_start - start_in_row;
+            let steps = (gap + p - 1) / p;
+            start_in_row + steps * p
+        };
+
+        let local_start = first_hit.saturating_sub(region_start);
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            small_sieve_simd(sieve, p, logp, local_start, region_len);
+            continue;
+        }
+
+        // Non-aarch64 fallback: scalar stride (should not be reached since
+        // is_simd_prime is false on non-aarch64).
+        #[allow(unreachable_code)]
+        {
+            let mut pos = first_hit;
+            while pos < _region_end {
+                let local = pos - region_start;
+                debug_assert!(local < sieve.len());
+                unsafe {
+                    let cell = sieve.get_unchecked_mut(local);
+                    *cell = cell.saturating_sub(logp);
+                }
+                pos += p;
+            }
+        }
+    }
+}
+
+/// Prime-major small sieve: for each scalar prime, process all rows in the region.
+///
+/// This keeps each prime's `(p, logp, root_i)` in registers across all rows,
+/// eliminating the per-row entry-reload overhead.  The outer loop is over primes,
+/// the inner loop over rows.
+///
+/// Layout: `sieve[row * sieve_width + col]` for row in `0..n_rows`.
+/// Each row spans exactly `sieve_width` bytes within the region buffer.
+///
+/// SIMD entries (p <= 7 on aarch64) and projective entries are SKIPPED — they
+/// must be handled per-row by `small_sieve_simd_only`.
+///
+/// `tracked_starts` is updated so that after this call the position for each
+/// entry corresponds to the row after the last row processed.
+pub fn small_sieve_prime_major(
+    sieve: &mut [u8],
+    entries: &[SmallSieveEntry],
+    tracked_starts: &mut [usize],
+    first_j: usize,
+    n_rows: usize,
+    sieve_width: usize,
+    prev_j: Option<i32>,
+) {
+    let half_i = sieve_width / 2;
+
+    for (idx, entry) in entries.iter().enumerate() {
+        if entry.projective_row_period != 0 {
+            // Projective entries are handled row-by-row in small_sieve_simd_only.
+            continue;
+        }
+
+        let p = entry.p as usize;
+
+        #[cfg(target_arch = "aarch64")]
+        let is_simd_prime = p <= 7;
+        #[cfg(not(target_arch = "aarch64"))]
+        let is_simd_prime = false;
+
+        if is_simd_prime {
+            // SIMD primes are handled by small_sieve_simd_only.
+            continue;
+        }
+
+        let logp = entry.logp;
+
+        // Determine the starting position for the first row from tracked state.
+        let mut start_in_row = match prev_j {
+            Some(pj) => {
+                let expected_j = first_j as i32;
+                if pj == expected_j - 1 {
+                    // Consecutive from the previous bucket: advance once.
+                    let old_pos = tracked_starts[idx];
+                    let root = entry.root_i as usize;
+                    let new_pos = old_pos + root;
+                    if new_pos >= p { new_pos - p } else { new_pos }
+                } else if pj == expected_j {
+                    // Same row (should not happen for prime-major, but handle).
+                    tracked_starts[idx]
+                } else {
+                    // Non-consecutive: recompute from scratch.
+                    let j_mod_p = ((first_j as i64).rem_euclid(p as i64)) as u64;
+                    ((half_i as u64 + entry.root_i * j_mod_p) % entry.p) as usize
+                }
+            }
+            None => {
+                // First call: compute from scratch.
+                let j_mod_p = ((first_j as i64).rem_euclid(p as i64)) as u64;
+                ((half_i as u64 + entry.root_i * j_mod_p) % entry.p) as usize
+            }
+        };
+
+        let root_i = entry.root_i as usize;
+
+        // Process all rows for this prime.
+        for row in 0..n_rows {
+            let base = row * sieve_width;
+            let row_end = base + sieve_width;
+
+            let mut pos = base + start_in_row;
+            while pos < row_end {
+                debug_assert!(pos < sieve.len());
+                unsafe {
+                    let cell = sieve.get_unchecked_mut(pos);
+                    *cell = cell.saturating_sub(logp);
+                }
+                pos += p;
+            }
+
+            // Advance to the next row: pos_new = (pos_old + root_i) mod p.
+            // On the last row, we still advance to maintain the tracked convention:
+            // tracked_starts stores the position for the LAST processed row.
+            if row + 1 < n_rows {
+                start_in_row += root_i;
+                if start_in_row >= p {
+                    start_in_row -= p;
+                }
+            }
+        }
+
+        // Save tracked position for the last row processed.
+        // Convention matches small_sieve_region_tracked: tracked_starts[idx]
+        // holds start_in_row for the row j that was last processed.
+        tracked_starts[idx] = start_in_row;
+    }
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -972,5 +1166,367 @@ mod tests {
                 &entries, j, 0, sieve_width, sieve_width, &mut tracked, Some(j - 1),
             );
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Tests for small_sieve_prime_major
+    // ---------------------------------------------------------------
+
+    /// Helper: produce a reference sieve for a multi-row region using the
+    /// row-major small_sieve_region (untracked, ground truth).
+    fn reference_multirow_sieve(
+        entries: &[SmallSieveEntry],
+        first_j: usize,
+        n_rows: usize,
+        sieve_width: usize,
+    ) -> Vec<u8> {
+        let region_len = n_rows * sieve_width;
+        let mut sieve = vec![100u8; region_len];
+        for row in 0..n_rows {
+            let j = (first_j + row) as i32;
+            let base = row * sieve_width;
+            small_sieve_region(
+                &mut sieve[base..base + sieve_width],
+                entries,
+                j,
+                0,
+                sieve_width,
+                sieve_width,
+            );
+        }
+        sieve
+    }
+
+    #[test]
+    fn test_prime_major_matches_reference_from_scratch() {
+        // Only scalar entries (p > 7): these are the ones prime_major processes.
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 13, logp: 11, projective_row_period: 0, root_i: 7 },
+            SmallSieveEntry { p: 17, logp: 12, projective_row_period: 0, root_i: 5 },
+            SmallSieveEntry { p: 29, logp: 14, projective_row_period: 0, root_i: 12 },
+        ];
+        let sieve_width = 60;
+        let first_j = 0;
+        let n_rows = 20;
+
+        let reference = reference_multirow_sieve(&entries, first_j, n_rows, sieve_width);
+
+        let region_len = n_rows * sieve_width;
+        let mut sieve = vec![100u8; region_len];
+        let mut tracked = vec![0usize; entries.len()];
+
+        small_sieve_prime_major(
+            &mut sieve,
+            &entries,
+            &mut tracked,
+            first_j,
+            n_rows,
+            sieve_width,
+            None, // from scratch
+        );
+
+        assert_eq!(sieve, reference, "prime_major diverged from reference (from scratch)");
+    }
+
+    #[test]
+    fn test_prime_major_matches_reference_negative_j() {
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 4 },
+            SmallSieveEntry { p: 23, logp: 13, projective_row_period: 0, root_i: 11 },
+        ];
+        let sieve_width = 40;
+        let first_j = 0; // first_j is usize in prime_major, test with 0
+        let n_rows = 15;
+
+        let reference = reference_multirow_sieve(&entries, first_j, n_rows, sieve_width);
+
+        let region_len = n_rows * sieve_width;
+        let mut sieve = vec![100u8; region_len];
+        let mut tracked = vec![0usize; entries.len()];
+
+        small_sieve_prime_major(
+            &mut sieve, &entries, &mut tracked, first_j, n_rows, sieve_width, None,
+        );
+
+        assert_eq!(sieve, reference, "prime_major diverged from reference (negative j)");
+    }
+
+    #[test]
+    fn test_prime_major_consecutive_buckets() {
+        // Simulate two consecutive bucket regions, each containing 10 rows.
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 37, logp: 15, projective_row_period: 0, root_i: 22 },
+            SmallSieveEntry { p: 59, logp: 16, projective_row_period: 0, root_i: 41 },
+        ];
+        let sieve_width = 80;
+        let rows_per_bucket = 10;
+
+        // Bucket 0: rows 0..9
+        let ref0 = reference_multirow_sieve(&entries, 0, rows_per_bucket, sieve_width);
+        let region_len = rows_per_bucket * sieve_width;
+        let mut sieve0 = vec![100u8; region_len];
+        let mut tracked = vec![0usize; entries.len()];
+        small_sieve_prime_major(
+            &mut sieve0, &entries, &mut tracked, 0, rows_per_bucket, sieve_width, None,
+        );
+        assert_eq!(sieve0, ref0, "bucket 0 diverged");
+
+        // Bucket 1: rows 10..19, prev_j = 9 (last row of bucket 0)
+        let ref1 = reference_multirow_sieve(&entries, 10, rows_per_bucket, sieve_width);
+        let mut sieve1 = vec![100u8; region_len];
+        small_sieve_prime_major(
+            &mut sieve1, &entries, &mut tracked, 10, rows_per_bucket, sieve_width,
+            Some(9), // prev_j from last row of bucket 0
+        );
+        assert_eq!(sieve1, ref1, "bucket 1 diverged");
+    }
+
+    #[test]
+    fn test_prime_major_skips_projective_and_simd() {
+        // Mix of projective, SIMD (p<=7), and scalar entries.
+        // Prime-major should only process the scalar affine ones.
+        let entries = vec![
+            SmallSieveEntry { p: 5, logp: 7, projective_row_period: 5, root_i: 0 },  // projective
+            SmallSieveEntry { p: 3, logp: 5, projective_row_period: 0, root_i: 1 },   // SIMD (p<=7)
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 4 }, // scalar
+            SmallSieveEntry { p: 19, logp: 12, projective_row_period: 0, root_i: 7 }, // scalar
+        ];
+        let sieve_width = 40;
+        let first_j = 0;
+        let n_rows = 8;
+
+        // Reference: only entries with p > 7 and not projective.
+        let scalar_entries: Vec<SmallSieveEntry> = entries.iter()
+            .filter(|e| e.projective_row_period == 0 && e.p > 7)
+            .copied()
+            .collect();
+        let reference = reference_multirow_sieve(&scalar_entries, first_j, n_rows, sieve_width);
+
+        let region_len = n_rows * sieve_width;
+        let mut sieve = vec![100u8; region_len];
+        let mut tracked = vec![0usize; entries.len()];
+
+        small_sieve_prime_major(
+            &mut sieve, &entries, &mut tracked, first_j, n_rows, sieve_width, None,
+        );
+
+        assert_eq!(sieve, reference, "prime_major should skip projective and SIMD entries");
+    }
+
+    #[test]
+    fn test_prime_major_many_entries_stress() {
+        // Large test with many primes across many rows.
+        let entries: Vec<SmallSieveEntry> = (0..20)
+            .map(|i| {
+                let p = [11, 13, 17, 19, 23, 29, 31, 37, 41, 43,
+                          47, 53, 59, 61, 67, 71, 73, 79, 83, 89][i];
+                SmallSieveEntry {
+                    p,
+                    logp: (p as f64).log2().round() as u8,
+                    projective_row_period: 0,
+                    root_i: (p / 3) as u64,
+                }
+            })
+            .collect();
+        let sieve_width = 200;
+        let first_j = 5;
+        let n_rows = 64;
+
+        let reference = reference_multirow_sieve(&entries, first_j, n_rows, sieve_width);
+
+        let region_len = n_rows * sieve_width;
+        let mut sieve = vec![100u8; region_len];
+        let mut tracked = vec![0usize; entries.len()];
+
+        small_sieve_prime_major(
+            &mut sieve, &entries, &mut tracked, first_j, n_rows, sieve_width, None,
+        );
+
+        assert_eq!(sieve, reference, "prime_major diverged in stress test");
+    }
+
+    // ---------------------------------------------------------------
+    // Tests for small_sieve_simd_only
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_simd_only_matches_tracked_for_simd_entries() {
+        // On non-aarch64, SIMD entries don't exist so this tests that
+        // simd_only is effectively a no-op and scalar entries are skipped.
+        // On aarch64, it tests that simd_only processes p<=7 correctly.
+        let entries = vec![
+            SmallSieveEntry { p: 3, logp: 5, projective_row_period: 0, root_i: 1 },
+            SmallSieveEntry { p: 5, logp: 7, projective_row_period: 0, root_i: 2 },
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 4 },
+        ];
+        let sieve_width = 60;
+        let j = 3i32;
+
+        // Reference: full tracked sieve
+        let mut ref_sieve = vec![100u8; sieve_width];
+        let mut ref_tracked = vec![0usize; entries.len()];
+        small_sieve_region_tracked(
+            &mut ref_sieve, &entries, j, 0, sieve_width, sieve_width,
+            &mut ref_tracked, None,
+        );
+
+        // Two-phase: simd_only + prime_major
+        let mut sieve_phase = vec![100u8; sieve_width];
+
+        // Phase 1: SIMD + projective (row-major)
+        small_sieve_simd_only(
+            &mut sieve_phase, &entries, j, 0, sieve_width, sieve_width,
+        );
+
+        // Phase 2: Scalar primes (prime-major, single row)
+        let mut pm_tracked = vec![0usize; entries.len()];
+        small_sieve_prime_major(
+            &mut sieve_phase, &entries, &mut pm_tracked,
+            j as usize, 1, sieve_width, None,
+        );
+
+        assert_eq!(sieve_phase, ref_sieve,
+            "simd_only + prime_major diverged from tracked reference");
+    }
+
+    #[test]
+    fn test_simd_only_projective_handled() {
+        let entries = vec![
+            SmallSieveEntry { p: 5, logp: 10, projective_row_period: 5, root_i: 0 },
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+        ];
+        let sieve_width = 30;
+        let j = 10i32; // Multiple of 5, so projective entry fires.
+
+        let mut ref_sieve = vec![100u8; sieve_width];
+        let mut ref_tracked = vec![0usize; entries.len()];
+        small_sieve_region_tracked(
+            &mut ref_sieve, &entries, j, 0, sieve_width, sieve_width,
+            &mut ref_tracked, None,
+        );
+
+        let mut sieve_phase = vec![100u8; sieve_width];
+
+        small_sieve_simd_only(
+            &mut sieve_phase, &entries, j, 0, sieve_width, sieve_width,
+        );
+        let mut pm_tracked = vec![0usize; entries.len()];
+        small_sieve_prime_major(
+            &mut sieve_phase, &entries, &mut pm_tracked,
+            j as usize, 1, sieve_width, None,
+        );
+
+        assert_eq!(sieve_phase, ref_sieve,
+            "projective entry not handled correctly in two-phase split");
+    }
+
+    #[test]
+    fn test_two_phase_multirow_matches_tracked() {
+        // Full multi-row test: run the two-phase approach (simd_only per row +
+        // prime_major for all rows) and compare against row-by-row tracked.
+        let entries = vec![
+            SmallSieveEntry { p: 3, logp: 5, projective_row_period: 0, root_i: 1 },
+            SmallSieveEntry { p: 5, logp: 7, projective_row_period: 0, root_i: 2 },
+            SmallSieveEntry { p: 7, logp: 8, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 4 },
+            SmallSieveEntry { p: 5, logp: 7, projective_row_period: 5, root_i: 0 }, // projective
+            SmallSieveEntry { p: 23, logp: 13, projective_row_period: 0, root_i: 11 },
+            SmallSieveEntry { p: 37, logp: 15, projective_row_period: 0, root_i: 22 },
+        ];
+        let sieve_width = 80;
+        let first_j = 0usize;
+        let n_rows = 32;
+
+        // Reference: row-by-row tracked
+        let region_len = n_rows * sieve_width;
+        let mut ref_sieve = vec![100u8; region_len];
+        let mut ref_tracked = vec![0usize; entries.len()];
+        let mut prev_j: Option<i32> = None;
+        for row in 0..n_rows {
+            let j = (first_j + row) as i32;
+            let base = row * sieve_width;
+            small_sieve_region_tracked(
+                &mut ref_sieve[base..base + sieve_width],
+                &entries, j, 0, sieve_width, sieve_width,
+                &mut ref_tracked, prev_j,
+            );
+            prev_j = Some(j);
+        }
+
+        // Two-phase: simd_only per row, then prime_major for all rows
+        let mut phase_sieve = vec![100u8; region_len];
+
+        // Phase 1: SIMD + projective per row
+        for row in 0..n_rows {
+            let j = (first_j + row) as i32;
+            let base = row * sieve_width;
+            small_sieve_simd_only(
+                &mut phase_sieve[base..base + sieve_width],
+                &entries, j, 0, sieve_width, sieve_width,
+            );
+        }
+
+        // Phase 2: Scalar primes across all rows (separate tracked array)
+        let mut pm_tracked = vec![0usize; entries.len()];
+        small_sieve_prime_major(
+            &mut phase_sieve, &entries, &mut pm_tracked,
+            first_j, n_rows, sieve_width, None,
+        );
+
+        assert_eq!(phase_sieve, ref_sieve,
+            "two-phase (simd_only+prime_major) diverged from row-by-row tracked");
+    }
+
+    #[test]
+    fn test_two_phase_consecutive_buckets() {
+        // Test that the two-phase approach works correctly across consecutive
+        // bucket regions with proper tracked state handoff.
+        let entries = vec![
+            SmallSieveEntry { p: 11, logp: 10, projective_row_period: 0, root_i: 3 },
+            SmallSieveEntry { p: 29, logp: 14, projective_row_period: 0, root_i: 12 },
+            SmallSieveEntry { p: 53, logp: 16, projective_row_period: 0, root_i: 31 },
+        ];
+        let sieve_width = 80;
+        let rows_per_bucket = 10;
+
+        // Reference: row-by-row tracked across both buckets
+        let total_rows = rows_per_bucket * 2;
+        let total_len = total_rows * sieve_width;
+        let mut ref_sieve = vec![100u8; total_len];
+        let mut ref_tracked = vec![0usize; entries.len()];
+        let mut prev_j: Option<i32> = None;
+        for row in 0..total_rows {
+            let j = row as i32;
+            let base = row * sieve_width;
+            small_sieve_region_tracked(
+                &mut ref_sieve[base..base + sieve_width],
+                &entries, j, 0, sieve_width, sieve_width,
+                &mut ref_tracked, prev_j,
+            );
+            prev_j = Some(j);
+        }
+
+        // Two-phase with two buckets
+        let region_len = rows_per_bucket * sieve_width;
+
+        // Bucket 0
+        let mut sieve0 = vec![100u8; region_len];
+        let mut pm_tracked = vec![0usize; entries.len()];
+        small_sieve_prime_major(
+            &mut sieve0, &entries, &mut pm_tracked,
+            0, rows_per_bucket, sieve_width, None,
+        );
+        assert_eq!(&sieve0, &ref_sieve[..region_len], "bucket 0");
+
+        // Bucket 1 (prev_j = 9, the last row of bucket 0)
+        let mut sieve1 = vec![100u8; region_len];
+        small_sieve_prime_major(
+            &mut sieve1, &entries, &mut pm_tracked,
+            rows_per_bucket, rows_per_bucket, sieve_width,
+            Some((rows_per_bucket - 1) as i32),
+        );
+        assert_eq!(&sieve1, &ref_sieve[region_len..], "bucket 1");
     }
 }

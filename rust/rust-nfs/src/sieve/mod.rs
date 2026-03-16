@@ -26,7 +26,10 @@ use self::lattice::{reduce_qlattice, QLattice};
 // norm functions are used via direct inline computation in the sieve loop;
 // the module is re-exported for external use.
 use self::region::{apply_bucket_updates, pos_to_ij, scan_survivors};
-use self::small::{precompute_small_sieve_alg, precompute_small_sieve_rat_g, small_sieve_region_tracked};
+use self::small::{
+    precompute_small_sieve_alg, precompute_small_sieve_rat_g,
+    small_sieve_prime_major, small_sieve_simd_only,
+};
 
 /// Result of sieving: relations + timing breakdown.
 #[derive(Debug, Clone)]
@@ -406,11 +409,12 @@ pub fn sieve_specialq(
                     let alg_bound = ((params.sieve_mfb1 as f64) * scale).min(255.0) as u8;
                     let d = f_coeffs.len().saturating_sub(1);
 
-                    // Allocate position tracking arrays for incremental small sieve.
-                    let mut rat_tracked_starts = vec![0usize; small_rat.len()];
-                    let mut alg_tracked_starts = vec![0usize; small_alg.len()];
-                    let mut prev_j_rat: Option<i32> = None;
-                    let mut prev_j_alg: Option<i32> = None;
+                    // Allocate position tracking arrays for prime-major small sieve.
+                    // Each side gets its own tracked array for cross-bucket state handoff.
+                    let mut rat_pm_tracked = vec![0usize; small_rat.len()];
+                    let mut alg_pm_tracked = vec![0usize; small_alg.len()];
+                    let mut prev_j_rat_pm: Option<i32> = None;
+                    let mut prev_j_alg_pm: Option<i32> = None;
 
                     for bucket_idx in 0..n_buckets {
                         let region_start = bucket_idx * BUCKET_REGION;
@@ -425,7 +429,11 @@ pub fn sieve_specialq(
 
                         let first_j = region_start / sieve_width;
                         let last_j = (region_end.saturating_sub(1)) / sieve_width;
+                        let n_rows = last_j - first_j + 1;
 
+                        // Phase 1: Norm init + SIMD small primes (row-major).
+                        // SIMD entries (p<=7) and projective entries are processed
+                        // per-row, interleaved with norm initialization.
                         for j_row in first_j..=last_j {
                             let row_start_global = j_row * sieve_width;
                             let row_end_global = row_start_global + sieve_width;
@@ -498,32 +506,54 @@ pub fn sieve_specialq(
 
                             norm_ns += t_norm.elapsed().as_nanos() as u64;
 
+                            // SIMD primes + projective entries (row-major).
                             let t_ss = std::time::Instant::now();
                             let region_offset = i_offset_in_row;
-                            small_sieve_region_tracked(
+                            small_sieve_simd_only(
                                 &mut rat_sieve[local_start..local_end],
                                 &small_rat,
                                 j_row as i32,
                                 region_offset,
                                 overlap_len,
                                 sieve_width,
-                                &mut rat_tracked_starts,
-                                prev_j_rat,
                             );
-                            prev_j_rat = Some(j_row as i32);
-                            small_sieve_region_tracked(
+                            small_sieve_simd_only(
                                 &mut alg_sieve[local_start..local_end],
                                 &small_alg,
                                 j_row as i32,
                                 region_offset,
                                 overlap_len,
                                 sieve_width,
-                                &mut alg_tracked_starts,
-                                prev_j_alg,
                             );
-                            prev_j_alg = Some(j_row as i32);
                             small_sieve_ns += t_ss.elapsed().as_nanos() as u64;
                         }
+
+                        // Phase 2: Scalar small sieve (prime-major).
+                        // Each scalar prime processes ALL rows in the region consecutively,
+                        // keeping (p, logp, root_i) in registers and eliminating per-row
+                        // entry reload overhead.
+                        let t_ss2 = std::time::Instant::now();
+                        small_sieve_prime_major(
+                            &mut rat_sieve[..region_len],
+                            &small_rat,
+                            &mut rat_pm_tracked,
+                            first_j,
+                            n_rows,
+                            sieve_width,
+                            prev_j_rat_pm,
+                        );
+                        prev_j_rat_pm = Some(last_j as i32);
+                        small_sieve_prime_major(
+                            &mut alg_sieve[..region_len],
+                            &small_alg,
+                            &mut alg_pm_tracked,
+                            first_j,
+                            n_rows,
+                            sieve_width,
+                            prev_j_alg_pm,
+                        );
+                        prev_j_alg_pm = Some(last_j as i32);
+                        small_sieve_ns += t_ss2.elapsed().as_nanos() as u64;
 
                         let t_ba = std::time::Instant::now();
                         let rat_updates = rat_buckets.updates_for_bucket(bucket_idx);
