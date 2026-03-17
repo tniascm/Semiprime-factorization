@@ -706,10 +706,20 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     };
     let bad_root_offsets = compute_bad_root_offsets(&gnfs_fb, &f_coeffs_big);
     let alg_bad = bad_root_offsets.len();
+    // Cap q windows so SQs stay within lim1 (algebraic FB range).
+    // SQs beyond lim1 create singleton columns in the matrix that can't merge,
+    // causing catastrophic row loss during singleton pruning.
+    let lim1_q_window_cap = if params.qrange > 0 && params.qmin < params.lim1 {
+        let max_q_in_fb = params.lim1.saturating_sub(params.qmin);
+        Some((max_q_in_fb / params.qrange).max(1) as usize)
+    } else {
+        None
+    };
     let max_q_windows = std::env::var("POTAPOV_NFS_MAX_Q_WINDOWS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .filter(|&v| v > 0);
+        .filter(|&v| v > 0)
+        .or(lim1_q_window_cap);
     // Build an optional root lookup table for special-q primes above lim1.
     // By default this is only prebuilt when the q-window horizon is explicit,
     // which avoids doing large startup work for runs that stop much earlier.

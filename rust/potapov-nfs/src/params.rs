@@ -139,16 +139,15 @@ impl NfsParams {
 
     /// Parameters for ~60-digit (171+ bit) semiprimes.
     ///
-    /// Matched to CADO-NFS c60 reference:
+    /// Matched to CADO-NFS c60 reference with adjustments:
     /// - lpb0=18, lpb1=19: tight LP bounds for high merge rate.
-    ///   Higher lpb (22/23) was tried but the LP space (263K primes) is
-    ///   too vast for ~80K relations — 79% filtered as singletons.
-    /// - mfb0=18 ≤ lpb0: disables 2LP on rational side (CADO uses mfb0=17).
-    ///   Rational LPs confined to 80K-262K range (~15K primes) for high collision.
+    /// - mfb0=18 ≤ lpb0: disables 2LP on rational side.
     /// - mfb1=38 = 2×lpb1: full 2LP on algebraic side.
-    /// - lim/I/qmin match CADO c60 (params.c60 from CADO-NFS source).
-    /// - qrange=20000: wider than CADO's 2000 (per-task) to provide sufficient
-    ///   SQ coverage in a single pass.
+    /// - log_i=12: large sieve area (64M entries, 32x CADO's I=10). Gives
+    ///   ~5-8 rels/SQ, enough to populate the matrix from SQs within lim1.
+    ///   SQs must stay within lim1 to fold into the algebraic FB; SQs beyond
+    ///   lim1 create singleton matrix columns that destroy the row/col ratio.
+    /// - qmin=62K, qrange=10000: pipeline auto-caps at lim1=115K.
     pub fn c60() -> Self {
         Self {
             name: "c60",
@@ -161,9 +160,9 @@ impl NfsParams {
             mfb1: 38,
             sieve_mfb0: 18,
             sieve_mfb1: 38,
-            log_i: 10,
+            log_i: 12,
             qmin: 62_000,
-            qrange: 20_000,
+            qrange: 10_000,
             rels_wanted: 80_000,
         }
     }
@@ -255,7 +254,7 @@ mod tests {
     fn test_params_c60() {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
-        assert_eq!(p.log_i, 10);
+        assert_eq!(p.log_i, 12);
         assert_eq!(p.lim0, 80_000);
         assert_eq!(p.lim1, 115_000);
         assert_eq!(p.lpb0, 18);
@@ -264,6 +263,6 @@ mod tests {
         assert_eq!(p.mfb1, 38);
         assert_eq!(p.large_prime_bound_0(), 1 << 18);
         assert_eq!(p.large_prime_bound_1(), 1 << 19);
-        assert_eq!(p.sieve_half_width(), 1024);
+        assert_eq!(p.sieve_half_width(), 4096);
     }
 }
