@@ -139,31 +139,31 @@ impl NfsParams {
 
     /// Parameters for ~60-digit (171+ bit) semiprimes.
     ///
-    /// Matched to CADO-NFS c60 reference with adjustments:
-    /// - lpb0=18, lpb1=19: tight LP bounds for high merge rate.
-    /// - mfb0=18 ≤ lpb0: disables 2LP on rational side.
-    /// - mfb1=38 = 2×lpb1: full 2LP on algebraic side.
-    /// - log_i=12: large sieve area (64M entries, 32x CADO's I=10). Gives
-    ///   ~5-8 rels/SQ, enough to populate the matrix from SQs within lim1.
-    ///   SQs must stay within lim1 to fold into the algebraic FB; SQs beyond
-    ///   lim1 create singleton matrix columns that destroy the row/col ratio.
-    /// - qmin=62K, qrange=10000: pipeline auto-caps at lim1=115K.
+    /// Smaller FB than CADO c60 reference to ensure relation surplus:
+    /// - lim=30K/40K: ~11K dense columns vs ~17K expected relations → 6K surplus.
+    ///   CADO uses lim=79K/111K but has 2-5x higher per-SQ yield from optimized
+    ///   sieve + ECM cofactoring. Our lower yield requires smaller matrix.
+    /// - lpb0=19, lpb1=20: slightly higher than CADO (18/19) to increase rels/SQ
+    ///   with smaller FB. Matches CADO c65 lpb values.
+    /// - mfb0=19 ≤ lpb0: no 2LP on rational side. mfb1=40=2×lpb1: full 2LP alg.
+    /// - log_i=11: 16M sieve area. Sufficient with smaller FB.
+    /// - qmin=30K within lim1=40K: all SQs fold into algebraic FB.
     pub fn c60() -> Self {
         Self {
             name: "c60",
             degree: 4,
-            lim0: 80_000,
-            lim1: 115_000,
-            lpb0: 18,
-            lpb1: 19,
-            mfb0: 18,
-            mfb1: 38,
-            sieve_mfb0: 18,
-            sieve_mfb1: 38,
-            log_i: 12,
-            qmin: 62_000,
+            lim0: 30_000,
+            lim1: 40_000,
+            lpb0: 19,
+            lpb1: 20,
+            mfb0: 19,
+            mfb1: 40,
+            sieve_mfb0: 19,
+            sieve_mfb1: 40,
+            log_i: 11,
+            qmin: 30_000,
             qrange: 10_000,
-            rels_wanted: 80_000,
+            rels_wanted: 20_000,
         }
     }
 
@@ -254,15 +254,15 @@ mod tests {
     fn test_params_c60() {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
-        assert_eq!(p.log_i, 12);
-        assert_eq!(p.lim0, 80_000);
-        assert_eq!(p.lim1, 115_000);
-        assert_eq!(p.lpb0, 18);
-        assert_eq!(p.lpb1, 19);
-        assert_eq!(p.mfb0, 18);
-        assert_eq!(p.mfb1, 38);
-        assert_eq!(p.large_prime_bound_0(), 1 << 18);
-        assert_eq!(p.large_prime_bound_1(), 1 << 19);
-        assert_eq!(p.sieve_half_width(), 4096);
+        assert_eq!(p.log_i, 11);
+        assert_eq!(p.lim0, 30_000);
+        assert_eq!(p.lim1, 40_000);
+        assert_eq!(p.lpb0, 19);
+        assert_eq!(p.lpb1, 20);
+        assert_eq!(p.mfb0, 19);
+        assert_eq!(p.mfb1, 40);
+        assert_eq!(p.large_prime_bound_0(), 1 << 19);
+        assert_eq!(p.large_prime_bound_1(), 1 << 20);
+        assert_eq!(p.sieve_half_width(), 2048);
     }
 }

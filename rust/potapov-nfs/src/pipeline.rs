@@ -1737,7 +1737,20 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_initial = dropped_cols;
     let mut singleton_rows_dropped = 0usize;
     let mut zero_cols_dropped_post_singleton = 0usize;
-    if singleton_prune {
+    // Only singleton-prune if there's enough excess to absorb row removals.
+    // With small FBs (c60), the matrix may have barely positive excess;
+    // aggressive pruning would cascade-delete all rows.
+    let excess_before = matrix.len() as i64 - ncols as i64;
+    let do_singleton_prune = singleton_prune && excess_before > 200;
+    if !singleton_prune {
+        // explicitly disabled
+    } else if !do_singleton_prune {
+        eprintln!(
+            "  LA: skipping singleton-prune (excess {} too low, need >200)",
+            excess_before
+        );
+    }
+    if do_singleton_prune {
         let rows_before = matrix.len();
         let cols_before = ncols;
         let (pruned_matrix, pruned_sources, removed_rows) =
