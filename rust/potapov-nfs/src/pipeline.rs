@@ -604,40 +604,38 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     if partial_merge_2lp {
         // 2LP requires room for products of two LPs; if mfb is too close to lpb
         // those candidates are rejected before merge can use them.
+        // Exception: if mfb <= lpb, the user intentionally disabled 2LP on that
+        // side (e.g., CADO c60 uses mfb0=17 < lpb0=18 for rational-side 1LP only).
         let min_mfb0 = params.lpb0.saturating_mul(2).saturating_add(2);
         let min_mfb1 = params.lpb1.saturating_mul(2).saturating_add(2);
-        if params.mfb0 < min_mfb0 {
+        if params.mfb0 > params.lpb0 && params.mfb0 < min_mfb0 {
             eprintln!(
                 "  params: bump mfb0 {} -> {} for 2LP support",
                 params.mfb0, min_mfb0
             );
             params.mfb0 = min_mfb0;
         }
-        if params.mfb1 < min_mfb1 {
+        if params.mfb1 > params.lpb1 && params.mfb1 < min_mfb1 {
             eprintln!(
                 "  params: bump mfb1 {} -> {} for 2LP support",
                 params.mfb1, min_mfb1
             );
             params.mfb1 = min_mfb1;
         }
-        // Sieve threshold: use 2*lpb (tighter than mfb) to reduce false
-        // positive survivors while still accepting most valid 2LP candidates.
-        // The sieve is an approximate screen — the full cofactoring at mfb
-        // will find relations that narrowly pass the tighter sieve threshold.
+        // Sieve threshold: use each param set's sieve_mfb values directly.
+        // These are tuned per size tier:
+        // - c45: sieve_mfb=28/30 (tighter than mfb=44/46 after 2LP bump;
+        //   empirically tuned to reject false positives that degrade sqrt)
+        // - c60: sieve_mfb=18/38 (rational: no 2LP, match mfb; algebraic:
+        //   match mfb for full 2LP acceptance, critical for yield at this scale)
         let sieve_mfb0_env = std::env::var("POTAPOV_NFS_SIEVE_MFB0")
             .ok()
             .and_then(|s| s.parse::<u32>().ok());
         let sieve_mfb1_env = std::env::var("POTAPOV_NFS_SIEVE_MFB1")
             .ok()
             .and_then(|s| s.parse::<u32>().ok());
-        // Default: 3/4 of cofactoring mfb. Empirically tuned via sweep on c45
-        // (mfb0=42, mfb1=44 after 2LP bump): 3/4 gives sieve_mfb 31/33,
-        // which yields ~15% faster sieve than 2/3 (28/29) with no regression
-        // in factoring success rate. Too loose (>3/4) floods the cofactorer
-        // with false positives that degrade relation quality and sqrt success.
-        // For c30 (mfb=38): gives sieve_mfb=28 (vs old 25).
-        params.sieve_mfb0 = sieve_mfb0_env.unwrap_or(params.mfb0 * 3 / 4);
-        params.sieve_mfb1 = sieve_mfb1_env.unwrap_or(params.mfb1 * 3 / 4);
+        params.sieve_mfb0 = sieve_mfb0_env.unwrap_or(params.sieve_mfb0);
+        params.sieve_mfb1 = sieve_mfb1_env.unwrap_or(params.sieve_mfb1);
     }
 
     // --- Stage 1: Polynomial Selection ---

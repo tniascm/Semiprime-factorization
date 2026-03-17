@@ -139,26 +139,31 @@ impl NfsParams {
 
     /// Parameters for ~60-digit (171+ bit) semiprimes.
     ///
-    /// Based on CADO-NFS c60 reference (degree=4, I=10), with higher lpb
-    /// following the same tuning pattern as c45 (our lpb > CADO's to exploit
-    /// 2LP cofactoring). Empirical testing shows lpb=22/23 gives best
-    /// relation yield (275 raw/s vs 10-130 raw/s at lower lpb).
-    /// Wider qrange=10000 for better SQ coverage.
+    /// Matched to CADO-NFS c60 reference:
+    /// - lpb0=18, lpb1=19: tight LP bounds for high merge rate.
+    ///   Higher lpb (22/23) was tried but the LP space (263K primes) is
+    ///   too vast for ~80K relations — 79% filtered as singletons.
+    /// - mfb0=18 ≤ lpb0: disables 2LP on rational side (CADO uses mfb0=17).
+    ///   Rational LPs confined to 80K-262K range (~15K primes) for high collision.
+    /// - mfb1=38 = 2×lpb1: full 2LP on algebraic side.
+    /// - lim/I/qmin match CADO c60 (params.c60 from CADO-NFS source).
+    /// - qrange=20000: wider than CADO's 2000 (per-task) to provide sufficient
+    ///   SQ coverage in a single pass.
     pub fn c60() -> Self {
         Self {
             name: "c60",
             degree: 4,
             lim0: 80_000,
             lim1: 115_000,
-            lpb0: 22,
-            lpb1: 23,
-            mfb0: 30,
-            mfb1: 32,
-            sieve_mfb0: 30,
-            sieve_mfb1: 32,
+            lpb0: 18,
+            lpb1: 19,
+            mfb0: 18,
+            mfb1: 38,
+            sieve_mfb0: 18,
+            sieve_mfb1: 38,
             log_i: 10,
             qmin: 62_000,
-            qrange: 10_000,
+            qrange: 20_000,
             rels_wanted: 80_000,
         }
     }
@@ -253,10 +258,12 @@ mod tests {
         assert_eq!(p.log_i, 10);
         assert_eq!(p.lim0, 80_000);
         assert_eq!(p.lim1, 115_000);
-        assert_eq!(p.lpb0, 22);
-        assert_eq!(p.lpb1, 23);
-        assert_eq!(p.large_prime_bound_0(), 1 << 22);
-        assert_eq!(p.large_prime_bound_1(), 1 << 23);
+        assert_eq!(p.lpb0, 18);
+        assert_eq!(p.lpb1, 19);
+        assert_eq!(p.mfb0, 18);
+        assert_eq!(p.mfb1, 38);
+        assert_eq!(p.large_prime_bound_0(), 1 << 18);
+        assert_eq!(p.large_prime_bound_1(), 1 << 19);
         assert_eq!(p.sieve_half_width(), 1024);
     }
 }
