@@ -1989,36 +1989,109 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     } else if bits <= 180 {
         (200_000, 20_000_000, 400)
     } else if bits <= 210 {
-        // c60: ~100-bit (30-digit) factors.
-        // B1=200K: per-curve ~10ms U256. B2=20M. 1000 curves.
-        // ρ(100/17.6) = ρ(5.7) ≈ 0.01%. Phase 2 → ~0.1%/curve.
-        // 1000 curves → 63%. Combined with lower sieve overhead.
+        // c60: multi-stage handled below. Start with moderate B1.
         (200_000, 20_000_000, 1000)
     } else {
         (3_000_000, 300_000_000, 1200)
     };
 
-    let b1: u64 = std::env::var("POTAPOV_NFS_ECM_B1")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(default_b1);
-    let b2: u64 = std::env::var("POTAPOV_NFS_ECM_B2")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(default_b2);
-    let max_curves: usize = std::env::var("POTAPOV_NFS_ECM_CURVES")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(default_curves);
+    // For c60 (181-210 bits): use staged ECM with shared prime sieve.
+    // Stage 1: low B1 catches easy factors fast.
+    // Stage 2: medium B1 catches moderate factors.
+    // Stage 3: high B1 catches hard factors.
+    // All stages share the same sieve_primes_vec (computed once at max B2).
+    let env_b1 = std::env::var("POTAPOV_NFS_ECM_B1").ok().and_then(|s| s.parse::<u64>().ok());
+    let env_b2 = std::env::var("POTAPOV_NFS_ECM_B2").ok().and_then(|s| s.parse::<u64>().ok());
+    let env_curves = std::env::var("POTAPOV_NFS_ECM_CURVES").ok().and_then(|s| s.parse::<usize>().ok());
 
     let start = std::time::Instant::now();
-    let result = ecm_factor(n, max_curves, b1, b2);
+
+    let (result, final_b1, final_b2, total_curves) = if env_b1.is_some() || bits <= 180 || bits > 210 {
+        // Single-stage: use default or env-overridden params
+        let b1 = env_b1.unwrap_or(default_b1);
+        let b2 = env_b2.unwrap_or(default_b2);
+        let curves = env_curves.unwrap_or(default_curves);
+        let r = ecm_factor(n, curves, b1, b2);
+        (r, b1, b2, curves)
+    } else {
+        // c60 multi-stage with shared sieve
+        let max_b2 = env_b2.unwrap_or(50_000_000u64);
+        let primes = sieve_primes_vec(max_b2);
+
+        // Stages: (B1, B2, curves). Each uses different sigma offset.
+        let stages: &[(u64, u64, usize)] = &[
+            (50_000, 5_000_000, 500),    // ~3ms/curve, catches 25-digit easily
+            (200_000, 20_000_000, 500),   // ~10ms/curve, catches 30-digit
+            (1_000_000, max_b2, 500),     // ~40ms/curve, catches hard cases
+        ];
+
+        let mut result = None;
+        let mut total = 0usize;
+        let mut last_b1 = 0u64;
+        let mut last_b2 = 0u64;
+        let mut sigma_offset = 6u64;
+
+        if fits_in_256(n) && *n > 1u32 && n.is_odd() {
+            let n_256 = integer_to_u256(n);
+            let mont = Mont256::new(&n_256);
+
+            for &(b1, b2, curves) in stages {
+                use rayon::prelude::*;
+                let off = sigma_offset;
+                let r = (0..curves)
+                    .into_par_iter()
+                    .find_map_any(|idx| {
+                        let sigma = off + idx as u64;
+                        ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, None)
+                    });
+                total += curves;
+                last_b1 = b1;
+                last_b2 = b2;
+                sigma_offset += curves as u64;
+                if r.is_some() {
+                    result = r;
+                    break;
+                }
+            }
+        } else if fits_in_192(n) && *n > 1u32 && n.is_odd() {
+            let n_192 = integer_to_u192(n);
+            let mont = Mont192::new(&n_192);
+
+            for &(b1, b2, curves) in stages {
+                use rayon::prelude::*;
+                let off = sigma_offset;
+                let r = (0..curves)
+                    .into_par_iter()
+                    .find_map_any(|idx| {
+                        let sigma = off + idx as u64;
+                        ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, None)
+                    });
+                total += curves;
+                last_b1 = b1;
+                last_b2 = b2;
+                sigma_offset += curves as u64;
+                if r.is_some() {
+                    result = r;
+                    break;
+                }
+            }
+        }
+
+        (result, last_b1, last_b2, total)
+    };
+
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     if let Some(f) = result {
         eprintln!(
             "  ecm: factor found in {:.1}ms (B1={}, B2={}, curves={}, bits={}): {}",
-            elapsed_ms, b1, b2, max_curves, bits, f
+            elapsed_ms, final_b1, final_b2, total_curves, bits, f
         );
         Some((f, elapsed_ms))
     } else {
         eprintln!(
             "  ecm: no factor after {:.1}ms (B1={}, B2={}, curves={}, bits={})",
-            elapsed_ms, b1, b2, max_curves, bits
+            elapsed_ms, final_b1, final_b2, total_curves, bits
         );
         None
     }
