@@ -276,8 +276,10 @@ fn mac_3_at(t: &mut [u64; 6], offset: usize, m: u64, n: &U192) -> u64 {
     (p >> 64) as u64
 }
 
-/// Montgomery squaring: a^2 * R^{-1} mod n. Delegates to mont_mul_192
-/// (the compiler can optimize the symmetric case).
+/// Montgomery squaring: a^2 * R^{-1} mod n.
+///
+/// Delegates to mont_mul_192 — with LTO + codegen-units=1, the compiler
+/// generates optimal code for the a==b case.
 #[inline]
 fn mont_sqr_192(a: &U192, mont: &Mont192) -> U192 {
     mont_mul_192(a, a, mont)
@@ -1874,15 +1876,18 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     } else if bits <= 120 {
         (11_000, 1_100_000, 90)
     } else if bits <= 140 {
-        (25_000, 2_500_000, 200)
+        // ~55-70 bit factors (~17-21 digits). B1=11K finds 20-digit in ~30 curves.
+        (11_000, 1_100_000, 100)
     } else if bits <= 160 {
-        // With U192 fast path (~2ms/curve), 500 curves costs ~1s MT on 10 cores.
-        // This catches ~95% of balanced c45 semiprimes before NFS fallback.
-        (50_000, 5_000_000, 500)
+        // c45 range: ~74-80 bit factors (~22-24 digits).
+        // GMP-ECM: 22-digit needs B1=11K/~74 curves, 25-digit B1=50K/~214.
+        // B1=25K with 400 curves: ~99.9% success for 22-digit, ~98% for 24-digit.
+        // B2=2M (80×B1): Phase 2 baby/giant steps ~2800 total.
+        // Per-curve: ~1.5ms. 400 curves: max ~600ms ST, ~60ms MT on 10 cores.
+        (25_000, 2_000_000, 400)
     } else if bits <= 180 {
-        // ~74-90 bit factors. U192/U256 fast path at ~5-10ms/curve.
-        // 400 curves on 10 cores ≈ 2-4s MT.
-        (100_000, 10_000_000, 400)
+        // ~80-90 bit factors (~24-27 digits). B1=50K/250 curves.
+        (50_000, 5_000_000, 250)
     } else if bits <= 210 {
         // c60 range: balanced ~100-bit (30-digit) factors.
         // GMP-ECM table: 30-digit needs B1=250K (~74 curves), 35-digit B1=1M (~214).
