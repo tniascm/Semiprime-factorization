@@ -532,23 +532,27 @@ impl FactorBase {
     /// 4. Compute `log_p = floor(log2(p) * scale)` clamped to `u8`.
     pub fn new(f_coeffs: &[i64], bound: u64, scale: f64) -> Self {
         let primes = sieve_primes(bound);
+
+        // Parallelize root-finding — the expensive per-prime operation.
+        use rayon::prelude::*;
+        let per_prime: Vec<_> = primes
+            .par_iter()
+            .map(|&p| {
+                let r = find_roots_mod_p(f_coeffs, p);
+                let td = TrialDivisor::new(p, scale);
+                let lp = ((p as f64).log2() * scale).floor();
+                let lp_clamped = if lp < 0.0 { 0u8 } else if lp > 255.0 { 255u8 } else { lp as u8 };
+                (r, td, lp_clamped)
+            })
+            .collect();
+
         let mut roots = Vec::with_capacity(primes.len());
         let mut trial_divisors = Vec::with_capacity(primes.len());
         let mut log_p_vec = Vec::with_capacity(primes.len());
-
-        for &p in &primes {
-            roots.push(find_roots_mod_p(f_coeffs, p));
-            trial_divisors.push(TrialDivisor::new(p, scale));
-
-            let lp = ((p as f64).log2() * scale).floor();
-            let lp_clamped = if lp < 0.0 {
-                0u8
-            } else if lp > 255.0 {
-                255u8
-            } else {
-                lp as u8
-            };
-            log_p_vec.push(lp_clamped);
+        for (r, td, lp) in per_prime {
+            roots.push(r);
+            trial_divisors.push(td);
+            log_p_vec.push(lp);
         }
 
         FactorBase {
@@ -567,22 +571,26 @@ impl FactorBase {
     /// which only tracks degree-1 prime ideals.
     pub fn new_roots_only(f_coeffs: &[i64], bound: u64, scale: f64) -> Self {
         let full_primes = sieve_primes(bound);
+
+        // Parallelize root-finding, then filter primes with roots.
+        use rayon::prelude::*;
+        let per_prime: Vec<_> = full_primes
+            .par_iter()
+            .map(|&p| {
+                let r = find_roots_mod_p(f_coeffs, p);
+                (p, r)
+            })
+            .collect();
+
         let mut primes = Vec::new();
         let mut roots = Vec::new();
         let mut trial_divisors = Vec::new();
         let mut log_p = Vec::new();
 
-        for &p in &full_primes {
-            let r = find_roots_mod_p(f_coeffs, p);
+        for (p, r) in per_prime {
             if !r.is_empty() {
                 let lp = ((p as f64).log2() * scale).floor();
-                let lp_clamped = if lp < 0.0 {
-                    0u8
-                } else if lp > 255.0 {
-                    255u8
-                } else {
-                    lp as u8
-                };
+                let lp_clamped = if lp < 0.0 { 0u8 } else if lp > 255.0 { 255u8 } else { lp as u8 };
                 primes.push(p);
                 roots.push(r);
                 trial_divisors.push(TrialDivisor::new(p, scale));
