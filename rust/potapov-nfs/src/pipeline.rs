@@ -527,7 +527,8 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         });
     }
     result.polyselect_ms = ext_polyselect_ms;
-    let _ = (la_timeout_ms, sqrt_timeout_ms);
+    // Timeouts used in sieve loop, LA, and sqrt stages below.
+    let pipeline_start = std::time::Instant::now();
 
     // Optional runtime parameter overrides for reproducible tuning experiments.
     let mut params = params.clone();
@@ -934,8 +935,21 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         let near_q_window_cap = max_q_windows.map_or(false, |cap| window + 1 >= cap);
         let max_raw_rels =
             effective_max_raw_rels(configured_max_raw_rels, target_raw_rels, raw_target_step);
+        // Check timeouts
+        let sieve_elapsed_ms = (total_sieve_ms * 1000.0) as u64;
+        let sieve_timed_out = sieve_timeout_ms.map_or(false, |t| sieve_elapsed_ms > t);
+        let total_elapsed_ms = pipeline_start.elapsed().as_millis() as u64;
+        let total_timed_out = total_timeout_ms.map_or(false, |t| total_elapsed_ms > t);
+        if sieve_timed_out {
+            eprintln!("  sieve: TIMEOUT after {:.0}ms (limit {}ms)", sieve_elapsed_ms, sieve_timeout_ms.unwrap());
+        }
+        if total_timed_out {
+            eprintln!("  pipeline: TIMEOUT after {:.0}ms (limit {}ms)", total_elapsed_ms, total_timeout_ms.unwrap());
+        }
         let force_stop = (!partial_merge_2lp && total_rels >= params.rels_wanted as usize)
-            || total_rels >= max_raw_rels;
+            || total_rels >= max_raw_rels
+            || sieve_timed_out
+            || total_timed_out;
         let should_check = total_rels >= adaptive_check_min_raw
             && (window % adaptive_check_every == 0
                 || force_stop
