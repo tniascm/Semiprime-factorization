@@ -882,8 +882,23 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .filter(|&v| v > 0)
         .unwrap_or_else(|| adaptive_rows_min.max(500usize));
 
+    // Target raw relations must account for filter loss. Filter yield depends
+    // on the LP space size: larger (lpb - log2(lim)) gap = more LP singletons.
+    // c45 (lpb=21, lim=45K): ~30% yield → ratio 3.3
+    // c60 (lpb=19, lim=50K): ~13% yield → ratio 8.0
+    let raw_filter_ratio = std::env::var("POTAPOV_NFS_RAW_FILTER_RATIO")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+        .unwrap_or_else(|| {
+            let lp_gap = (params.lpb1 as f64) - (params.lim1 as f64).log2();
+            if lp_gap > 3.5 { 8.0 }      // large LP gap (c60+): 12.5% yield
+            else if lp_gap > 2.0 { 4.0 }  // medium gap: 25% yield
+            else { 1.5 }                   // small gap (c45-): 67% yield
+        });
     let mut target_raw_rels = if partial_merge_2lp {
-        (((est_dense_cols as f64) * rel_target_mult).ceil() as usize).max(rel_target_min)
+        (((est_dense_cols as f64) * rel_target_mult * raw_filter_ratio).ceil() as usize)
+            .max(rel_target_min)
     } else {
         params.rels_wanted as usize
     };
