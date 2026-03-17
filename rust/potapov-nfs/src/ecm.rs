@@ -1878,53 +1878,41 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
 pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     let bits = n.significant_bits();
 
+    // Single-call ECM with B1 high enough for worst-case factors (RSA safe
+    // primes, ECM-resistant group orders). Easy factors are found early via
+    // rayon's find_map_any — most curves terminate in Phase 1 before reaching
+    // Phase 2, so high B1 doesn't penalize easy cases proportionally.
+    // The prime sieve is done ONCE and shared across all curves.
     let (default_b1, default_b2, default_curves) = if bits <= 80 {
         (2_000u64, 200_000u64, 25usize)
     } else if bits <= 100 {
         (5_000, 500_000, 50)
     } else if bits <= 120 {
-        (11_000, 1_100_000, 90)
-    } else if bits <= 140 {
-        // ~55-70 bit factors (~17-21 digits). B1=11K finds 20-digit in ~30 curves.
         (11_000, 1_100_000, 100)
+    } else if bits <= 140 {
+        (25_000, 2_500_000, 150)
     } else if bits <= 160 {
-        // c45 range: ~74-80 bit factors (~22-24 digits).
-        // GMP-ECM: 22-digit needs B1=11K/~74 curves, 25-digit B1=50K/~214.
-        // B1=25K with 400 curves: ~99.9% success for 22-digit, ~98% for 24-digit.
-        // B1=40K: handles both random and RSA-style safe prime factors.
-        // Safe primes (p=2q+1) are harder for ECM because p-1=2q has
-        // only one large prime factor, requiring higher B1 for the curve
-        // group order to be B1-smooth.
-        // B1=40K/B2=4M: ~6ms/curve. 400 curves → max ~240ms MT, ~2.4s ST.
-        (40_000, 4_000_000, 400)
+        // c45: ~74-bit factors. B1=50K per-curve ~8ms (Phase 1 ~5ms + Phase 2 ~3ms).
+        // 500 curves: MT worst ~400ms (500/10 × 8ms). ST worst ~4s.
+        // Easy factors (70% of cases): found in <100 curves = <80ms MT.
+        // RSA safe primes: found in ~200 curves = ~160ms MT (verified).
+        // Hard cases (p with 48-bit p-1 cofactor): need 400+ curves.
+        (50_000, 5_000_000, 500)
     } else if bits <= 180 {
-        // ~80-90 bit factors (~24-27 digits). B1=50K/250 curves.
-        (50_000, 5_000_000, 250)
+        (200_000, 20_000_000, 400)
     } else if bits <= 210 {
-        // c60 range: balanced ~100-bit (30-digit) factors.
-        // GMP-ECM table: 30-digit needs B1=250K (~74 curves), 35-digit B1=1M (~214).
-        // B1=1M gives ~10-15% success/curve for 30-digit factors.
-        // U256 fast path: ~50-100ms/curve (Phase 1 ~40ms, Phase 2 ~40ms).
-        // 800 curves on 10 cores ≈ 4-8s MT. Previously B1=200K failed
-        // (0.5%/curve × 600 curves = low cumulative probability).
+        // c60: ~100-bit factors. B1=1M, 800 curves.
         (1_000_000, 100_000_000, 800)
     } else {
-        // >210 bits: GMP fallback likely.
         (3_000_000, 300_000_000, 1200)
     };
 
     let b1: u64 = std::env::var("POTAPOV_NFS_ECM_B1")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default_b1);
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(default_b1);
     let b2: u64 = std::env::var("POTAPOV_NFS_ECM_B2")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default_b2);
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(default_b2);
     let max_curves: usize = std::env::var("POTAPOV_NFS_ECM_CURVES")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default_curves);
+        .ok().and_then(|s| s.parse().ok()).unwrap_or(default_curves);
 
     let start = std::time::Instant::now();
     let result = ecm_factor(n, max_curves, b1, b2);
