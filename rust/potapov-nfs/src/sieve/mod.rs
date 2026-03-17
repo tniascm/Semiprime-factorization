@@ -306,52 +306,24 @@ pub fn sieve_specialq(
                     let qlat = chunk_qlats[sq_idx];
 
                     // 2. Precompute small sieve entries
+                    // Skip the SQ prime from small sieve (it's handled separately).
                     let t_small_precomp = std::time::Instant::now();
-                    let small_rat = if q < bucket_thresh {
-                        let mut small_rat_primes = Vec::with_capacity(small_rat_primes_all.len());
-                        let mut small_rat_logp = Vec::with_capacity(small_rat_logp_all.len());
-                        for (idx, &p) in small_rat_primes_all.iter().enumerate() {
-                            if p != q {
-                                small_rat_primes.push(p);
-                                small_rat_logp.push(small_rat_logp_all[idx]);
-                            }
-                        }
-                        precompute_small_sieve_rat_g(&small_rat_primes, &small_rat_logp, g0_param, g1_param, &qlat)
-                    } else {
-                        precompute_small_sieve_rat_g(
-                            &small_rat_primes_all,
-                            &small_rat_logp_all,
-                            g0_param,
-                            g1_param,
-                            &qlat,
-                        )
-                    };
-
-                    let small_alg = if q < bucket_thresh {
-                        let mut small_alg_primes = Vec::with_capacity(small_alg_primes_all.len());
-                        let mut small_alg_roots = Vec::with_capacity(small_alg_roots_all.len());
-                        let mut small_alg_logp = Vec::with_capacity(small_alg_logp_all.len());
-                        for (idx, &p) in small_alg_primes_all.iter().enumerate() {
-                            if p != q {
-                                small_alg_primes.push(p);
-                                small_alg_roots.push(small_alg_roots_all[idx].clone());
-                                small_alg_logp.push(small_alg_logp_all[idx]);
-                            }
-                        }
-                        precompute_small_sieve_alg(
-                            &small_alg_primes,
-                            &small_alg_roots,
-                            &small_alg_logp,
-                            &qlat,
-                        )
-                    } else {
-                        precompute_small_sieve_alg(
-                            &small_alg_primes_all,
-                            &small_alg_roots_all,
-                            &small_alg_logp_all,
-                            &qlat,
-                        )
-                    };
+                    let skip_q = if q < bucket_thresh { Some(q) } else { None };
+                    let small_rat = small::precompute_small_sieve_rat_g_skip(
+                        &small_rat_primes_all,
+                        &small_rat_logp_all,
+                        g0_param,
+                        g1_param,
+                        &qlat,
+                        skip_q,
+                    );
+                    let small_alg = small::precompute_small_sieve_alg_skip(
+                        &small_alg_primes_all,
+                        &small_alg_roots_all,
+                        &small_alg_logp_all,
+                        &qlat,
+                        skip_q,
+                    );
 
                     let small_precomp_ns = t_small_precomp.elapsed().as_nanos() as u64;
 

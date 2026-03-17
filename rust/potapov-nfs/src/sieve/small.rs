@@ -118,12 +118,24 @@ pub fn precompute_small_sieve_rat_g(
     g1: i64,
     qlat: &QLattice,
 ) -> Vec<SmallSieveEntry> {
+    precompute_small_sieve_rat_g_skip(primes, log_p, g0, g1, qlat, None)
+}
+
+/// Like `precompute_small_sieve_rat_g` but skips `skip_prime` (the special-q).
+pub fn precompute_small_sieve_rat_g_skip(
+    primes: &[u64],
+    log_p: &[u8],
+    g0: i64,
+    g1: i64,
+    qlat: &QLattice,
+    skip_prime: Option<u64>,
+) -> Vec<SmallSieveEntry> {
     assert_eq!(primes.len(), log_p.len());
 
     let mut entries = Vec::with_capacity(primes.len());
 
     for (idx, &p) in primes.iter().enumerate() {
-        if p == 0 {
+        if p == 0 || Some(p) == skip_prime {
             continue;
         }
         let p_i128 = p as i128;
@@ -182,13 +194,24 @@ pub fn precompute_small_sieve_alg(
     log_p: &[u8],
     qlat: &QLattice,
 ) -> Vec<SmallSieveEntry> {
+    precompute_small_sieve_alg_skip(primes, roots, log_p, qlat, None)
+}
+
+/// Like `precompute_small_sieve_alg` but skips `skip_prime` (the special-q).
+pub fn precompute_small_sieve_alg_skip(
+    primes: &[u64],
+    roots: &[Vec<u64>],
+    log_p: &[u8],
+    qlat: &QLattice,
+    skip_prime: Option<u64>,
+) -> Vec<SmallSieveEntry> {
     assert_eq!(primes.len(), roots.len());
     assert_eq!(primes.len(), log_p.len());
 
     let mut entries = Vec::new();
 
     for (idx, &p) in primes.iter().enumerate() {
-        if p == 0 {
+        if p == 0 || Some(p) == skip_prime {
             continue;
         }
         let p_i128 = p as i128;
