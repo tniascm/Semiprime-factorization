@@ -273,16 +273,20 @@ fn ecm_one_curve_careful(n: u64, b1: u64, b2: u64, sigma: u64, primes: &[u64]) -
 /// Returns a list of `(B1, B2)` pairs to try sequentially.  For small
 /// `lpb` values (< 20) no ECM curves are attempted.
 pub fn ecm_bounds(lpb: u32) -> Vec<(u64, u64)> {
+    // CADO-NFS uses ncurves=2 even at lpb=18-19 for c60.
+    // Previous bug: 0 curves for lpb≤19 meant cofactors were never
+    // split by ECM, only by P-1/P+1 — losing 3-5x potential relations.
     let ncurves = match lpb {
-        0..=19 => 0,
-        20..=22 => 1,
-        23 => 2,
-        24 => 4,
-        25 => 5,
-        26 => 6,
-        27 => 8,
-        28 => 11,
-        _ => 16,
+        0..=17 => 0,
+        18..=19 => 2,  // was 0! CADO c60 uses 2 curves at lpb=18-19
+        20..=22 => 4,  // was 1; increased per CADO c65-c70 scaling
+        23 => 6,
+        24 => 8,
+        25 => 10,
+        26 => 12,
+        27 => 14,
+        28 => 16,
+        _ => 20,
     };
 
     let mut bounds = Vec::with_capacity(ncurves);
@@ -441,18 +445,15 @@ mod tests {
     #[test]
     fn test_ecm_bounds_empty_for_small_lpb() {
         assert!(ecm_bounds(17).is_empty());
-        assert!(ecm_bounds(18).is_empty());
-        assert!(ecm_bounds(19).is_empty());
     }
 
     #[test]
     fn test_ecm_bounds_nonempty_for_large_lpb() {
-        let bounds = ecm_bounds(20);
-        assert_eq!(bounds.len(), 1);
-        let bounds = ecm_bounds(24);
-        assert_eq!(bounds.len(), 4);
-        let bounds = ecm_bounds(28);
-        assert_eq!(bounds.len(), 11);
+        assert_eq!(ecm_bounds(18).len(), 2); // CADO c60 uses 2 curves at lpb=18
+        assert_eq!(ecm_bounds(19).len(), 2);
+        assert_eq!(ecm_bounds(20).len(), 4);
+        assert_eq!(ecm_bounds(24).len(), 8);
+        assert_eq!(ecm_bounds(28).len(), 16);
     }
 
     #[test]
