@@ -1768,9 +1768,8 @@ fn fits_in_256(n: &Integer) -> bool {
 /// Uses rayon for parallel curve evaluation.
 pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<Integer> {
     // Pre-sieve primes up to b2 once (shared across all curves).
+    // Phase 2 uses two-pointer scan over this sorted list, no bitset needed.
     let primes = sieve_primes_vec(b2);
-    // Bitset for O(1) primality lookup in Phase 2 (replaces O(log n) binary search).
-    let prime_bits = sieve_prime_bitset(b2);
 
     if fits_in_192(n) && *n > 1u32 && n.is_odd() {
         // U192 fast path
@@ -1782,7 +1781,7 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
             .into_par_iter()
             .find_map_any(|idx| {
                 let sigma = 6u64 + idx as u64;
-                ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits))
+                ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, None)
             })
     } else if fits_in_256(n) && *n > 1u32 && n.is_odd() {
         // U256 fast path for 193-256 bit
@@ -1794,7 +1793,7 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
             .into_par_iter()
             .find_map_any(|idx| {
                 let sigma = 6u64 + idx as u64;
-                ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits))
+                ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, None)
             })
     } else {
         // GMP fallback
@@ -1813,7 +1812,6 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
 /// Useful for benchmarking ST performance.
 pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<Integer> {
     let primes = sieve_primes_vec(b2);
-    let prime_bits = sieve_prime_bitset(b2);
 
     if fits_in_192(n) && *n > 1u32 && n.is_odd() {
         // U192 fast path
@@ -1822,7 +1820,7 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
 
         for idx in 0..max_curves {
             let sigma = 6u64 + idx as u64;
-            if let Some(f) = ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits)) {
+            if let Some(f) = ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, None) {
                 return Some(f);
             }
         }
@@ -1834,7 +1832,7 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
 
         for idx in 0..max_curves {
             let sigma = 6u64 + idx as u64;
-            if let Some(f) = ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits)) {
+            if let Some(f) = ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, None) {
                 return Some(f);
             }
         }
@@ -1875,10 +1873,11 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     } else if bits <= 140 {
         (25_000, 2_500_000, 150)
     } else if bits <= 160 {
-        // c45: ~74-bit factors. B1=30K: Phase 1 ~3ms, Phase 2 ~1ms = ~4ms/curve.
-        // 1200 curves: MT worst 1200/10 × 4ms = 480ms. ST worst = 4.8s.
-        // Higher curve count ensures hard factors (51-bit p-1 cofactor) are caught.
-        (30_000, 3_000_000, 1200)
+        // c45: ~74-bit factors. B1=40K balances per-curve cost vs success rate.
+        // Per-curve ~5ms. 800 curves: MT worst 800/10 × 5ms = 400ms.
+        // Higher B1 catches RSA safe primes and hard random factors better
+        // than B1=30K (which needed 1200 curves for coverage).
+        (40_000, 4_000_000, 800)
     } else if bits <= 180 {
         (200_000, 20_000_000, 400)
     } else if bits <= 210 {
@@ -2509,32 +2508,45 @@ fn sieve_prime_bitset(bound: u64) -> Vec<u64> {
 }
 
 /// Sieve of Eratosthenes up to `bound`, returning a sorted Vec<u64>.
+///
+/// Uses bit-packed sieve (8x less memory than bool array) and extracts
+/// primes via word-level bit traversal.
 fn sieve_primes_vec(bound: u64) -> Vec<u64> {
     if bound < 2 {
         return Vec::new();
     }
-    let n = bound as usize;
-    let mut is_prime = vec![true; n + 1];
-    is_prime[0] = false;
-    is_prime[1] = false;
-
-    let mut i = 2;
-    while i * i <= n {
-        if is_prime[i] {
+    let n = (bound as usize) + 1;
+    let nwords = (n + 63) / 64;
+    let mut bits = vec![!0u64; nwords];
+    // 0 and 1 are not prime
+    if nwords > 0 {
+        bits[0] &= !3u64;
+    }
+    let limit = (n as f64).sqrt() as usize + 1;
+    for i in 2..=limit {
+        if (bits[i / 64] >> (i % 64)) & 1 == 1 {
             let mut j = i * i;
-            while j <= n {
-                is_prime[j] = false;
+            while j < n {
+                bits[j / 64] &= !(1u64 << (j % 64));
                 j += i;
             }
         }
-        i += 1;
     }
-
-    is_prime
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, &flag)| if flag { Some(idx as u64) } else { None })
-        .collect()
+    // Clear bits beyond bound
+    if n % 64 != 0 && nwords > 0 {
+        bits[nwords - 1] &= (1u64 << (n % 64)) - 1;
+    }
+    // Extract primes via word-level bit traversal
+    let mut primes = Vec::new();
+    for (wi, &word) in bits.iter().enumerate() {
+        let mut w = word;
+        while w != 0 {
+            let bit = w.trailing_zeros() as usize;
+            primes.push((wi * 64 + bit) as u64);
+            w &= w - 1;
+        }
+    }
+    primes
 }
 
 // ===========================================================================
