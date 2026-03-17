@@ -152,8 +152,8 @@ impl NfsParams {
         Self {
             name: "c60",
             degree: 4,
-            lim0: 30_000,
-            lim1: 40_000,
+            lim0: 50_000,
+            lim1: 70_000,
             lpb0: 19,
             lpb1: 20,
             mfb0: 19,
@@ -161,9 +161,9 @@ impl NfsParams {
             sieve_mfb0: 19,
             sieve_mfb1: 40,
             log_i: 11,
-            qmin: 30_000,
-            qrange: 50_000,     // wide range to access ~5000+ SQs
-            rels_wanted: 20_000,
+            qmin: 40_000,
+            qrange: 50_000,
+            rels_wanted: 30_000,
         }
     }
 
@@ -255,8 +255,8 @@ mod tests {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
         assert_eq!(p.log_i, 11);
-        assert_eq!(p.lim0, 30_000);
-        assert_eq!(p.lim1, 40_000);
+        assert_eq!(p.lim0, 50_000);
+        assert_eq!(p.lim1, 70_000);
         assert_eq!(p.lpb0, 19);
         assert_eq!(p.lpb1, 20);
         assert_eq!(p.mfb0, 19);
