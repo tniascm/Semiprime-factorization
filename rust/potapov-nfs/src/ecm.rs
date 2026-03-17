@@ -728,11 +728,17 @@ fn ecm_one_curve_fast(
         if p > b1 {
             break;
         }
+        // Compute p^k where p^k <= B1 < p^(k+1), then do a single ladder.
+        // This is faster than k separate [p]Q ladders because a single
+        // [p^k]Q ladder has log2(p^k) = k*log2(p) bits, while k separate
+        // [p]Q ladders have k*log2(p) bits total but with k function call
+        // overheads and k times the ladder startup cost.
         let mut pk = p;
-        while pk <= b1 {
-            q = mont_ladder_192(&q, p, &a24_mont, mont);
-            pk = pk.saturating_mul(p);
+        while let Some(next) = pk.checked_mul(p) {
+            if next > b1 { break; }
+            pk = next;
         }
+        q = mont_ladder_192(&q, pk, &a24_mont, mont);
 
         // Accumulate Z into product for batched GCD.
         accum = mont_mul_192(&accum, &q.z, mont);
@@ -1631,10 +1637,11 @@ fn ecm_one_curve_fast_256(
             break;
         }
         let mut pk = p;
-        while pk <= b1 {
-            q = mont_ladder_256(&q, p, &a24_mont, mont);
-            pk = pk.saturating_mul(p);
+        while let Some(next) = pk.checked_mul(p) {
+            if next > b1 { break; }
+            pk = next;
         }
+        q = mont_ladder_256(&q, pk, &a24_mont, mont);
 
         // Accumulate Z into product for batched GCD.
         accum = mont_mul_256(&accum, &q.z, mont);
@@ -2005,10 +2012,11 @@ fn ecm_one_curve(n: &Integer, b1: u64, b2: u64, sigma: u64, primes: &[u64]) -> O
             break;
         }
         let mut pk = p;
-        while pk <= b1 {
-            mont_ladder_inplace(&mut q, p, &a24, n, &mut scratch);
-            pk = pk.saturating_mul(p);
+        while let Some(next) = pk.checked_mul(p) {
+            if next > b1 { break; }
+            pk = next;
         }
+        mont_ladder_inplace(&mut q, pk, &a24, n, &mut scratch);
 
         // Accumulate Z into product for batched GCD
         accum *= &q.z;
@@ -2177,10 +2185,11 @@ fn ecm_one_curve_careful(
             break;
         }
         let mut pk = p;
-        while pk <= b1 {
-            mont_ladder_inplace(&mut q, p, &a24, n, &mut scratch);
-            pk = pk.saturating_mul(p);
+        while let Some(next) = pk.checked_mul(p) {
+            if next > b1 { break; }
+            pk = next;
         }
+        mont_ladder_inplace(&mut q, pk, &a24, n, &mut scratch);
         let g = Integer::from(n.gcd_ref(&q.z));
         if g > 1u32 && g < *n {
             return Some(g);
