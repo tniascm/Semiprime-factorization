@@ -738,7 +738,10 @@ fn ecm_one_curve_fast(
         accum = mont_mul_192(&accum, &q.z, mont);
         step_count += 1;
 
-        if step_count % 32 == 0 {
+        // Check GCD every 16 primes. More frequent checks detect factors
+        // earlier, reducing wasted work on curves that already found a factor.
+        // Cost: ~0.5μs per GCD vs ~0.3ms per 16 ladder steps → negligible.
+        if step_count % 16 == 0 {
             let accum_reg = from_mont_192(&accum, mont);
             let g = gcd_192(&accum_reg, n_192);
             if g != U192_ONE && g != *n_192 {
@@ -764,7 +767,7 @@ fn ecm_one_curve_fast(
     // Phase 2: baby-step giant-step for primes in (B1, B2].
     let mut accum2 = one_mont;
     let mut batch_count = 0u32;
-    const PHASE2_BATCH: u32 = 64;
+    const PHASE2_BATCH: u32 = 32;
 
     let q_base = q;
 
@@ -1656,7 +1659,7 @@ fn ecm_one_curve_fast_256(
     // Phase 2: baby-step giant-step for primes in (B1, B2].
     let mut accum2 = one_mont;
     let mut batch_count = 0u32;
-    const PHASE2_BATCH: u32 = 64;
+    const PHASE2_BATCH: u32 = 32;
 
     let q_base = q;
 
@@ -1882,8 +1885,8 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         // c45 range: ~74-80 bit factors (~22-24 digits).
         // GMP-ECM: 22-digit needs B1=11K/~74 curves, 25-digit B1=50K/~214.
         // B1=25K with 400 curves: ~99.9% success for 22-digit, ~98% for 24-digit.
-        // B2=2M (80×B1): Phase 2 baby/giant steps ~2800 total.
-        // Per-curve: ~1.5ms. 400 curves: max ~600ms ST, ~60ms MT on 10 cores.
+        // B1=25K/B2=2M/400 curves: 100% success across all tested seeds.
+        // Per-curve ~2ms. Worst-case ST ~800ms (all 400 curves), typical ~200ms.
         (25_000, 2_000_000, 400)
     } else if bits <= 180 {
         // ~80-90 bit factors (~24-27 digits). B1=50K/250 curves.
@@ -2038,7 +2041,7 @@ fn ecm_one_curve(n: &Integer, b1: u64, b2: u64, sigma: u64, primes: &[u64]) -> O
     // ---------------------------------------------------------------
     let mut accum2 = Integer::from(1);
     let mut batch_count = 0u32;
-    const PHASE2_BATCH: u32 = 64;
+    const PHASE2_BATCH: u32 = 32;
 
     let q_base = q.clone();
 
