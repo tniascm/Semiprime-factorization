@@ -693,15 +693,29 @@ pub fn sieve_specialq(
                         let alg_result = if let Some(sq_idx) = sq_alg_fb_idx {
                             match alg_result {
                                 cofactor::CofactResult::Smooth(mut f) => {
-                                    f.push((sq_idx, 1));
+                                    // Merge with existing entry to avoid double-counting
+                                    // when q^k | F(a,b) with k>=2 (cofactoring already found q).
+                                    if let Some(entry) = f.iter_mut().find(|(idx, _)| *idx == sq_idx) {
+                                        entry.1 += 1;
+                                    } else {
+                                        f.push((sq_idx, 1));
+                                    }
                                     cofactor::CofactResult::Smooth(f)
                                 }
                                 cofactor::CofactResult::OneLargePrime(mut f, lp) => {
-                                    f.push((sq_idx, 1));
+                                    if let Some(entry) = f.iter_mut().find(|(idx, _)| *idx == sq_idx) {
+                                        entry.1 += 1;
+                                    } else {
+                                        f.push((sq_idx, 1));
+                                    }
                                     cofactor::CofactResult::OneLargePrime(f, lp)
                                 }
                                 cofactor::CofactResult::TwoLargePrimes(mut f, lp1, lp2) => {
-                                    f.push((sq_idx, 1));
+                                    if let Some(entry) = f.iter_mut().find(|(idx, _)| *idx == sq_idx) {
+                                        entry.1 += 1;
+                                    } else {
+                                        f.push((sq_idx, 1));
+                                    }
                                     cofactor::CofactResult::TwoLargePrimes(f, lp1, lp2)
                                 }
                                 other => other,
@@ -1303,15 +1317,29 @@ pub fn line_sieve_specialq(
                         let alg_result = if let Some(sq_idx) = sq_alg_fb_idx {
                             match alg_result {
                                 cofactor::CofactResult::Smooth(mut f) => {
-                                    f.push((sq_idx, 1));
+                                    // Merge with existing entry to avoid double-counting
+                                    // when q^k | F(a,b) with k>=2 (cofactoring already found q).
+                                    if let Some(entry) = f.iter_mut().find(|(idx, _)| *idx == sq_idx) {
+                                        entry.1 += 1;
+                                    } else {
+                                        f.push((sq_idx, 1));
+                                    }
                                     cofactor::CofactResult::Smooth(f)
                                 }
                                 cofactor::CofactResult::OneLargePrime(mut f, lp) => {
-                                    f.push((sq_idx, 1));
+                                    if let Some(entry) = f.iter_mut().find(|(idx, _)| *idx == sq_idx) {
+                                        entry.1 += 1;
+                                    } else {
+                                        f.push((sq_idx, 1));
+                                    }
                                     cofactor::CofactResult::OneLargePrime(f, lp)
                                 }
                                 cofactor::CofactResult::TwoLargePrimes(mut f, lp1, lp2) => {
-                                    f.push((sq_idx, 1));
+                                    if let Some(entry) = f.iter_mut().find(|(idx, _)| *idx == sq_idx) {
+                                        entry.1 += 1;
+                                    } else {
+                                        f.push((sq_idx, 1));
+                                    }
                                     cofactor::CofactResult::TwoLargePrimes(f, lp1, lp2)
                                 }
                                 other => other,
