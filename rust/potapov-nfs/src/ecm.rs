@@ -1891,10 +1891,12 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         // c45 range: ~74-80 bit factors (~22-24 digits).
         // GMP-ECM: 22-digit needs B1=11K/~74 curves, 25-digit B1=50K/~214.
         // B1=25K with 400 curves: ~99.9% success for 22-digit, ~98% for 24-digit.
-        // B1=20K: ~2200 primes, Phase 1 ~3ms. B2=2M, Phase 2 ~0.5ms.
-        // Per-curve ~3.5ms. 600 curves: worst ST ~2.1s, MT ~210ms.
-        // Higher B1 gives better success rate per curve for hard factors.
-        (20_000, 2_000_000, 600)
+        // B1=40K: handles both random and RSA-style safe prime factors.
+        // Safe primes (p=2q+1) are harder for ECM because p-1=2q has
+        // only one large prime factor, requiring higher B1 for the curve
+        // group order to be B1-smooth.
+        // B1=40K/B2=4M: ~6ms/curve. 400 curves → max ~240ms MT, ~2.4s ST.
+        (40_000, 4_000_000, 400)
     } else if bits <= 180 {
         // ~80-90 bit factors (~24-27 digits). B1=50K/250 curves.
         (50_000, 5_000_000, 250)
