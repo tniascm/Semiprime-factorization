@@ -160,7 +160,7 @@ impl NfsParams {
             mfb1: 38,   // 2*lpb1 = full 2LP algebraic
             sieve_mfb0: 18,
             sieve_mfb1: 38,
-            log_i: 10,
+            log_i: 9,  // Smaller sieve area (512K) fits L1 cache → ~4x faster per-SQ
             qmin: 40_000,
             qrange: 50_000,
             rels_wanted: 30_000,
@@ -254,7 +254,7 @@ mod tests {
     fn test_params_c60() {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
-        assert_eq!(p.log_i, 10);
+        assert_eq!(p.log_i, 9);
         assert_eq!(p.lim0, 50_000);
         assert_eq!(p.lim1, 70_000);
         assert_eq!(p.lpb0, 18);
@@ -263,6 +263,6 @@ mod tests {
         assert_eq!(p.mfb1, 38);
         assert_eq!(p.large_prime_bound_0(), 1 << 18);
         assert_eq!(p.large_prime_bound_1(), 1 << 19);
-        assert_eq!(p.sieve_half_width(), 1024);
+        assert_eq!(p.sieve_half_width(), 512);
     }
 }

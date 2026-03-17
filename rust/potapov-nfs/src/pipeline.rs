@@ -892,8 +892,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .filter(|&v| v > 0.0)
         .unwrap_or_else(|| {
             let lp_gap = (params.lpb1 as f64) - (params.lim1 as f64).log2();
-            if lp_gap > 3.5 { 8.0 }      // large LP gap (c60+): 12.5% yield
-            else if lp_gap > 2.0 { 4.0 }  // medium gap: 25% yield
+            if lp_gap > 4.0 { 8.0 }      // very large LP gap: 12.5% yield
+            else if lp_gap > 3.0 { 4.0 }  // large gap: 25% yield
+            else if lp_gap > 2.0 { 2.5 }  // medium gap (c60): ~33% yield
             else { 1.5 }                   // small gap (c45-): 67% yield
         });
     let mut target_raw_rels = if partial_merge_2lp {
