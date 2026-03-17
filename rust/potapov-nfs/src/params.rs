@@ -162,7 +162,7 @@ impl NfsParams {
             sieve_mfb1: 40,
             log_i: 11,
             qmin: 30_000,
-            qrange: 10_000,
+            qrange: 50_000,     // wide range to access ~5000+ SQs
             rels_wanted: 20_000,
         }
     }
