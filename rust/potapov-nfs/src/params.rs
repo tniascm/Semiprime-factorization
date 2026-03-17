@@ -154,13 +154,13 @@ impl NfsParams {
             degree: 4,
             lim0: 50_000,
             lim1: 70_000,
-            lpb0: 19,
-            lpb1: 20,
-            mfb0: 19,
-            mfb1: 40,
-            sieve_mfb0: 19,
-            sieve_mfb1: 40,
-            log_i: 10,  // CADO's I=10. Area 2M vs 16M → 8x faster per-SQ.
+            lpb0: 18,   // CADO c60 uses 18. Narrower LP range → better merge
+            lpb1: 19,   // CADO c60 uses 19.
+            mfb0: 18,   // no 2LP rational (CADO: mfb0=17)
+            mfb1: 38,   // 2*lpb1 = full 2LP algebraic
+            sieve_mfb0: 18,
+            sieve_mfb1: 38,
+            log_i: 10,
             qmin: 40_000,
             qrange: 50_000,
             rels_wanted: 30_000,
@@ -257,12 +257,12 @@ mod tests {
         assert_eq!(p.log_i, 10);
         assert_eq!(p.lim0, 50_000);
         assert_eq!(p.lim1, 70_000);
-        assert_eq!(p.lpb0, 19);
-        assert_eq!(p.lpb1, 20);
-        assert_eq!(p.mfb0, 19);
-        assert_eq!(p.mfb1, 40);
-        assert_eq!(p.large_prime_bound_0(), 1 << 19);
-        assert_eq!(p.large_prime_bound_1(), 1 << 20);
+        assert_eq!(p.lpb0, 18);
+        assert_eq!(p.lpb1, 19);
+        assert_eq!(p.mfb0, 18);
+        assert_eq!(p.mfb1, 38);
+        assert_eq!(p.large_prime_bound_0(), 1 << 18);
+        assert_eq!(p.large_prime_bound_1(), 1 << 19);
         assert_eq!(p.sieve_half_width(), 1024);
     }
 }
