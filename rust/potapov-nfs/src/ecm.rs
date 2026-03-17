@@ -1064,9 +1064,10 @@ fn sub_mod_256(a: &U256, b: &U256, n: &U256) -> U256 {
 ///
 /// Uses the classic schoolbook method with u128 intermediates.
 #[inline]
+/// 4-limb schoolbook multiplication: a[0..3] × b[0..3] → t[0..7].
+#[inline]
 fn mul_4x4(a: &U256, b: &U256) -> [u64; 8] {
     let mut t = [0u64; 8];
-
     for i in 0..4 {
         let mut carry: u64 = 0;
         for j in 0..4 {
@@ -1076,7 +1077,6 @@ fn mul_4x4(a: &U256, b: &U256) -> [u64; 8] {
         }
         t[i + 4] = carry;
     }
-
     t
 }
 
@@ -1881,11 +1881,11 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     } else if bits <= 180 {
         (200_000, 20_000_000, 400)
     } else if bits <= 210 {
-        // c60: ~100-bit (30-digit) factors. U256 mont_mul is ~3x slower than U192.
-        // Per-curve at B1=1M: ~40ms (after Phase 2 two-pointer optimization).
-        // 800 curves: MT worst 800/10 × 40ms = 3.2s. Typical: 1-2s.
-        // 500ms MT requires NEON vectorization of U256 mont_mul (~2x speedup).
-        (1_000_000, 100_000_000, 800)
+        // c60: ~100-bit (30-digit) factors.
+        // B1=200K: per-curve ~10ms U256. B2=20M. 1000 curves.
+        // ρ(100/17.6) = ρ(5.7) ≈ 0.01%. Phase 2 → ~0.1%/curve.
+        // 1000 curves → 63%. Combined with lower sieve overhead.
+        (200_000, 20_000_000, 1000)
     } else {
         (3_000_000, 300_000_000, 1200)
     };
