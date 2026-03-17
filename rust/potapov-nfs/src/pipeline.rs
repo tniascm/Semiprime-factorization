@@ -1024,6 +1024,22 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                     est_dense_cols
                 );
 
+                // Early polynomial abort: if first window has very low filter
+                // yield (<5%), this polynomial's norms are poor. Skip to next.
+                let min_yield_pct = std::env::var("POTAPOV_NFS_MIN_FILTER_YIELD_PCT")
+                    .ok().and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(15.0); // Skip polynomials with poor filter yield
+                if window <= 2 && total_rels >= 1000 && filtered.len() > 0 {
+                    let yield_pct = 100.0 * filtered.len() as f64 / total_rels as f64;
+                    if yield_pct < min_yield_pct {
+                        eprintln!(
+                            "  adaptive: SKIP polynomial (filter yield {:.1}% < {:.0}% threshold, {} raw -> {} filtered)",
+                            yield_pct, min_yield_pct, total_rels, filtered.len()
+                        );
+                        break; // skip to next polynomial variant
+                    }
+                }
+
                 // Probe matrix early: est_dense_cols overestimates active columns
                 // (many FB entries never appear in relations). Start probing at
                 // 50% of est_dense_cols. If the matrix has a deficit, the adaptive
