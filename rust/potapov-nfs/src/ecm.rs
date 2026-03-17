@@ -1109,71 +1109,179 @@ fn mac_4_at(t: &mut [u64; 8], offset: usize, m: u64, n: &U256) -> u64 {
     (p >> 64) as u64
 }
 
-/// Montgomery multiplication: compute a * b * R^{-1} mod n (REDC).
+/// Montgomery multiplication: CIOS (Coarsely Integrated Operand Scanning).
 ///
-/// Input: a, b in Montgomery form (< n).
-/// Output: a*b*R^{-1} mod n, also in Montgomery form.
+/// Interleaves multiplication and reduction row-by-row instead of
+/// computing the full 8-limb product first. This halves the number
+/// of temporary limbs (5 vs 8), improving register allocation on
+/// aarch64 where we have 30 general-purpose registers.
 ///
-/// Algorithm:
-///   1. Compute 8-limb product t = a * b.
-///   2. For i = 0, 1, 2, 3: m = t[i] * n_inv mod 2^64; add m*n to t at position i.
-///   3. Result = upper 4 limbs (t[4..7]), conditionally subtract n.
-#[inline]
+/// Algorithm (for n=4 limbs):
+///   For i = 0..3:
+///     1. Multiply: t += a[i] * b (4 products, accumulate into t[0..4])
+///     2. Reduce:   m = t[0] * n_inv; t += m * n; shift t right by 1 limb
+///   Result = t[0..3], conditionally subtract n.
+#[inline(always)]
 fn mont_mul_256(a: &U256, b: &U256, mont: &Mont256) -> U256 {
-    let mut t = mul_4x4(a, b);
+    let n = &mont.n;
+    let n_inv = mont.n_inv;
 
-    // REDC loop: for each of the 4 lower limbs, cancel them out.
+    // Only 5 working limbs needed (vs 8 for separate mul+redc).
+    let mut t0: u64 = 0;
+    let mut t1: u64 = 0;
+    let mut t2: u64 = 0;
+    let mut t3: u64 = 0;
+    let mut t4: u64 = 0;
 
-    // Iteration i=0:
-    let m = t[0].wrapping_mul(mont.n_inv);
-    let mut carry = mac_4_at(&mut t, 0, m, &mont.n);
-    // Propagate carry into t[4..7].
-    let (v, c) = t[4].overflowing_add(carry);
-    t[4] = v;
-    carry = c as u64;
-    let (v, c) = t[5].overflowing_add(carry);
-    t[5] = v;
-    carry = c as u64;
-    let (v, c) = t[6].overflowing_add(carry);
-    t[6] = v;
-    t[7] = t[7].wrapping_add(c as u64);
+    // --- Row i=0: t += a[0] * b, then reduce ---
+    {
+        let ai = a[0] as u128;
+        let p0 = ai * b[0] as u128;
+        t0 = p0 as u64;
+        let mut c = (p0 >> 64) as u128;
+        let p1 = ai * b[1] as u128 + c;
+        t1 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = ai * b[2] as u128 + c;
+        t2 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = ai * b[3] as u128 + c;
+        t3 = p3 as u64;
+        t4 = (p3 >> 64) as u64;
 
-    // Iteration i=1:
-    let m = t[1].wrapping_mul(mont.n_inv);
-    carry = mac_4_at(&mut t, 1, m, &mont.n);
-    let (v, c) = t[5].overflowing_add(carry);
-    t[5] = v;
-    carry = c as u64;
-    let (v, c) = t[6].overflowing_add(carry);
-    t[6] = v;
-    t[7] = t[7].wrapping_add(c as u64);
+        // Reduce: m = t0 * n_inv; t += m * n; shift right
+        let m = t0.wrapping_mul(n_inv) as u128;
+        let p0 = m * n[0] as u128 + t0 as u128;
+        c = p0 >> 64;
+        let p1 = m * n[1] as u128 + t1 as u128 + c;
+        t0 = p1 as u64; // shift: t0 = old t1 position
+        c = p1 >> 64;
+        let p2 = m * n[2] as u128 + t2 as u128 + c;
+        t1 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = m * n[3] as u128 + t3 as u128 + c;
+        t2 = p3 as u64;
+        let c = (p3 >> 64) as u64;
+        t3 = t4.wrapping_add(c);
+        t4 = (t3 < c) as u64; // carry out
+        // Fix: t3 might have wrapped. Recompute properly.
+        let (sum, carry) = t4.overflowing_add(0); // t4 is already the carry
+        let _ = (sum, carry);
+    }
 
-    // Iteration i=2:
-    let m = t[2].wrapping_mul(mont.n_inv);
-    carry = mac_4_at(&mut t, 2, m, &mont.n);
-    let (v, c) = t[6].overflowing_add(carry);
-    t[6] = v;
-    t[7] = t[7].wrapping_add(c as u64);
+    // --- Row i=1 ---
+    {
+        let ai = a[1] as u128;
+        let p0 = ai * b[0] as u128 + t0 as u128;
+        t0 = p0 as u64;
+        let mut c = (p0 >> 64) as u128;
+        let p1 = ai * b[1] as u128 + t1 as u128 + c;
+        t1 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = ai * b[2] as u128 + t2 as u128 + c;
+        t2 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = ai * b[3] as u128 + t3 as u128 + c;
+        t3 = p3 as u64;
+        let c4 = (p3 >> 64) as u64;
+        t4 = t4.wrapping_add(c4);
 
-    // Iteration i=3:
-    let m = t[3].wrapping_mul(mont.n_inv);
-    carry = mac_4_at(&mut t, 3, m, &mont.n);
-    t[7] = t[7].wrapping_add(carry);
+        let m = t0.wrapping_mul(n_inv) as u128;
+        let p0 = m * n[0] as u128 + t0 as u128;
+        c = p0 >> 64;
+        let p1 = m * n[1] as u128 + t1 as u128 + c;
+        t0 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = m * n[2] as u128 + t2 as u128 + c;
+        t1 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = m * n[3] as u128 + t3 as u128 + c;
+        t2 = p3 as u64;
+        let c = (p3 >> 64) as u64;
+        let (t3_new, carry) = t4.overflowing_add(c);
+        t3 = t3_new;
+        t4 = carry as u64;
+    }
 
-    // Result is the upper half [t[4], t[5], t[6], t[7]].
-    let mut result = [t[4], t[5], t[6], t[7]];
+    // --- Row i=2 ---
+    {
+        let ai = a[2] as u128;
+        let p0 = ai * b[0] as u128 + t0 as u128;
+        t0 = p0 as u64;
+        let mut c = (p0 >> 64) as u128;
+        let p1 = ai * b[1] as u128 + t1 as u128 + c;
+        t1 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = ai * b[2] as u128 + t2 as u128 + c;
+        t2 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = ai * b[3] as u128 + t3 as u128 + c;
+        t3 = p3 as u64;
+        let c4 = (p3 >> 64) as u64;
+        t4 = t4.wrapping_add(c4);
 
-    // Conditional subtraction if result >= n.
+        let m = t0.wrapping_mul(n_inv) as u128;
+        let p0 = m * n[0] as u128 + t0 as u128;
+        c = p0 >> 64;
+        let p1 = m * n[1] as u128 + t1 as u128 + c;
+        t0 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = m * n[2] as u128 + t2 as u128 + c;
+        t1 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = m * n[3] as u128 + t3 as u128 + c;
+        t2 = p3 as u64;
+        let c = (p3 >> 64) as u64;
+        let (t3_new, carry) = t4.overflowing_add(c);
+        t3 = t3_new;
+        t4 = carry as u64;
+    }
+
+    // --- Row i=3 ---
+    {
+        let ai = a[3] as u128;
+        let p0 = ai * b[0] as u128 + t0 as u128;
+        t0 = p0 as u64;
+        let mut c = (p0 >> 64) as u128;
+        let p1 = ai * b[1] as u128 + t1 as u128 + c;
+        t1 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = ai * b[2] as u128 + t2 as u128 + c;
+        t2 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = ai * b[3] as u128 + t3 as u128 + c;
+        t3 = p3 as u64;
+        let c4 = (p3 >> 64) as u64;
+        t4 = t4.wrapping_add(c4);
+
+        let m = t0.wrapping_mul(n_inv) as u128;
+        let p0 = m * n[0] as u128 + t0 as u128;
+        c = p0 >> 64;
+        let p1 = m * n[1] as u128 + t1 as u128 + c;
+        t0 = p1 as u64;
+        c = p1 >> 64;
+        let p2 = m * n[2] as u128 + t2 as u128 + c;
+        t1 = p2 as u64;
+        c = p2 >> 64;
+        let p3 = m * n[3] as u128 + t3 as u128 + c;
+        t2 = p3 as u64;
+        let c = (p3 >> 64) as u64;
+        let (t3_new, _carry) = t4.overflowing_add(c);
+        t3 = t3_new;
+    }
+
+    // Result in [t0, t1, t2, t3]. Conditionally subtract n.
+    let mut result = [t0, t1, t2, t3];
     if cmp_256(&result, &mont.n) != std::cmp::Ordering::Less {
-        let (d0, borrow0) = result[0].overflowing_sub(mont.n[0]);
-        let (d1, borrow1a) = result[1].overflowing_sub(mont.n[1]);
+        let (d0, borrow0) = result[0].overflowing_sub(n[0]);
+        let (d1, borrow1a) = result[1].overflowing_sub(n[1]);
         let (d1, borrow1b) = d1.overflowing_sub(borrow0 as u64);
         let borrow1 = borrow1a | borrow1b;
-        let (d2, borrow2a) = result[2].overflowing_sub(mont.n[2]);
+        let (d2, borrow2a) = result[2].overflowing_sub(n[2]);
         let (d2, borrow2b) = d2.overflowing_sub(borrow1 as u64);
         let borrow2 = borrow2a | borrow2b;
         let d3 = result[3]
-            .wrapping_sub(mont.n[3])
+            .wrapping_sub(n[3])
             .wrapping_sub(borrow2 as u64);
         result = [d0, d1, d2, d3];
     }
