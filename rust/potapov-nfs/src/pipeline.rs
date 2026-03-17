@@ -842,10 +842,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(2_000usize);
-    // For degree >= 4, est_dense_cols already overestimates active dense columns
-    // by ~30% (many algebraic FB primes have fewer than `degree` roots, so their
-    // pair columns go unused). This built-in buffer implicitly covers the SQ columns
-    // that aren't in est_dense_cols, so a lower rows_ratio suffices.
+    // For degree >= 4, est_dense_cols overestimates active dense columns
+    // by ~10% (many algebraic FB primes have fewer than `degree` roots, so
+    // their pair columns go unused). This built-in buffer implicitly covers
+    // the SQ columns that aren't in est_dense_cols, so a lower rows_ratio
+    // suffices. The adaptive system probes the matrix early (at 50% of
+    // est_dense_cols) to catch cases where the overestimate is larger.
     // Tuned 2026-03-16: ratio 1.01 for degree>=4 collects 5% fewer SQs with
     // no reliability loss (9/9 factored across seeds 42,123,456), saving ~3-5%.
     let default_rows_ratio = if degree >= 4 { 1.01 } else { 1.10 };
@@ -988,8 +990,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                     est_dense_cols
                 );
 
+                // Probe matrix early: est_dense_cols overestimates active columns
+                // (many FB entries never appear in relations). Start probing at
+                // 50% of est_dense_cols. If the matrix has a deficit, the adaptive
+                // system increases the target and continues sieving.
+                let matrix_probe_min = est_dense_cols / 2;
                 let matrix_probe_due = adaptive_use_matrix
-                    && active_rows >= est_dense_cols
+                    && active_rows >= matrix_probe_min
                     && (force_stop
                         || near_q_window_cap
                         || at_q_window_cap
