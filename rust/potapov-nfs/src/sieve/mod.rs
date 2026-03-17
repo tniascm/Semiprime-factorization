@@ -240,7 +240,7 @@ pub fn sieve_specialq(
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
-        .unwrap_or(64usize);
+        .unwrap_or(256usize); // larger batch → better rayon utilization + fewer chunks
     // Pre-compute cofactoring prime lists once (avoids thousands of sieve_primes per-survivor).
     let cofact_config_rat = CofactorConfig::new(params.lpb0);
     let cofact_config_alg = CofactorConfig::new(params.lpb1);
