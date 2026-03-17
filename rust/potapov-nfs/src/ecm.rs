@@ -1881,7 +1881,10 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
     } else if bits <= 180 {
         (200_000, 20_000_000, 400)
     } else if bits <= 210 {
-        // c60: ~100-bit factors. B1=1M, 800 curves.
+        // c60: ~100-bit (30-digit) factors. U256 mont_mul is ~3x slower than U192.
+        // Per-curve at B1=1M: ~40ms (after Phase 2 two-pointer optimization).
+        // 800 curves: MT worst 800/10 × 40ms = 3.2s. Typical: 1-2s.
+        // 500ms MT requires NEON vectorization of U256 mont_mul (~2x speedup).
         (1_000_000, 100_000_000, 800)
     } else {
         (3_000_000, 300_000_000, 1200)
