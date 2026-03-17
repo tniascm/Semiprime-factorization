@@ -951,7 +951,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         let max_raw_rels =
             effective_max_raw_rels(configured_max_raw_rels, target_raw_rels, raw_target_step);
         // Check timeouts
-        let sieve_elapsed_ms = (total_sieve_ms * 1000.0) as u64;
+        let sieve_elapsed_ms = total_sieve_ms as u64; // total_sieve_ms is already in ms
         let sieve_timed_out = sieve_timeout_ms.map_or(false, |t| sieve_elapsed_ms > t);
         let total_elapsed_ms = pipeline_start.elapsed().as_millis() as u64;
         let total_timed_out = total_timeout_ms.map_or(false, |t| total_elapsed_ms > t);
