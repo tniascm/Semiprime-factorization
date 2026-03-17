@@ -1,0 +1,5 @@
+[env]
+DEVELOPER_DIR = "/Library/Developer/CommandLineTools"
+
+[build]
+rustflags = ["-C", "target-cpu=native"]

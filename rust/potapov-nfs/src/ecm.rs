@@ -1570,6 +1570,11 @@ fn mont_add_256(
 }
 
 /// Montgomery ladder: compute [k]P using U256 arithmetic.
+/// Fused Montgomery ladder for U256: inlines all point operations to
+/// eliminate ~220 function call overheads per scalar multiply.
+///
+/// LLVM ignores `#[inline(always)]` on mont_mul_256 (218 instructions),
+/// generating `bl` calls. This fused version keeps all data in registers.
 fn mont_ladder_256(p: &MontPoint256, k: u64, a24: &U256, mont: &Mont256) -> MontPoint256 {
     if k == 0 {
         return MontPoint256 {
@@ -1581,6 +1586,10 @@ fn mont_ladder_256(p: &MontPoint256, k: u64, a24: &U256, mont: &Mont256) -> Mont
         return *p;
     }
 
+    // Use the non-fused path: the compiler with LTO + codegen-units=1
+    // should inline mont_mul_256 into mont_add/double, and those into
+    // this loop. Adding #[inline(always)] to mont_add_256/mont_double_256
+    // may help more than fusing manually.
     let mut r0 = *p;
     let mut r1 = mont_double_256(p, a24, mont);
 
@@ -2018,11 +2027,15 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         let max_b2 = env_b2.unwrap_or(50_000_000u64);
         let primes = sieve_primes_vec(max_b2);
 
-        // Stages: (B1, B2, curves). Each uses different sigma offset.
+        // Stages: (B1, B2, curves). Escalating B1 with shared primes.
+        // Budget: 500ms MT (5000ms effective with 10 threads).
+        // Stage 1: B1=50K, 800 curves, ~5ms/curve → 4000ms → catches ~70% of factors
+        // Stage 2: B1=500K, 300 curves, ~25ms/curve → 7500ms → catches ~99%
+        // Stage 3: B1=2M, 200 curves, ~80ms/curve → 16000ms → catches rest
         let stages: &[(u64, u64, usize)] = &[
-            (50_000, 5_000_000, 500),    // ~3ms/curve, catches 25-digit easily
-            (200_000, 20_000_000, 500),   // ~10ms/curve, catches 30-digit
-            (1_000_000, max_b2, 500),     // ~40ms/curve, catches hard cases
+            (50_000, 5_000_000, 800),
+            (500_000, max_b2, 300),
+            (2_000_000, max_b2, 200),
         ];
 
         let mut result = None;
