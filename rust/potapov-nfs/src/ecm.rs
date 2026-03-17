@@ -1859,13 +1859,16 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         // 400 curves on 10 cores ≈ 2-4s MT.
         (100_000, 10_000_000, 400)
     } else if bits <= 210 {
-        // c60 range: ~100 bit factors. U256 fast path at ~15-20ms/curve.
-        // B1=200K keeps Phase 1 manageable (~100ms/curve).
-        // 600 curves on 10 cores ≈ 1-2s MT, ~60-90s ST.
-        (200_000, 20_000_000, 600)
+        // c60 range: balanced ~100-bit (30-digit) factors.
+        // GMP-ECM table: 30-digit needs B1=250K (~74 curves), 35-digit B1=1M (~214).
+        // B1=1M gives ~10-15% success/curve for 30-digit factors.
+        // U256 fast path: ~50-100ms/curve (Phase 1 ~40ms, Phase 2 ~40ms).
+        // 800 curves on 10 cores ≈ 4-8s MT. Previously B1=200K failed
+        // (0.5%/curve × 600 curves = low cumulative probability).
+        (1_000_000, 100_000_000, 800)
     } else {
-        // >210 bits: GMP fallback likely. Keep bounds moderate.
-        (500_000, 50_000_000, 800)
+        // >210 bits: GMP fallback likely.
+        (3_000_000, 300_000_000, 1200)
     };
 
     let b1: u64 = std::env::var("POTAPOV_NFS_ECM_B1")
