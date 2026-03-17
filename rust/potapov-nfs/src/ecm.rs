@@ -654,6 +654,7 @@ fn ecm_one_curve_fast(
     sigma: u64,
     primes: &[u64],
     mont: &Mont192,
+    prime_bits: Option<&[u64]>,
 ) -> Option<Integer> {
     // Suyama parameterization.
     let sigma_arr: U192 = [sigma, 0, 0];
@@ -806,7 +807,12 @@ fn ecm_one_curve_fast(
                 0
             };
 
-            if val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes) {
+            let is_prime_plus = if let Some(bits) = prime_bits {
+                val_plus > b1 && val_plus <= b2 && is_prime_bitset(val_plus, bits)
+            } else {
+                val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes)
+            };
+            if is_prime_plus {
                 // cross = (X_giant * Z_baby - Z_giant * X_baby)
                 let t1 = mont_mul_192(&giant_q.x, &baby[b_idx].z, mont);
                 let t2 = mont_mul_192(&giant_q.z, &baby[b_idx].x, mont);
@@ -815,7 +821,12 @@ fn ecm_one_curve_fast(
                 batch_count += 1;
             }
 
-            if val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes) {
+            let is_prime_minus = if let Some(bits) = prime_bits {
+                val_minus > b1 && val_minus <= b2 && is_prime_bitset(val_minus, bits)
+            } else {
+                val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes)
+            };
+            if is_prime_minus {
                 let t1 = mont_mul_192(&giant_q.x, &baby[b_idx].z, mont);
                 let t2 = mont_mul_192(&giant_q.z, &baby[b_idx].x, mont);
                 let cross = sub_mod_192(&t1, &t2, &mont.n);
@@ -1537,6 +1548,7 @@ fn ecm_one_curve_fast_256(
     sigma: u64,
     primes: &[u64],
     mont: &Mont256,
+    prime_bits: Option<&[u64]>,
 ) -> Option<Integer> {
     // Suyama parameterization.
     let sigma_arr: U256 = [sigma, 0, 0, 0];
@@ -1687,7 +1699,12 @@ fn ecm_one_curve_fast_256(
                 0
             };
 
-            if val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes) {
+            let is_prime_plus = if let Some(bits) = prime_bits {
+                val_plus > b1 && val_plus <= b2 && is_prime_bitset(val_plus, bits)
+            } else {
+                val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes)
+            };
+            if is_prime_plus {
                 let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
                 let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
                 let cross = sub_mod_256(&t1, &t2, &mont.n);
@@ -1695,7 +1712,12 @@ fn ecm_one_curve_fast_256(
                 batch_count += 1;
             }
 
-            if val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes) {
+            let is_prime_minus = if let Some(bits) = prime_bits {
+                val_minus > b1 && val_minus <= b2 && is_prime_bitset(val_minus, bits)
+            } else {
+                val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes)
+            };
+            if is_prime_minus {
                 let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
                 let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
                 let cross = sub_mod_256(&t1, &t2, &mont.n);
@@ -1753,6 +1775,8 @@ fn fits_in_256(n: &Integer) -> bool {
 pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<Integer> {
     // Pre-sieve primes up to b2 once (shared across all curves).
     let primes = sieve_primes_vec(b2);
+    // Bitset for O(1) primality lookup in Phase 2 (replaces O(log n) binary search).
+    let prime_bits = sieve_prime_bitset(b2);
 
     if fits_in_192(n) && *n > 1u32 && n.is_odd() {
         // U192 fast path
@@ -1764,7 +1788,7 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
             .into_par_iter()
             .find_map_any(|idx| {
                 let sigma = 6u64 + idx as u64;
-                ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont)
+                ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits))
             })
     } else if fits_in_256(n) && *n > 1u32 && n.is_odd() {
         // U256 fast path for 193-256 bit
@@ -1776,7 +1800,7 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
             .into_par_iter()
             .find_map_any(|idx| {
                 let sigma = 6u64 + idx as u64;
-                ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont)
+                ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits))
             })
     } else {
         // GMP fallback
@@ -1795,6 +1819,7 @@ pub fn ecm_factor(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<In
 /// Useful for benchmarking ST performance.
 pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option<Integer> {
     let primes = sieve_primes_vec(b2);
+    let prime_bits = sieve_prime_bitset(b2);
 
     if fits_in_192(n) && *n > 1u32 && n.is_odd() {
         // U192 fast path
@@ -1803,7 +1828,7 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
 
         for idx in 0..max_curves {
             let sigma = 6u64 + idx as u64;
-            if let Some(f) = ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont) {
+            if let Some(f) = ecm_one_curve_fast(&n_192, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits)) {
                 return Some(f);
             }
         }
@@ -1815,7 +1840,7 @@ pub fn ecm_factor_st(n: &Integer, max_curves: usize, b1: u64, b2: u64) -> Option
 
         for idx in 0..max_curves {
             let sigma = 6u64 + idx as u64;
-            if let Some(f) = ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont) {
+            if let Some(f) = ecm_one_curve_fast_256(&n_256, n, b1, b2, sigma, &primes, &mont, Some(&prime_bits)) {
                 return Some(f);
             }
         }
@@ -2455,8 +2480,44 @@ fn check_gcd(accum: &Integer, n: &Integer) -> Option<Integer> {
 
 /// Check whether `val` is in the sorted prime list via binary search.
 #[inline]
-fn is_in_prime_list(val: u64, primes: &[u64]) -> bool {
-    primes.binary_search(&val).is_ok()
+fn is_in_prime_list(val: u64, _primes: &[u64]) -> bool {
+    // Legacy fallback — prefer is_prime_bitset for O(1) lookup.
+    _primes.binary_search(&val).is_ok()
+}
+
+/// O(1) primality check using a pre-sieved bitset.
+#[inline]
+fn is_prime_bitset(val: u64, bitset: &[u64]) -> bool {
+    let idx = val as usize;
+    let word = idx / 64;
+    let bit = idx % 64;
+    word < bitset.len() && (bitset[word] >> bit) & 1 == 1
+}
+
+/// Build a bitset where bit `i` is set iff `i` is prime, for `i` up to `bound`.
+fn sieve_prime_bitset(bound: u64) -> Vec<u64> {
+    let n = bound as usize + 1;
+    let nwords = (n + 63) / 64;
+    let mut bits = vec![!0u64; nwords];
+    // 0 and 1 are not prime
+    if nwords > 0 {
+        bits[0] &= !3u64; // clear bits 0 and 1
+    }
+    let limit = (n as f64).sqrt() as usize + 1;
+    for i in 2..=limit {
+        if (bits[i / 64] >> (i % 64)) & 1 == 1 {
+            let mut j = i * i;
+            while j < n {
+                bits[j / 64] &= !(1u64 << (j % 64));
+                j += i;
+            }
+        }
+    }
+    // Clear bits beyond bound
+    if n % 64 != 0 && nwords > 0 {
+        bits[nwords - 1] &= (1u64 << (n % 64)) - 1;
+    }
+    bits
 }
 
 /// Sieve of Eratosthenes up to `bound`, returning a sorted Vec<u64>.
@@ -3076,7 +3137,7 @@ mod tests {
         let mut fast_found = 0;
         for idx in 0..n_curves {
             let sigma = 6u64 + idx;
-            if ecm_one_curve_fast(&n_192, &n, b1, b2, sigma, &primes, &mont).is_some() {
+            if ecm_one_curve_fast(&n_192, &n, b1, b2, sigma, &primes, &mont, None).is_some() {
                 fast_found += 1;
             }
         }
@@ -3109,7 +3170,7 @@ mod tests {
         let mut fast_found_full = 0;
         for idx in 0..20 {
             let sigma = 6u64 + idx;
-            if ecm_one_curve_fast(&n_192, &n, b1, b2_full, sigma, &primes_full, &mont).is_some() {
+            if ecm_one_curve_fast(&n_192, &n, b1, b2_full, sigma, &primes_full, &mont, None).is_some() {
                 fast_found_full += 1;
             }
         }
