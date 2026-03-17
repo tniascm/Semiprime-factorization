@@ -152,8 +152,8 @@ impl NfsParams {
         Self {
             name: "c60",
             degree: 4,
-            lim0: 50_000,
-            lim1: 70_000,
+            lim0: 30_000,
+            lim1: 40_000,
             lpb0: 18,   // CADO c60 uses 18. Narrower LP range → better merge
             lpb1: 19,   // CADO c60 uses 19.
             mfb0: 18,   // no 2LP rational (CADO: mfb0=17)
@@ -255,8 +255,8 @@ mod tests {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
         assert_eq!(p.log_i, 9);
-        assert_eq!(p.lim0, 50_000);
-        assert_eq!(p.lim1, 70_000);
+        assert_eq!(p.lim0, 30_000);
+        assert_eq!(p.lim1, 40_000);
         assert_eq!(p.lpb0, 18);
         assert_eq!(p.lpb1, 19);
         assert_eq!(p.mfb0, 18);
