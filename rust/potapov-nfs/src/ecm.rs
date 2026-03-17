@@ -801,51 +801,57 @@ fn ecm_one_curve_fast(
         }
     };
 
+    // Find first prime index > b1 for efficient Phase 2 iteration.
+    let p_start = primes.partition_point(|&p| p <= b1);
+
     let mut giant_val = first_giant;
     while giant_val <= b2 + d {
-        for b_idx in 0..baby.len() {
-            let b_offset = (b_idx + 1) as u64;
-            let val_plus = giant_val + b_offset;
-            let val_minus = if giant_val >= b_offset {
-                giant_val - b_offset
-            } else {
-                0
-            };
+        // Instead of iterating all baby offsets and checking primality,
+        // iterate over primes in [giant_val - d, giant_val + d] ∩ (b1, b2].
+        // This reduces iterations from d² (~2M) to ~d/ln(d) × giants (~275K).
+        let range_lo = if giant_val > d { giant_val - d } else { 0 };
+        let range_hi = giant_val + d;
 
-            let is_prime_plus = if let Some(bits) = prime_bits {
-                val_plus > b1 && val_plus <= b2 && is_prime_bitset(val_plus, bits)
-            } else {
-                val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes)
-            };
-            if is_prime_plus {
-                // cross = (X_giant * Z_baby - Z_giant * X_baby)
-                let t1 = mont_mul_192(&giant_q.x, &baby[b_idx].z, mont);
-                let t2 = mont_mul_192(&giant_q.z, &baby[b_idx].x, mont);
-                let cross = sub_mod_192(&t1, &t2, &mont.n);
-                accum2 = mont_mul_192(&accum2, &cross, mont);
-                batch_count += 1;
-            }
+        // Find primes in [max(b1+1, range_lo), min(b2, range_hi)] via binary search.
+        let scan_lo = range_lo.max(b1 + 1);
+        let scan_hi = range_hi.min(b2);
 
-            let is_prime_minus = if let Some(bits) = prime_bits {
-                val_minus > b1 && val_minus <= b2 && is_prime_bitset(val_minus, bits)
-            } else {
-                val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes)
-            };
-            if is_prime_minus {
-                let t1 = mont_mul_192(&giant_q.x, &baby[b_idx].z, mont);
-                let t2 = mont_mul_192(&giant_q.z, &baby[b_idx].x, mont);
-                let cross = sub_mod_192(&t1, &t2, &mont.n);
-                accum2 = mont_mul_192(&accum2, &cross, mont);
-                batch_count += 1;
-            }
+        if scan_lo <= scan_hi {
+            let idx_lo = primes[p_start..].partition_point(|&p| p < scan_lo) + p_start;
+            let idx_hi = primes[p_start..].partition_point(|&p| p <= scan_hi) + p_start;
 
-            if batch_count >= PHASE2_BATCH {
-                let accum2_reg = from_mont_192(&accum2, mont);
-                let g = gcd_192(&accum2_reg, n_192);
-                if g != U192_ONE && g != *n_192 {
-                    return Some(u192_to_integer(&g));
+            for &p in &primes[idx_lo..idx_hi] {
+                // p is prime and in (b1, b2]. Compute baby offset.
+                if p > giant_val {
+                    let b_offset = p - giant_val;
+                    if b_offset >= 1 && b_offset <= d {
+                        let b_idx = (b_offset - 1) as usize;
+                        let t1 = mont_mul_192(&giant_q.x, &baby[b_idx].z, mont);
+                        let t2 = mont_mul_192(&giant_q.z, &baby[b_idx].x, mont);
+                        let cross = sub_mod_192(&t1, &t2, &mont.n);
+                        accum2 = mont_mul_192(&accum2, &cross, mont);
+                        batch_count += 1;
+                    }
+                } else if p < giant_val {
+                    let b_offset = giant_val - p;
+                    if b_offset >= 1 && b_offset <= d {
+                        let b_idx = (b_offset - 1) as usize;
+                        let t1 = mont_mul_192(&giant_q.x, &baby[b_idx].z, mont);
+                        let t2 = mont_mul_192(&giant_q.z, &baby[b_idx].x, mont);
+                        let cross = sub_mod_192(&t1, &t2, &mont.n);
+                        accum2 = mont_mul_192(&accum2, &cross, mont);
+                        batch_count += 1;
+                    }
                 }
-                batch_count = 0;
+
+                if batch_count >= PHASE2_BATCH {
+                    let accum2_reg = from_mont_192(&accum2, mont);
+                    let g = gcd_192(&accum2_reg, n_192);
+                    if g != U192_ONE && g != *n_192 {
+                        return Some(u192_to_integer(&g));
+                    }
+                    batch_count = 0;
+                }
             }
         }
 
@@ -1693,50 +1699,50 @@ fn ecm_one_curve_fast_256(
         }
     };
 
+    let p_start = primes.partition_point(|&p| p <= b1);
+
     let mut giant_val = first_giant;
     while giant_val <= b2 + d {
-        for b_idx in 0..baby.len() {
-            let b_offset = (b_idx + 1) as u64;
-            let val_plus = giant_val + b_offset;
-            let val_minus = if giant_val >= b_offset {
-                giant_val - b_offset
-            } else {
-                0
-            };
+        let range_lo = if giant_val > d { giant_val - d } else { 0 };
+        let range_hi = giant_val + d;
+        let scan_lo = range_lo.max(b1 + 1);
+        let scan_hi = range_hi.min(b2);
 
-            let is_prime_plus = if let Some(bits) = prime_bits {
-                val_plus > b1 && val_plus <= b2 && is_prime_bitset(val_plus, bits)
-            } else {
-                val_plus > b1 && val_plus <= b2 && is_in_prime_list(val_plus, primes)
-            };
-            if is_prime_plus {
-                let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
-                let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
-                let cross = sub_mod_256(&t1, &t2, &mont.n);
-                accum2 = mont_mul_256(&accum2, &cross, mont);
-                batch_count += 1;
-            }
+        if scan_lo <= scan_hi {
+            let idx_lo = primes[p_start..].partition_point(|&p| p < scan_lo) + p_start;
+            let idx_hi = primes[p_start..].partition_point(|&p| p <= scan_hi) + p_start;
 
-            let is_prime_minus = if let Some(bits) = prime_bits {
-                val_minus > b1 && val_minus <= b2 && is_prime_bitset(val_minus, bits)
-            } else {
-                val_minus > b1 && val_minus <= b2 && is_in_prime_list(val_minus, primes)
-            };
-            if is_prime_minus {
-                let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
-                let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
-                let cross = sub_mod_256(&t1, &t2, &mont.n);
-                accum2 = mont_mul_256(&accum2, &cross, mont);
-                batch_count += 1;
-            }
-
-            if batch_count >= PHASE2_BATCH {
-                let accum2_reg = from_mont_256(&accum2, mont);
-                let g = gcd_256(&accum2_reg, n_256);
-                if g != U256_ONE && g != *n_256 {
-                    return Some(u256_to_integer(&g));
+            for &p in &primes[idx_lo..idx_hi] {
+                if p > giant_val {
+                    let b_offset = p - giant_val;
+                    if b_offset >= 1 && b_offset <= d {
+                        let b_idx = (b_offset - 1) as usize;
+                        let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
+                        let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
+                        let cross = sub_mod_256(&t1, &t2, &mont.n);
+                        accum2 = mont_mul_256(&accum2, &cross, mont);
+                        batch_count += 1;
+                    }
+                } else if p < giant_val {
+                    let b_offset = giant_val - p;
+                    if b_offset >= 1 && b_offset <= d {
+                        let b_idx = (b_offset - 1) as usize;
+                        let t1 = mont_mul_256(&giant_q.x, &baby[b_idx].z, mont);
+                        let t2 = mont_mul_256(&giant_q.z, &baby[b_idx].x, mont);
+                        let cross = sub_mod_256(&t1, &t2, &mont.n);
+                        accum2 = mont_mul_256(&accum2, &cross, mont);
+                        batch_count += 1;
+                    }
                 }
-                batch_count = 0;
+
+                if batch_count >= PHASE2_BATCH {
+                    let accum2_reg = from_mont_256(&accum2, mont);
+                    let g = gcd_256(&accum2_reg, n_256);
+                    if g != U256_ONE && g != *n_256 {
+                        return Some(u256_to_integer(&g));
+                    }
+                    batch_count = 0;
+                }
             }
         }
 
@@ -1885,9 +1891,10 @@ pub fn try_ecm_factor(n: &Integer) -> Option<(Integer, f64)> {
         // c45 range: ~74-80 bit factors (~22-24 digits).
         // GMP-ECM: 22-digit needs B1=11K/~74 curves, 25-digit B1=50K/~214.
         // B1=25K with 400 curves: ~99.9% success for 22-digit, ~98% for 24-digit.
-        // B1=25K/B2=2M/400 curves: 100% success across all tested seeds.
-        // Per-curve ~2ms. Worst-case ST ~800ms (all 400 curves), typical ~200ms.
-        (25_000, 2_000_000, 400)
+        // B1=20K: ~2200 primes, Phase 1 ~3ms. B2=2M, Phase 2 ~0.5ms.
+        // Per-curve ~3.5ms. 600 curves: worst ST ~2.1s, MT ~210ms.
+        // Higher B1 gives better success rate per curve for hard factors.
+        (20_000, 2_000_000, 600)
     } else if bits <= 180 {
         // ~80-90 bit factors (~24-27 digits). B1=50K/250 curves.
         (50_000, 5_000_000, 250)
