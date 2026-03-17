@@ -2873,20 +2873,23 @@ fn build_sparse_zero_sets(rels: &[gnfs::types::Relation], max_sets: usize) -> Ve
             rels: vec![idx],
         };
 
-        let mut registered_pivot = false;
-        while !row.keys.is_empty() {
+        loop {
+            if row.keys.is_empty() {
+                break;
+            }
             let pivot_key = row.keys[0].clone();
             if let Some(pivot_row) = pivots.get(&pivot_key) {
                 row.keys = sym_diff_sorted(&row.keys, &pivot_row.keys);
                 row.rels = sym_diff_sorted(&row.rels, &pivot_row.rels);
             } else {
-                pivots.insert(pivot_key, row.clone());
-                registered_pivot = true;
+                pivots.insert(pivot_key, row); // move, no clone
+                row = SparseElimRow { keys: vec![], rels: vec![] }; // sentinel
                 break;
             }
         }
 
-        if !registered_pivot && row.keys.is_empty() && !row.rels.is_empty() {
+        // row.rels is non-empty only if all keys canceled (zero row found)
+        if row.keys.is_empty() && !row.rels.is_empty() {
             if seen.insert(row.rels.clone()) {
                 sets.push(row.rels);
                 if sets.len() >= max_sets {
@@ -2945,20 +2948,22 @@ fn build_special_q_zero_sets_from_partial_sets(
             rels: set.clone(),
         };
 
-        let mut registered_pivot = false;
-        while !row.keys.is_empty() {
+        loop {
+            if row.keys.is_empty() {
+                break;
+            }
             let pivot_key = row.keys[0].clone();
             if let Some(pivot_row) = pivots.get(&pivot_key) {
                 row.keys = sym_diff_sorted(&row.keys, &pivot_row.keys);
                 row.rels = sym_diff_sorted(&row.rels, &pivot_row.rels);
             } else {
-                pivots.insert(pivot_key, row.clone());
-                registered_pivot = true;
+                pivots.insert(pivot_key, row); // move, no clone
+                row = SparseElimRow { keys: vec![], rels: vec![] };
                 break;
             }
         }
 
-        if !registered_pivot && row.keys.is_empty() && !row.rels.is_empty() {
+        if row.keys.is_empty() && !row.rels.is_empty() {
             if seen.insert(row.rels.clone()) {
                 sets.push(row.rels);
             }
