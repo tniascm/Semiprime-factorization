@@ -78,6 +78,14 @@ pub struct ViabilityStats {
     pub singleton_rows_dropped: usize,
     pub zero_cols_dropped_post_singleton: usize,
     pub zero_cols_dropped_total: usize,
+    pub iterative_merge_rows_before: usize,
+    pub iterative_merge_cols_before: usize,
+    pub iterative_merge_rows_after: usize,
+    pub iterative_merge_cols_after: usize,
+    pub iterative_merge_cols_eliminated: usize,
+    pub iterative_merge_rows_eliminated: usize,
+    pub iterative_merge_max_weight_used: usize,
+    pub iterative_merge_rounds: usize,
     pub final_rows: usize,
     pub final_cols: usize,
     pub rows_minus_cols: isize,
@@ -390,6 +398,9 @@ impl RunLogger {
             "POTAPOV_NFS_COMPACT_ZERO_COLS": std::env::var("POTAPOV_NFS_COMPACT_ZERO_COLS").ok(),
             "POTAPOV_NFS_SINGLETON_PRUNE": std::env::var("POTAPOV_NFS_SINGLETON_PRUNE").ok(),
             "POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT": std::env::var("POTAPOV_NFS_SINGLETON_PRUNE_MIN_WEIGHT").ok(),
+            "POTAPOV_NFS_ITERATIVE_MERGE": std::env::var("POTAPOV_NFS_ITERATIVE_MERGE").ok(),
+            "POTAPOV_NFS_ITERATIVE_MERGE_MAX_WEIGHT": std::env::var("POTAPOV_NFS_ITERATIVE_MERGE_MAX_WEIGHT").ok(),
+            "POTAPOV_NFS_ITERATIVE_MERGE_TARGET_EXCESS": std::env::var("POTAPOV_NFS_ITERATIVE_MERGE_TARGET_EXCESS").ok(),
             "POTAPOV_NFS_PARTIAL_MERGE_2LP": std::env::var("POTAPOV_NFS_PARTIAL_MERGE_2LP").ok(),
             "POTAPOV_NFS_PARTIAL_MERGE_MAXSETS": std::env::var("POTAPOV_NFS_PARTIAL_MERGE_MAXSETS").ok(),
             "POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT": std::env::var("POTAPOV_NFS_HD_RESIDUAL_SAMPLE_LIMIT").ok(),
@@ -1851,19 +1862,15 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_initial = dropped_cols;
     let mut singleton_rows_dropped = 0usize;
     let mut zero_cols_dropped_post_singleton = 0usize;
-    // Single-round singleton pruning: removes weight-1 columns and their rows.
-    // For SQ-heavy matrices, this removes singleton SQ columns (each loses 1 row +
-    // 1 col = net 0 on excess) but the removed rows may cascade to drop FB columns
-    // to weight 0 → free zero-column compaction → excess improves.
-    // One round is safe (no cascading); excess guard at -20K allows pruning
-    // even with initial deficit (SQ singletons dominate).
+    // Singleton pruning: only safe with positive excess (cascading internal loop
+    // destroys entire matrix when excess < 0). For c60+ with SQ columns, the
+    // iterative merge below handles column elimination without cascade damage.
     let excess_before = matrix.len() as i64 - ncols as i64;
-    let min_excess = -20_000i64;  // allow pruning with deficit (for SQ-heavy matrices)
-    let do_prune = singleton_prune && excess_before > min_excess;
+    let do_prune = singleton_prune && excess_before > 200;
     if singleton_prune && !do_prune {
         eprintln!(
-            "  LA: skipping singleton-prune (excess {} too low, need >{})",
-            excess_before, min_excess
+            "  LA: skipping singleton-prune (excess {} too low, need >200)",
+            excess_before
         );
     }
     if do_prune {
@@ -1890,8 +1897,78 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_post_singleton = zero_cols_dropped_post_singleton;
     result.viability.zero_cols_dropped_total = dropped_cols + zero_cols_dropped_post_singleton;
 
+    // --- Iterative merge: eliminate LP and SQ columns by XOR-merging rows ---
+    // Enabled by default when matrix has a column deficit (rows < cols).
+    // Can be controlled via env vars:
+    //   POTAPOV_NFS_ITERATIVE_MERGE=1|0    (force on/off)
+    //   POTAPOV_NFS_ITERATIVE_MERGE_MAX_WEIGHT=N  (max column weight to merge, default 8)
+    //   POTAPOV_NFS_ITERATIVE_MERGE_TARGET_EXCESS=N  (stop when excess >= N, default 200)
+    let has_deficit = (matrix.len() as isize) < (ncols as isize);
+    let iterative_merge_enabled = std::env::var("POTAPOV_NFS_ITERATIVE_MERGE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(has_deficit);
+    let iterative_merge_max_weight: usize = std::env::var("POTAPOV_NFS_ITERATIVE_MERGE_MAX_WEIGHT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&v| v >= 2)
+        .unwrap_or(8);
+    let iterative_merge_target_excess: usize = std::env::var("POTAPOV_NFS_ITERATIVE_MERGE_TARGET_EXCESS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(200);
+
+    if iterative_merge_enabled {
+        let merge_start = std::time::Instant::now();
+        let rows_before_merge = matrix.len();
+        let cols_before_merge = ncols;
+        let excess_before_merge = rows_before_merge as isize - cols_before_merge as isize;
+        eprintln!(
+            "  LA: iterative merge starting ({} x {}, excess {}, max_weight={}, target_excess={})",
+            rows_before_merge, cols_before_merge, excess_before_merge,
+            iterative_merge_max_weight, iterative_merge_target_excess
+        );
+
+        let (merged_matrix, merged_sources, merged_ncols, merge_stats) =
+            iterative_merge_columns(
+                matrix,
+                row_sources,
+                ncols,
+                iterative_merge_max_weight,
+                iterative_merge_target_excess,
+            );
+        matrix = merged_matrix;
+        row_sources = merged_sources;
+        ncols = merged_ncols;
+
+        let merge_ms = merge_start.elapsed().as_secs_f64() * 1000.0;
+        let excess_after = matrix.len() as isize - ncols as isize;
+        eprintln!(
+            "  LA: iterative merge done {:.0}ms: {} x {} -> {} x {} (excess {} -> {}, eliminated {} cols / {} rows in {} rounds, max_cw={})",
+            merge_ms,
+            rows_before_merge, cols_before_merge,
+            matrix.len(), ncols,
+            excess_before_merge, excess_after,
+            merge_stats.cols_eliminated, merge_stats.rows_eliminated,
+            merge_stats.rounds, merge_stats.max_weight_used
+        );
+
+        result.viability.iterative_merge_rows_before = merge_stats.rows_before;
+        result.viability.iterative_merge_cols_before = merge_stats.cols_before;
+        result.viability.iterative_merge_rows_after = merge_stats.rows_after;
+        result.viability.iterative_merge_cols_after = merge_stats.cols_after;
+        result.viability.iterative_merge_cols_eliminated = merge_stats.cols_eliminated;
+        result.viability.iterative_merge_rows_eliminated = merge_stats.rows_eliminated;
+        result.viability.iterative_merge_max_weight_used = merge_stats.max_weight_used;
+        result.viability.iterative_merge_rounds = merge_stats.rounds;
+    } else if has_deficit {
+        eprintln!(
+            "  LA: iterative merge disabled (POTAPOV_NFS_ITERATIVE_MERGE=0), deficit={}",
+            ncols as isize - matrix.len() as isize
+        );
+    }
+
     let compact_ms = compact_start.elapsed().as_secs_f64() * 1000.0;
-    eprintln!("  LA: compact+prune {:.0}ms -> {} x {}", compact_ms, matrix.len(), ncols);
+    eprintln!("  LA: compact+prune+merge {:.0}ms -> {} x {}", compact_ms, matrix.len(), ncols);
 
     result.matrix_rows = matrix.len();
     result.matrix_cols = ncols;
@@ -1899,7 +1976,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.final_cols = result.matrix_cols;
     result.viability.rows_minus_cols = result.matrix_rows as isize - result.matrix_cols as isize;
 
-    let matrix_premerged = sparse_premerge || partial_merge_active;
+    let matrix_premerged = sparse_premerge || partial_merge_active || iterative_merge_enabled;
     let sqrt_success_mode = std::env::var("POTAPOV_NFS_SQRT_SUCCESS_MODE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(degree >= 4);
@@ -3473,6 +3550,214 @@ fn remap_partial_sets_from_sources(
         partial_sets_dropped_remap,
         partial_sets_recomputed,
     )
+}
+
+/// Result of iterative merge: tracks statistics for diagnostics.
+#[derive(Debug, Clone, Default)]
+struct IterativeMergeStats {
+    rows_before: usize,
+    cols_before: usize,
+    rows_after: usize,
+    cols_after: usize,
+    cols_eliminated: usize,
+    rows_eliminated: usize,
+    max_weight_used: usize,
+    rounds: usize,
+}
+
+/// CADO-style iterative merge: eliminates LP and SQ columns from the GF(2) matrix
+/// by XOR-merging rows that share low-weight columns.
+///
+/// For each column with weight w (appears in w rows):
+///   - w=1: handled by singleton prune (upstream), skip here
+///   - w=2: XOR the two rows, remove pivot, eliminate column. Net: -1 row, -1 col.
+///   - w>=3: pick the shortest row as pivot, XOR it into all other w-1 rows,
+///           then remove the pivot. Net: -1 row, -1 col (but other rows grow).
+///
+/// The merge iterates by increasing column weight up to `max_weight`.
+/// After each weight pass, zero columns are compacted.
+/// Stops early if average row density exceeds a threshold or excess is sufficient.
+///
+/// Returns (pruned_matrix, pruned_row_sources, new_ncols).
+fn iterative_merge_columns(
+    mut matrix: Vec<gnfs::types::BitRow>,
+    mut row_sources: Vec<Vec<usize>>,
+    mut ncols: usize,
+    max_weight: usize,
+    target_excess: usize,
+) -> (Vec<gnfs::types::BitRow>, Vec<Vec<usize>>, usize, IterativeMergeStats) {
+    let mut stats = IterativeMergeStats {
+        rows_before: matrix.len(),
+        cols_before: ncols,
+        ..Default::default()
+    };
+
+    if matrix.is_empty() || ncols == 0 || max_weight < 2 {
+        stats.rows_after = matrix.len();
+        stats.cols_after = ncols;
+        return (matrix, row_sources, ncols, stats);
+    }
+
+    // Maximum average row density before we stop merging.
+    // Beyond this, rows are too dense and merging degrades LA performance.
+    let max_avg_density: usize = 200;
+
+    let mut total_cols_eliminated = 0usize;
+    let mut total_rows_eliminated = 0usize;
+    let mut round = 0usize;
+
+    for cw in 2..=max_weight {
+        // Check if we already have enough excess.
+        let excess = matrix.len() as isize - ncols as isize;
+        if excess >= target_excess as isize {
+            eprintln!(
+                "    merge: stopping at cw={} (excess {} >= target {})",
+                cw, excess, target_excess
+            );
+            break;
+        }
+
+        // Check average row density: sum of set bits / nrows.
+        let total_bits: usize = matrix.iter().map(|row| {
+            row.bits.iter().map(|&w| w.count_ones() as usize).sum::<usize>()
+        }).sum();
+        let avg_density = if matrix.is_empty() { 0 } else { total_bits / matrix.len() };
+        if avg_density > max_avg_density {
+            eprintln!(
+                "    merge: stopping at cw={} (avg density {} > limit {})",
+                cw, avg_density, max_avg_density
+            );
+            break;
+        }
+
+        // Build column-to-rows index: for each column, list of row indices with that bit set.
+        let mut col_to_rows: Vec<Vec<usize>> = vec![Vec::new(); ncols];
+        for (ri, row) in matrix.iter().enumerate() {
+            for (wi, &word) in row.bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let col = wi * 64 + bit;
+                    if col < ncols {
+                        col_to_rows[col].push(ri);
+                    }
+                    w &= w - 1;
+                }
+            }
+        }
+
+        // Collect columns with weight exactly cw, sorted by column index.
+        let mut cols_at_weight: Vec<usize> = Vec::new();
+        for (col, rows_list) in col_to_rows.iter().enumerate() {
+            if rows_list.len() == cw {
+                cols_at_weight.push(col);
+            }
+        }
+
+        if cols_at_weight.is_empty() {
+            continue;
+        }
+
+        // Track which rows have been removed (pivot rows) in this pass.
+        let mut removed: Vec<bool> = vec![false; matrix.len()];
+        let mut cols_done_this_weight = 0usize;
+        let mut rows_done_this_weight = 0usize;
+
+        // Process each column at this weight.
+        // We must be careful: after XOR-merging, column weights change,
+        // but we only process columns that had weight=cw at the start of this pass.
+        // This is safe: merging may increase other column weights (they'll be handled
+        // in later passes) or decrease them (beneficial).
+        for &col in &cols_at_weight {
+            // Re-check which rows still have this column set (some may have been
+            // removed or modified by earlier merges in this pass).
+            let mut active_rows: Vec<usize> = Vec::new();
+            for &ri in &col_to_rows[col] {
+                if !removed[ri] && matrix[ri].get(col) {
+                    active_rows.push(ri);
+                }
+            }
+
+            // Skip if the column was already eliminated by cascading effects,
+            // or if it became a singleton (which singleton prune handles).
+            if active_rows.len() < 2 {
+                continue;
+            }
+
+            // Pick the shortest row as pivot (fewest set bits = cheapest to XOR).
+            let pivot_idx = *active_rows.iter().min_by_key(|&&ri| {
+                matrix[ri].bits.iter().map(|&w| w.count_ones() as usize).sum::<usize>()
+            }).unwrap();
+
+            // Clone pivot row and sources before modifying other rows,
+            // to satisfy the borrow checker (can't borrow matrix[pivot_idx]
+            // immutably while mutating matrix[ri]).
+            let pivot_bits = matrix[pivot_idx].clone();
+            let pivot_sources = row_sources[pivot_idx].clone();
+
+            // XOR pivot into all other rows that contain this column.
+            for &ri in &active_rows {
+                if ri == pivot_idx {
+                    continue;
+                }
+                // XOR the bit vectors: this eliminates `col` from row `ri`
+                // (since both have it set, XOR clears it).
+                matrix[ri].xor_with(&pivot_bits);
+
+                // Merge row_sources using symmetric difference (XOR semantics).
+                // The combined row represents the XOR of original relations from both rows.
+                let src_ri = std::mem::take(&mut row_sources[ri]);
+                row_sources[ri] = sym_diff_sorted(&src_ri, &pivot_sources);
+            }
+
+            // Mark pivot row for removal.
+            removed[pivot_idx] = true;
+            cols_done_this_weight += 1;
+            rows_done_this_weight += 1;
+        }
+
+        if cols_done_this_weight == 0 {
+            continue;
+        }
+
+        // Compact: remove marked rows.
+        let mut new_matrix: Vec<gnfs::types::BitRow> = Vec::with_capacity(matrix.len() - rows_done_this_weight);
+        let mut new_sources: Vec<Vec<usize>> = Vec::with_capacity(matrix.len() - rows_done_this_weight);
+        for (ri, (row, src)) in matrix.into_iter().zip(row_sources.into_iter()).enumerate() {
+            if !removed[ri] {
+                new_matrix.push(row);
+                new_sources.push(src);
+            }
+        }
+        matrix = new_matrix;
+        row_sources = new_sources;
+
+        // Compact zero columns to reclaim indices.
+        let (compacted, new_ncols, dropped_zero) = compact_zero_columns(matrix, ncols);
+        matrix = compacted;
+
+        total_cols_eliminated += cols_done_this_weight + dropped_zero;
+        total_rows_eliminated += rows_done_this_weight;
+        stats.max_weight_used = cw;
+        round += 1;
+
+        let new_excess = matrix.len() as isize - new_ncols as isize;
+        eprintln!(
+            "    merge: cw={} eliminated {} cols ({} direct + {} cascading zero), {} rows removed, matrix {} x {} -> excess {}",
+            cw, cols_done_this_weight + dropped_zero, cols_done_this_weight, dropped_zero,
+            rows_done_this_weight, matrix.len(), new_ncols, new_excess
+        );
+
+        ncols = new_ncols;
+    }
+
+    stats.rows_after = matrix.len();
+    stats.cols_after = ncols;
+    stats.cols_eliminated = total_cols_eliminated;
+    stats.rows_eliminated = total_rows_eliminated;
+    stats.rounds = round;
+
+    (matrix, row_sources, ncols, stats)
 }
 
 fn compact_zero_columns(
