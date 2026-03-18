@@ -897,8 +897,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             else if lp_gap > 2.0 { 2.5 }  // medium gap (c60): ~33% yield
             else { 1.5 }                   // small gap (c45-): 67% yield
         });
+    // When LP filter is skipped (c60+), 92%+ of raw rels survive → ratio ~1.1.
+    let default_skip_lp = n.significant_bits() > 170;
+    let effective_ratio = if default_skip_lp { 1.1 } else { raw_filter_ratio };
     let mut target_raw_rels = if partial_merge_2lp {
-        (((est_dense_cols as f64) * rel_target_mult * raw_filter_ratio).ceil() as usize)
+        (((est_dense_cols as f64) * rel_target_mult * effective_ratio).ceil() as usize)
             .max(rel_target_min)
     } else {
         params.rels_wanted as usize
@@ -979,9 +982,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             // For large LP spaces (c60+), LP singleton filtering kills too many
             // relations — the yield plateaus at ~10-15%. Instead, keep ALL valid
             // relations and let the matrix pre-elimination handle LP singletons.
+            // For c60+ (large LP space), skip LP singleton filtering.
+            // CADO keeps all relations and handles singletons in purge stage.
+            // With LP filter: 85%+ rejection → yield plateaus at 10-15%.
+            // Without: 92%+ yield → matrix viable in minutes, not hours.
+            let default_skip_lp = n.significant_bits() > 170;
             let skip_lp_filter = std::env::var("POTAPOV_NFS_SKIP_LP_FILTER")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
+                .unwrap_or(default_skip_lp);
             let mut filtered: Vec<crate::relation::Relation> = if skip_lp_filter {
                 // Dedup only, keep LP singletons
                 let mut deduped: Vec<crate::relation::Relation> = all_sieve_relations.clone();
