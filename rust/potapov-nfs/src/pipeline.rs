@@ -1166,6 +1166,11 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                         };
                     let probe_partial_merge_active =
                         partial_merge_2lp && !probe_sets_remapped.is_empty();
+                    // Probe must match the real LA path: skip singleton prune
+                    // when deficit is expected (the real LA only prunes with excess > 200,
+                    // then runs iterative merge). Otherwise probe gives overly pessimistic
+                    // estimates that cause premature stop.
+                    let probe_singleton_prune = false; // match real LA deficit behavior
                     let probe_summary = if !probe_sq_premerged_sets.is_empty() {
                         let (probe_matrix, probe_cols, probe_sources) =
                             build_dense_matrix_from_sets(
@@ -1181,7 +1186,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                             probe_cols,
                             probe_sources,
                             compact_zero_cols,
-                            singleton_prune,
+                            probe_singleton_prune,
                             singleton_min_weight,
                         )
                     } else if probe_partial_merge_active {
@@ -1199,7 +1204,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                             probe_cols,
                             probe_sources,
                             compact_zero_cols,
-                            singleton_prune,
+                            probe_singleton_prune,
                             singleton_min_weight,
                         )
                     } else {
@@ -1216,7 +1221,7 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
                             probe_cols,
                             probe_sources,
                             compact_zero_cols,
-                            singleton_prune,
+                            probe_singleton_prune,
                             singleton_min_weight,
                         )
                     };

@@ -2580,11 +2580,13 @@ fn build_relation(
     rat_result: CofactResult,
     alg_result: CofactResult,
 ) -> Option<Relation> {
+    // Default 3: c60 with mfb0=17 (1LP rat) + mfb1=40 (2LP alg) → up to 3 keys.
+    // CADO supports multi-LP relations natively in its purge/merge pipeline.
     let max_lp_keys = std::env::var("POTAPOV_NFS_MAX_LP_KEYS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
-        .unwrap_or(2usize);
+        .unwrap_or(3usize);
 
     let (rat_factors, rat_lps): (Vec<(u32, u8)>, Vec<u64>) = match rat_result {
         CofactResult::Smooth(f) => (f, Vec::new()),

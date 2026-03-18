@@ -226,6 +226,34 @@ pub fn merge_relations_2lp(
                     }
                 }
             }
+            3 => {
+                // 3-LP relation (e.g., 1 rat LP + 2 alg LPs for c60 asymmetric mfb).
+                // Model as edge between keys[0] and keys[1] in the LP graph.
+                // keys[2] is an "extra" LP that stays in the relation but doesn't
+                // participate in the cycle detection. When this relation is part of
+                // a set-row, the matrix XOR handles all 3 LP columns correctly.
+                stats.relations_2lp += 1; // count with 2LP for stats
+                let u = get_or_insert_node(keys[0], &mut key_to_node, &mut uf, &mut tree_adj);
+                let v = get_or_insert_node(keys[1], &mut key_to_node, &mut uf, &mut tree_adj);
+
+                if uf.find(u) != uf.find(v) {
+                    uf.union(u, v);
+                    tree_adj[u].push((v, rel_idx));
+                    tree_adj[v].push((u, rel_idx));
+                    stats.tree_edges += 1;
+                } else {
+                    stats.cycles_found += 1;
+                    if let Some(mut path) = tree_path_relation_indices(&tree_adj, u, v) {
+                        path.push(rel_idx);
+                        path.sort_unstable();
+                        path.dedup();
+                        if !seen_sets.contains(&path) {
+                            seen_sets.insert(path.clone());
+                            sets.push(path);
+                        }
+                    }
+                }
+            }
             _ => {
                 stats.relations_dropped_gt2lp += 1;
             }
