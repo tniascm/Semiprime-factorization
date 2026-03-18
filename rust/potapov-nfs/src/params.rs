@@ -152,16 +152,16 @@ impl NfsParams {
         Self {
             name: "c60",
             degree: 4,
-            lim0: 50_000,
-            lim1: 70_000,
+            lim0: 80_000,   // CADO-exact for maximum filter yield (65%)
+            lim1: 110_000,
             lpb0: 18,
             lpb1: 19,
-            mfb0: 17,       // no 2LP rational (CADO: mfb0=17)
-            mfb1: 38,       // 2*lpb1 = full 2LP algebraic
+            mfb0: 17,
+            mfb1: 38,
             sieve_mfb0: 17,
             sieve_mfb1: 38,
             log_i: 9,
-            qmin: 40_000,
+            qmin: 60_000,
             qrange: 50_000,
             rels_wanted: 30_000,
         }
@@ -255,8 +255,8 @@ mod tests {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
         assert_eq!(p.log_i, 9);
-        assert_eq!(p.lim0, 50_000);
-        assert_eq!(p.lim1, 70_000);
+        assert_eq!(p.lim0, 80_000);
+        assert_eq!(p.lim1, 110_000);
         assert_eq!(p.lpb0, 18);
         assert_eq!(p.lpb1, 19);
         assert_eq!(p.mfb0, 17);
