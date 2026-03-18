@@ -139,20 +139,16 @@ impl NfsParams {
 
     /// Parameters for ~60-digit (171+ bit) semiprimes.
     ///
-    /// Smaller FB than CADO c60 reference to ensure relation surplus:
-    /// - lim=30K/40K: ~11K dense columns vs ~17K expected relations → 6K surplus.
-    ///   CADO uses lim=79K/111K but has 2-5x higher per-SQ yield from optimized
-    ///   sieve + ECM cofactoring. Our lower yield requires smaller matrix.
-    /// - lpb0=19, lpb1=20: slightly higher than CADO (18/19) to increase rels/SQ
-    ///   with smaller FB. Matches CADO c65 lpb values.
-    /// - mfb0=19 ≤ lpb0: no 2LP on rational side. mfb1=40=2×lpb1: full 2LP alg.
-    /// - log_i=11: 16M sieve area. Sufficient with smaller FB.
-    /// - qmin=30K within lim1=40K: all SQs fold into algebraic FB.
+    /// CADO-NFS-matched FB limits for maximum sieve effectiveness.
+    /// SQs extend well beyond lim1 (q-cap removed for >170-bit N).
+    /// With ~1 rel per SQ/root pair, need ~30K SQ pairs for 25K+ rels
+    /// to overcome ~24K dense columns. Block Wiedemann handles the
+    /// resulting large matrices.
     pub fn c60() -> Self {
         Self {
             name: "c60",
             degree: 4,
-            lim0: 80_000,   // CADO-exact for maximum filter yield (65%)
+            lim0: 80_000,
             lim1: 110_000,
             lpb0: 18,
             lpb1: 19,
@@ -160,10 +156,10 @@ impl NfsParams {
             mfb1: 38,
             sieve_mfb0: 17,
             sieve_mfb1: 38,
-            log_i: 10,  // CADO I=10. 2M sieve area → ~4x more rels/SQ
-            qmin: 60_000,
-            qrange: 5_000,
-            rels_wanted: 30_000,
+            log_i: 10,
+            qmin: 2_000,      // start low to maximize SQs within lim1 (SQ fold, no extra cols)
+            qrange: 5_000,    // fine-grained windows; extends beyond lim1 via q-cap removal
+            rels_wanted: 60_000,
         }
     }
 

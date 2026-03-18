@@ -696,6 +696,10 @@ pub fn sieve_specialq(
                             alg_result
                         };
 
+                        // SQs within lim1: SQ fold handles q (tracked in FB column, no extra col).
+                        // SQs beyond lim1: need SQ column for GF(2) parity tracking.
+                        // Without SQ columns, sqrt fails (AlgNotSquare) because the
+                        // null space doesn't enforce even SQ parity.
                         let sq_for_rel = if sq_alg_fb_idx.is_some() { None } else { Some((q, r)) };
                         if let Some(rel) =
                             build_relation(a, b, sq_for_rel, rat_result, alg_result)
@@ -1320,6 +1324,10 @@ pub fn line_sieve_specialq(
                             alg_result
                         };
 
+                        // SQs within lim1: SQ fold handles q (tracked in FB column, no extra col).
+                        // SQs beyond lim1: need SQ column for GF(2) parity tracking.
+                        // Without SQ columns, sqrt fails (AlgNotSquare) because the
+                        // null space doesn't enforce even SQ parity.
                         let sq_for_rel = if sq_alg_fb_idx.is_some() { None } else { Some((q, r)) };
                         if let Some(rel) = build_relation(a, b, sq_for_rel, rat_result, alg_result) {
                             local_rels.push(rel);

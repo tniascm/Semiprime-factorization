@@ -273,24 +273,27 @@ fn ecm_one_curve_careful(n: u64, b1: u64, b2: u64, sigma: u64, primes: &[u64]) -
 /// Returns a list of `(B1, B2)` pairs to try sequentially.  For small
 /// `lpb` values (< 20) no ECM curves are attempted.
 pub fn ecm_bounds(lpb: u32) -> Vec<(u64, u64)> {
-    // CADO-NFS uses ncurves=2 even at lpb=18-19 for c60.
-    // Previous bug: 0 curves for lpb≤19 meant cofactors were never
-    // split by ECM, only by P-1/P+1 — losing 3-5x potential relations.
+    // For c60: lpb=18-19 means cofactors up to 2^38 must be split into
+    // two primes each ≤ 2^19. ECM needs B1 large enough that the group
+    // order of a 19-bit prime has reasonable probability of being B1-smooth.
+    // B1=500 gives ρ(19/9)≈0.12 per curve; 6 curves → P(split)≈53%.
     let ncurves = match lpb {
         0..=17 => 0,
-        18..=19 => 2,  // was 0! CADO c60 uses 2 curves at lpb=18-19
-        20..=22 => 4,  // was 1; increased per CADO c65-c70 scaling
-        23 => 6,
-        24 => 8,
-        25 => 10,
-        26 => 12,
-        27 => 14,
-        28 => 16,
-        _ => 20,
+        18..=19 => 6,
+        20..=22 => 8,
+        23 => 10,
+        24 => 12,
+        25 => 14,
+        26 => 16,
+        27 => 18,
+        28 => 20,
+        _ => 24,
     };
 
     let mut bounds = Vec::with_capacity(ncurves);
-    let mut b1 = 105.0f64;
+    // Start B1 at 500 (was 105). For lpb=19, factors are ~19-bit;
+    // group orders need to be B1-smooth for ECM success.
+    let mut b1 = 500.0f64;
     for _ in 0..ncurves {
         let b2 = ((2.0 * (50.0 * b1 / 210.0).floor() + 1.0) * 105.0) as u64;
         bounds.push((b1 as u64, b2));
@@ -449,11 +452,11 @@ mod tests {
 
     #[test]
     fn test_ecm_bounds_nonempty_for_large_lpb() {
-        assert_eq!(ecm_bounds(18).len(), 2); // CADO c60 uses 2 curves at lpb=18
-        assert_eq!(ecm_bounds(19).len(), 2);
-        assert_eq!(ecm_bounds(20).len(), 4);
-        assert_eq!(ecm_bounds(24).len(), 8);
-        assert_eq!(ecm_bounds(28).len(), 16);
+        assert_eq!(ecm_bounds(18).len(), 6);
+        assert_eq!(ecm_bounds(19).len(), 6);
+        assert_eq!(ecm_bounds(20).len(), 8);
+        assert_eq!(ecm_bounds(24).len(), 12);
+        assert_eq!(ecm_bounds(28).len(), 20);
     }
 
     #[test]

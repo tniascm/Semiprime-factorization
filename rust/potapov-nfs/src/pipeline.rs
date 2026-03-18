@@ -707,21 +707,27 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     };
     let bad_root_offsets = compute_bad_root_offsets(&gnfs_fb, &f_coeffs_big);
     let alg_bad = bad_root_offsets.len();
-    // Cap q windows so SQs stay within lim1 (algebraic FB range).
-    // SQs beyond lim1 create separate columns that break the algebraic
-    // square root (sqrt fails with alg_not_square). SQs within lim1
-    // fold into the FB columns via SQ fold, preserving GF(2) parity.
-    let lim1_q_window_cap = if params.qrange > 0 && params.qmin < params.lim1 {
+    // For c60+, removing the q-cap at lim1 is essential: we need 25K+
+    // relations but only ~10K SQ/root pairs exist within lim1. SQs beyond
+    // lim1 create extra columns in the matrix (not folded into FB), but
+    // with enough relations these are manageable. The old cap would
+    // limit us to ~10K rels, guaranteeing matrix deficit.
+    //
+    // For c30/c45, q stays within lim1 naturally (qmin + few windows < lim1).
+    let lim1_q_window_cap: Option<usize> = if params.qrange > 0 && params.qmin < params.lim1 {
         let max_q_in_fb = params.lim1.saturating_sub(params.qmin);
         Some((max_q_in_fb / params.qrange).max(1) as usize)
     } else {
         None
     };
+    // For >170 bits: no q-cap (need many SQs beyond lim1).
+    // For ≤170 bits: cap at lim1 for SQ fold (faster sqrt).
+    let use_q_cap = n.significant_bits() <= 170;
     let max_q_windows = std::env::var("POTAPOV_NFS_MAX_Q_WINDOWS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
-        .or(lim1_q_window_cap);
+        .or_else(|| if use_q_cap { lim1_q_window_cap } else { None });
     // Build an optional root lookup table for special-q primes above lim1.
     // By default this is only prebuilt when the q-window horizon is explicit,
     // which avoids doing large startup work for runs that stop much earlier.
@@ -811,9 +817,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v >= 2)
         .unwrap_or(2usize);
+    // Enable matrix probing by default for c60+ (no q-cap), where SQ columns
+    // make the adaptive target unreliable. The probe builds the actual matrix
+    // and checks rows > cols, accounting for SQ columns automatically.
     let adaptive_use_matrix = std::env::var("POTAPOV_NFS_ADAPTIVE_USE_MATRIX")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        .unwrap_or(!use_q_cap);
     let adaptive_matrix_rows_ratio = std::env::var("POTAPOV_NFS_ADAPTIVE_MATRIX_ROWS_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
@@ -854,15 +863,17 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(2_000usize);
-    // For degree >= 4, est_dense_cols overestimates active dense columns
-    // by ~10% (many algebraic FB primes have fewer than `degree` roots, so
-    // their pair columns go unused). This built-in buffer implicitly covers
-    // the SQ columns that aren't in est_dense_cols, so a lower rows_ratio
-    // suffices. The adaptive system probes the matrix early (at 50% of
-    // est_dense_cols) to catch cases where the overestimate is larger.
-    // Tuned 2026-03-16: ratio 1.01 for degree>=4 collects 5% fewer SQs with
-    // no reliability loss (9/9 factored across seeds 42,123,456), saving ~3-5%.
-    let default_rows_ratio = if degree >= 4 { 1.01 } else { 1.10 };
+    // For c60+ (no q-cap): SQs beyond lim1 create SQ columns in the matrix.
+    // The adaptive target must account for these. From empirical data:
+    // ~35% of SQ/root pairs beyond lim1 create active SQ columns.
+    // With 0.8 rows per pair and 0.35 SQ cols per pair, we need
+    // rows_ratio ≈ 1.8 to ensure surplus after SQ cols are added.
+    // For c30/c45 (with q-cap): SQs fold into FB, no extra cols.
+    let default_rows_ratio = if degree >= 4 {
+        1.01
+    } else {
+        1.10
+    };
     let adaptive_rows_ratio = std::env::var("POTAPOV_NFS_ADAPTIVE_ROWS_RATIO")
         .ok()
         .and_then(|s| s.parse::<f64>().ok())
@@ -904,7 +915,9 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             else if lp_gap > 2.0 { 2.5 }  // medium gap (c60): ~33% yield
             else { 1.5 }                   // small gap (c45-): 67% yield
         });
-    // When LP filter is skipped (c60+), 92%+ of raw rels survive → ratio ~1.1.
+    // When LP filter is skipped (c60+), 92%+ of raw rels survive.
+    // Target raw ≈ est_dense_cols (no multiplier needed).
+    // Step should be small (~500) since each window adds few rels.
     let default_skip_lp = n.significant_bits() > 170;
     let effective_ratio = if default_skip_lp { 1.1 } else { raw_filter_ratio };
     let mut target_raw_rels = if partial_merge_2lp {
@@ -913,11 +926,16 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     } else {
         params.rels_wanted as usize
     };
+    let default_step = if default_skip_lp {
+        500usize  // small step for c60+ where per-window yield is low
+    } else {
+        (target_raw_rels / 4).max(1_000)
+    };
     let raw_target_step = std::env::var("POTAPOV_NFS_ADAPTIVE_RAW_STEP")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&v| v > 0)
-        .unwrap_or_else(|| (target_raw_rels / 4).max(1_000));
+        .unwrap_or(default_step);
     let configured_max_raw_rels = std::env::var("POTAPOV_NFS_MAX_RAW_RELS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -1300,8 +1318,20 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
 
     if final_filtered.is_empty() {
         // Did not hit adaptive stop condition or q-window cap before final check.
+        // Must respect skip_lp_filter (same as per-window adaptive checks).
         let filter_start = std::time::Instant::now();
-        final_filtered = crate::filter::filter_relations_ref(&all_sieve_relations);
+        let default_skip_lp = n.significant_bits() > 170;
+        let skip_lp_filter = std::env::var("POTAPOV_NFS_SKIP_LP_FILTER")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(default_skip_lp);
+        final_filtered = if skip_lp_filter {
+            let mut deduped: Vec<crate::relation::Relation> = all_sieve_relations.clone();
+            deduped.sort_by(|a, b| a.a.cmp(&b.a).then(a.b.cmp(&b.b)));
+            deduped.dedup_by(|a, b| a.a == b.a && a.b == b.b);
+            deduped
+        } else {
+            crate::filter::filter_relations_ref(&all_sieve_relations)
+        };
         if require_coprime_ab {
             final_filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
         }
@@ -1807,20 +1837,19 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_initial = dropped_cols;
     let mut singleton_rows_dropped = 0usize;
     let mut zero_cols_dropped_post_singleton = 0usize;
-    // Only singleton-prune if there's enough excess to absorb row removals.
-    // With small FBs (c60), the matrix may have barely positive excess;
-    // aggressive pruning would cascade-delete all rows.
+    // Singleton pruning with excess guard: remove singleton columns
+    // iteratively but STOP before excess drops below min_excess.
+    // Without the guard, cascading deletion destroys the entire matrix.
     let excess_before = matrix.len() as i64 - ncols as i64;
-    let do_singleton_prune = singleton_prune && excess_before > 200;
-    if !singleton_prune {
-        // explicitly disabled
-    } else if !do_singleton_prune {
+    let min_excess = 100i64;
+    let do_prune = singleton_prune && excess_before > min_excess;
+    if singleton_prune && !do_prune {
         eprintln!(
-            "  LA: skipping singleton-prune (excess {} too low, need >200)",
-            excess_before
+            "  LA: skipping singleton-prune (excess {} too low, need >{})",
+            excess_before, min_excess
         );
     }
-    if do_singleton_prune {
+    if do_prune {
         let rows_before = matrix.len();
         let cols_before = ncols;
         let (pruned_matrix, pruned_sources, removed_rows) =
@@ -1833,27 +1862,12 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             matrix = m2;
             ncols = nc2;
             zero_cols_dropped_post_singleton = dropped2;
-            eprintln!(
-                "  LA: singleton-prune min_weight={} removed_rows={} rows {}->{} cols {}->{} (extra_dropped_zero_cols={})",
-                singleton_min_weight,
-                removed_rows,
-                rows_before,
-                matrix.len(),
-                cols_before,
-                ncols,
-                dropped2
-            );
-        } else {
-            eprintln!(
-                "  LA: singleton-prune min_weight={} removed_rows={} rows {}->{} cols {}->{}",
-                singleton_min_weight,
-                removed_rows,
-                rows_before,
-                matrix.len(),
-                cols_before,
-                ncols
-            );
         }
+        eprintln!(
+            "  LA: singleton-prune min_weight={} removed_rows={} rows {}->{} cols {}->{} (extra_dropped_zero_cols={})",
+            singleton_min_weight, removed_rows, rows_before, matrix.len(),
+            cols_before, ncols, zero_cols_dropped_post_singleton
+        );
     }
     result.viability.singleton_rows_dropped = singleton_rows_dropped;
     result.viability.zero_cols_dropped_post_singleton = zero_cols_dropped_post_singleton;

@@ -36,8 +36,11 @@ pub struct CofactorConfig {
 impl CofactorConfig {
     /// Build a CofactorConfig for the given large-prime bound exponent.
     pub fn new(lpb: u32) -> Self {
-        let pm1_primes = sieve_primes(2205);
-        let pp1_primes = sieve_primes(3255);
+        // P-1: B1=1000, B2=7000 (was 315/2205). For 19-bit prime p,
+        // P(p-1 is 1000-smooth) ≈ 0.17 vs 0.09 with B1=315.
+        let pm1_primes = sieve_primes(7000);
+        // P+1: B1=1500, B2=9000 (was 525/3255).
+        let pp1_primes = sieve_primes(9000);
         let ecm_bound_list = ecm::ecm_bounds(lpb);
         let ecm_primes = ecm_bound_list
             .iter()
@@ -108,13 +111,13 @@ pub fn cofactorize(
     }
 
     // Step 2: Pollard P-1 (CADO defaults: B1=315, B2=2205).
-    if let Some(f) = pm1::pm1(cofactor, 315, 2205) {
+    if let Some(f) = pm1::pm1(cofactor, 1000, 7000) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
 
     // Step 3: Williams P+1 (CADO defaults: B1=525, B2=3255).
-    if let Some(f) = pp1::pp1(cofactor, 525, 3255) {
+    if let Some(f) = pp1::pp1(cofactor, 1500, 9000) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
@@ -162,12 +165,12 @@ pub fn cofactorize_with_config(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1_with_primes(cofactor, 315, 2205, &config.pm1_primes) {
+    if let Some(f) = pm1::pm1_with_primes(cofactor, 1000, 7000, &config.pm1_primes) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
 
-    if let Some(f) = pp1::pp1_with_primes(cofactor, 525, 3255, &config.pp1_primes) {
+    if let Some(f) = pp1::pp1_with_primes(cofactor, 1500, 9000, &config.pp1_primes) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
@@ -222,12 +225,12 @@ pub fn cofactorize_u128(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1(c, 315, 2205) {
+    if let Some(f) = pm1::pm1(c, 1000, 7000) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
 
-    if let Some(f) = pp1::pp1(c, 525, 3255) {
+    if let Some(f) = pp1::pp1(c, 1500, 9000) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
@@ -278,12 +281,12 @@ pub fn cofactorize_u128_with_config(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1_with_primes(c, 315, 2205, &config.pm1_primes) {
+    if let Some(f) = pm1::pm1_with_primes(c, 1000, 7000, &config.pm1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
 
-    if let Some(f) = pp1::pp1_with_primes(c, 525, 3255, &config.pp1_primes) {
+    if let Some(f) = pp1::pp1_with_primes(c, 1500, 9000, &config.pp1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
@@ -367,12 +370,12 @@ pub fn cofactorize_big_with_config(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1_with_primes(c, 315, 2205, &config.pm1_primes) {
+    if let Some(f) = pm1::pm1_with_primes(c, 1000, 7000, &config.pm1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound);
     }
 
-    if let Some(f) = pp1::pp1_with_primes(c, 525, 3255, &config.pp1_primes) {
+    if let Some(f) = pp1::pp1_with_primes(c, 1500, 9000, &config.pp1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound);
     }
