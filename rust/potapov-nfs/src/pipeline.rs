@@ -193,7 +193,17 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
     // With fast trivial_bail (200 deps), degenerate variants fail in <1s instead
     // of 30-45s. This makes trying more variants cheap. For degree>=4 (c45+),
     // 15 variants increases success rate on hard numbers at ~1s cost per failed variant.
-    let default_max_variants: u32 = if params.degree >= 4 { 15 } else { 5 };
+    // For c60+ (>170 bits): use 1 variant to give the sieve the FULL timeout
+    // budget. With 2.5ms/SQ, splitting 300s across 15 polys only gives 20s each →
+    // too few rels per poly. A single polynomial for 300s collects 80K+ rels,
+    // enough for matrix surplus even with SQ columns.
+    let default_max_variants: u32 = if n.significant_bits() > 170 {
+        1
+    } else if params.degree >= 4 {
+        15
+    } else {
+        5
+    };
     let max_variants: u32 = std::env::var("POTAPOV_NFS_MAX_VARIANTS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
@@ -869,12 +879,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // With 0.8 rows per pair and 0.35 SQ cols per pair, we need
     // rows_ratio ≈ 1.8 to ensure surplus after SQ cols are added.
     // For c30/c45 (with q-cap): SQs fold into FB, no extra cols.
-    // For LP-column mode (c60+, !use_q_cap): the matrix includes LP + SQ columns
-    // on top of dense FB. From empirical data, LP+SQ add ~1x the dense count.
-    // Use 2.2x multiplier to ensure enough rows to overcome all column types.
-    // For c30/c45 with 2LP merge: 1.01 suffices (LP columns merged away).
+    // For c60+ (no q-cap): SQ columns add ~1x dense cols. With 2LP merge
+    // eliminating LP columns, need ~2x dense cols worth of rows.
     let default_rows_ratio = if !use_q_cap {
-        2.20
+        2.50  // need enough rows to exceed dense + SQ columns
     } else if degree >= 4 {
         1.01
     } else {
@@ -1697,40 +1705,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             set_count,
             layout,
         )
-    } else if partial_merge_active && !use_q_cap {
-        // For c60+ (no q-cap): use LP columns instead of 2LP merge.
-        // This preserves all relations as rows, with LP primes as sparse columns.
-        // Gives better row/col ratio than 2LP merge + SQ columns.
-        let (matrix, nc, set_rows) = build_matrix_with_lp_columns(
-            &gnfs_rels,
-            rat_fb_size,
-            alg_pairs,
-            alg_hd + alg_bad,
-            &quad_chars,
-        );
-        eprintln!(
-            "  LA: LP-column matrix {} x {} from {} relations (qc={})",
-            matrix.len(), nc, set_rows.len(), quad_chars.primes.len(),
-        );
-        let set_count = set_rows.len();
-        // Build layout for LP-column mode.
-        let n_sq_cols = gnfs_rels.iter().filter_map(|r| r.special_q)
-            .collect::<HashSet<_>>().len();
-        let n_rat_lp = gnfs_rels.iter().filter_map(|r| r.rat_lp)
-            .collect::<HashSet<_>>().len();
-        let n_alg_lp = gnfs_rels.iter().filter_map(|r| r.alg_lp)
-            .collect::<HashSet<_>>().len();
-        let layout = MatrixColumnLayout {
-            sq: 0..n_sq_cols,
-            rat_lp: 0..0, // LP columns are mixed into the global range
-            alg_lp: 0..0,
-            sign_rat: Some(n_sq_cols),
-            rat_fb: (n_sq_cols + 1)..(n_sq_cols + 1 + rat_fb_size),
-            sign_alg: Some(n_sq_cols + 1 + rat_fb_size),
-            alg_dense: (n_sq_cols + 2 + rat_fb_size)..(n_sq_cols + 2 + rat_fb_size + alg_pairs + alg_hd + alg_bad),
-            qc: (nc - quad_chars.primes.len())..nc,
-        };
-        (matrix, nc, set_rows, "lp_columns", set_count, layout)
     } else if partial_merge_active {
         let (matrix, nc, set_rows) = build_matrix_from_sets_lp_resolved(
             &gnfs_rels,
@@ -1877,11 +1851,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_initial = dropped_cols;
     let mut singleton_rows_dropped = 0usize;
     let mut zero_cols_dropped_post_singleton = 0usize;
-    // Singleton pruning with excess guard: remove singleton columns
-    // iteratively but STOP before excess drops below min_excess.
-    // Without the guard, cascading deletion destroys the entire matrix.
+    // Single-round singleton pruning: removes weight-1 columns and their rows.
+    // For SQ-heavy matrices, this removes singleton SQ columns (each loses 1 row +
+    // 1 col = net 0 on excess) but the removed rows may cascade to drop FB columns
+    // to weight 0 → free zero-column compaction → excess improves.
+    // One round is safe (no cascading); excess guard at -20K allows pruning
+    // even with initial deficit (SQ singletons dominate).
     let excess_before = matrix.len() as i64 - ncols as i64;
-    let min_excess = 100i64;
+    let min_excess = -20_000i64;  // allow pruning with deficit (for SQ-heavy matrices)
     let do_prune = singleton_prune && excess_before > min_excess;
     if singleton_prune && !do_prune {
         eprintln!(

@@ -139,11 +139,11 @@ impl NfsParams {
 
     /// Parameters for ~60-digit (171+ bit) semiprimes.
     ///
-    /// CADO-NFS-matched FB limits for maximum sieve effectiveness.
-    /// SQs extend well beyond lim1 (q-cap removed for >170-bit N).
-    /// With ~1 rel per SQ/root pair, need ~30K SQ pairs for 25K+ rels
-    /// to overcome ~24K dense columns. Block Wiedemann handles the
-    /// resulting large matrices.
+    /// Higher lpb1=21 (vs CADO's 19) extends usable SQ range to 2^21=2M,
+    /// giving ~4x more SQ primes. With LP-column matrix mode, LP columns
+    /// are sparse and singleton-prunable. The wider SQ range compensates
+    /// for our lower per-SQ throughput vs CADO.
+    /// mfb1=42 (=2×lpb1) enables full 2LP cofactoring on algebraic side.
     pub fn c60() -> Self {
         Self {
             name: "c60",
@@ -151,15 +151,15 @@ impl NfsParams {
             lim0: 80_000,
             lim1: 110_000,
             lpb0: 18,
-            lpb1: 19,
-            mfb0: 17,
-            mfb1: 38,
+            lpb1: 20,      // extends usable SQ range to 1M (CADO uses 19)
+            mfb0: 17,      // no 2LP on rational (CADO-matched)
+            mfb1: 40,      // 2LP on algebraic (2×lpb1)
             sieve_mfb0: 17,
-            sieve_mfb1: 38,
+            sieve_mfb1: 40,
             log_i: 10,
-            qmin: 2_000,      // start low to maximize SQs within lim1 (SQ fold, no extra cols)
-            qrange: 5_000,    // fine-grained windows; extends beyond lim1 via q-cap removal
-            rels_wanted: 60_000,
+            qmin: 2_000,
+            qrange: 10_000,  // wider windows for faster coverage of [2K, 2M] range
+            rels_wanted: 80_000,
         }
     }
 
@@ -254,11 +254,11 @@ mod tests {
         assert_eq!(p.lim0, 80_000);
         assert_eq!(p.lim1, 110_000);
         assert_eq!(p.lpb0, 18);
-        assert_eq!(p.lpb1, 19);
+        assert_eq!(p.lpb1, 20);
         assert_eq!(p.mfb0, 17);
-        assert_eq!(p.mfb1, 38);
+        assert_eq!(p.mfb1, 40);
         assert_eq!(p.large_prime_bound_0(), 1 << 18);
-        assert_eq!(p.large_prime_bound_1(), 1 << 19);
+        assert_eq!(p.large_prime_bound_1(), 1 << 20);
         assert_eq!(p.sieve_half_width(), 1024);
     }
 }
