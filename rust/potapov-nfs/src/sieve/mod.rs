@@ -89,10 +89,14 @@ pub fn sieve_specialq(
     // Bucket threshold: primes below this use small sieve, above use bucket sieve.
     // Default: half_i (512 for log_i=9). Higher values push more primes to the
     // optimized small sieve (incremental tracking), reducing FK scatter overhead.
+    // Higher threshold pushes more primes to the small sieve (incremental,
+    // cache-friendly) instead of FK scatter (random-access bucket writes).
+    // Optimal crossover: primes below ~sqrt(area) are cheaper in small sieve.
+    // For I=10 (area=2M): sqrt(2M) ≈ 1414. Use 2×half_i as default.
     let bucket_thresh = std::env::var("POTAPOV_NFS_BUCKET_THRESH")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or((half_i as u64).max(64));
+        .unwrap_or((2 * half_i as u64).max(256));
 
     let scale = rat_fb.scale;
 
