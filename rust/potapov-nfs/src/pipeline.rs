@@ -869,7 +869,13 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     // With 0.8 rows per pair and 0.35 SQ cols per pair, we need
     // rows_ratio ≈ 1.8 to ensure surplus after SQ cols are added.
     // For c30/c45 (with q-cap): SQs fold into FB, no extra cols.
-    let default_rows_ratio = if degree >= 4 {
+    // For LP-column mode (c60+, !use_q_cap): the matrix includes LP + SQ columns
+    // on top of dense FB. From empirical data, LP+SQ add ~1x the dense count.
+    // Use 2.2x multiplier to ensure enough rows to overcome all column types.
+    // For c30/c45 with 2LP merge: 1.01 suffices (LP columns merged away).
+    let default_rows_ratio = if !use_q_cap {
+        2.20
+    } else if degree >= 4 {
         1.01
     } else {
         1.10
@@ -1691,6 +1697,40 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             set_count,
             layout,
         )
+    } else if partial_merge_active && !use_q_cap {
+        // For c60+ (no q-cap): use LP columns instead of 2LP merge.
+        // This preserves all relations as rows, with LP primes as sparse columns.
+        // Gives better row/col ratio than 2LP merge + SQ columns.
+        let (matrix, nc, set_rows) = build_matrix_with_lp_columns(
+            &gnfs_rels,
+            rat_fb_size,
+            alg_pairs,
+            alg_hd + alg_bad,
+            &quad_chars,
+        );
+        eprintln!(
+            "  LA: LP-column matrix {} x {} from {} relations (qc={})",
+            matrix.len(), nc, set_rows.len(), quad_chars.primes.len(),
+        );
+        let set_count = set_rows.len();
+        // Build layout for LP-column mode.
+        let n_sq_cols = gnfs_rels.iter().filter_map(|r| r.special_q)
+            .collect::<HashSet<_>>().len();
+        let n_rat_lp = gnfs_rels.iter().filter_map(|r| r.rat_lp)
+            .collect::<HashSet<_>>().len();
+        let n_alg_lp = gnfs_rels.iter().filter_map(|r| r.alg_lp)
+            .collect::<HashSet<_>>().len();
+        let layout = MatrixColumnLayout {
+            sq: 0..n_sq_cols,
+            rat_lp: 0..0, // LP columns are mixed into the global range
+            alg_lp: 0..0,
+            sign_rat: Some(n_sq_cols),
+            rat_fb: (n_sq_cols + 1)..(n_sq_cols + 1 + rat_fb_size),
+            sign_alg: Some(n_sq_cols + 1 + rat_fb_size),
+            alg_dense: (n_sq_cols + 2 + rat_fb_size)..(n_sq_cols + 2 + rat_fb_size + alg_pairs + alg_hd + alg_bad),
+            qc: (nc - quad_chars.primes.len())..nc,
+        };
+        (matrix, nc, set_rows, "lp_columns", set_count, layout)
     } else if partial_merge_active {
         let (matrix, nc, set_rows) = build_matrix_from_sets_lp_resolved(
             &gnfs_rels,
@@ -3250,6 +3290,133 @@ fn build_matrix_from_sets_lp_resolved(
     }
 
     (matrix, ncols, kept_sets)
+}
+
+/// Build matrix with LP columns: each relation is a row, LP primes get columns.
+///
+/// Column layout:
+/// [SQ | sign_rat | rat_FB | sign_alg | alg_pairs | alg_HD | rat_LP | alg_LP | QC]
+///
+/// This avoids 2LP merge, preserving all relations as rows. LP columns are
+/// sparse and get singleton-pruned later. For c60+, this gives better
+/// row/col ratio than 2LP merge + SQ columns.
+fn build_matrix_with_lp_columns(
+    rels: &[gnfs::types::Relation],
+    rat_fb_size: usize,
+    alg_pair_count: usize,
+    alg_hd_count: usize,
+    quad_chars: &gnfs::arith::QuadCharSet,
+) -> (Vec<gnfs::types::BitRow>, usize, Vec<Vec<usize>>) {
+    use std::collections::{HashMap, HashSet};
+
+    // Collect unique SQ, rat LP, and alg LP values.
+    let mut sq_pairs: Vec<(u64, u64)> = rels.iter().filter_map(|r| r.special_q).collect();
+    sq_pairs.sort_unstable();
+    sq_pairs.dedup();
+
+    let mut rat_lp_set: HashSet<u64> = HashSet::new();
+    let mut alg_lp_set: HashSet<(u64, u64)> = HashSet::new();
+    for r in rels {
+        if let Some(lp) = r.rat_lp {
+            rat_lp_set.insert(lp);
+        }
+        if let Some(lp) = r.alg_lp {
+            alg_lp_set.insert(lp);
+        }
+    }
+    let mut rat_lps: Vec<u64> = rat_lp_set.into_iter().collect();
+    rat_lps.sort_unstable();
+    let rat_lp_map: HashMap<u64, usize> = rat_lps.iter().enumerate().map(|(i, &p)| (p, i)).collect();
+
+    let mut alg_lps: Vec<(u64, u64)> = alg_lp_set.into_iter().collect();
+    alg_lps.sort_unstable();
+    let alg_lp_map: HashMap<(u64, u64), usize> = alg_lps.iter().enumerate().map(|(i, &pr)| (pr, i)).collect();
+
+    let n_sq = sq_pairs.len();
+    let n_rat_lp = rat_lps.len();
+    let n_alg_lp = alg_lps.len();
+    let n_qc = quad_chars.primes.len();
+
+    let sign_rat_col = n_sq;
+    let rat_base = sign_rat_col + 1;
+    let sign_alg_col = rat_base + rat_fb_size;
+    let alg_base = sign_alg_col + 1;
+    let rat_lp_base = alg_base + alg_pair_count + alg_hd_count;
+    let alg_lp_base = rat_lp_base + n_rat_lp;
+    let qc_base = alg_lp_base + n_alg_lp;
+    let ncols = qc_base + n_qc;
+
+    eprintln!(
+        "  LA: LP-column matrix layout: sq={} rat_fb={} alg_fb={} rat_lp={} alg_lp={} qc={} total={}",
+        n_sq, rat_fb_size, alg_pair_count + alg_hd_count, n_rat_lp, n_alg_lp, n_qc, ncols
+    );
+
+    use rayon::prelude::*;
+    let matrix: Vec<gnfs::types::BitRow> = rels
+        .par_iter()
+        .map(|rel| {
+            let mut row = gnfs::types::BitRow::new(ncols);
+            // SQ column
+            if let Some(sq) = rel.special_q {
+                if let Ok(idx) = sq_pairs.binary_search(&sq) {
+                    row.flip(idx);
+                }
+            }
+            // Rational sign
+            if rel.rational_sign_negative {
+                row.flip(sign_rat_col);
+            }
+            // Rational FB factors
+            for &(idx, exp) in &rel.rational_factors {
+                if exp % 2 == 1 {
+                    row.flip(rat_base + idx as usize);
+                }
+            }
+            // Algebraic sign
+            if rel.algebraic_sign_negative {
+                row.flip(sign_alg_col);
+            }
+            // Algebraic FB factors
+            for &(idx, exp) in &rel.algebraic_factors {
+                if exp % 2 == 1 {
+                    row.flip(alg_base + idx as usize);
+                }
+            }
+            // Rational LP column
+            if let Some(lp) = rel.rat_lp {
+                if let Some(&idx) = rat_lp_map.get(&lp) {
+                    row.flip(rat_lp_base + idx);
+                }
+            }
+            // Algebraic LP column
+            if let Some(lp) = rel.alg_lp {
+                if let Some(&idx) = alg_lp_map.get(&lp) {
+                    row.flip(alg_lp_base + idx);
+                }
+            }
+            // Quadratic characters
+            for (i, (&q, &r)) in quad_chars
+                .primes
+                .iter()
+                .zip(quad_chars.roots.iter())
+                .enumerate()
+            {
+                let q_i = q as i128;
+                let val = (rel.a as i128 - rel.b as i128 * r as i128).rem_euclid(q_i) as u64;
+                if val == 0 {
+                    continue;
+                }
+                let ls = gnfs::arith::legendre_symbol(val, q);
+                if ls == q - 1 {
+                    row.flip(qc_base + i);
+                }
+            }
+            row
+        })
+        .collect();
+
+    let sources: Vec<Vec<usize>> = (0..rels.len()).map(|i| vec![i]).collect();
+    (matrix, ncols, sources)
 }
 
 fn expand_dependency_over_sets(dep: &[usize], set_rows: &[Vec<usize>]) -> Vec<usize> {
