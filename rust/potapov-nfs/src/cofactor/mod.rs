@@ -20,12 +20,35 @@ pub mod trialdiv;
 
 use crate::arith::{is_probable_prime, sieve_primes, TrialDivisor};
 
+/// Select P-1 and P+1 bounds based on the large-prime bound exponent.
+///
+/// For small lpb (<=19, typical of c30/c45), use the original fast bounds.
+/// For larger lpb (>=20, c60+), use increased bounds that find more factors
+/// at the cost of extra time.
+fn pm1_pp1_bounds(lpb: u32) -> (u64, u64, u64, u64) {
+    if lpb <= 19 {
+        // Original fast bounds (c30/c45).
+        (315, 2205, 525, 3255)
+    } else {
+        // Increased bounds for c60+ cofactoring.
+        (1000, 7000, 1500, 9000)
+    }
+}
+
 /// Pre-computed prime lists for cofactoring, avoiding redundant sieve_primes calls.
 #[derive(Clone)]
 pub struct CofactorConfig {
-    /// Primes for P-1 (up to B2=2205).
+    /// P-1 stage-1 bound.
+    pub pm1_b1: u64,
+    /// P-1 stage-2 bound.
+    pub pm1_b2: u64,
+    /// Primes up to pm1_b2 for P-1 stage-2.
     pub pm1_primes: Vec<u64>,
-    /// Primes for P+1 (up to B2=3255).
+    /// P+1 stage-1 bound.
+    pub pp1_b1: u64,
+    /// P+1 stage-2 bound.
+    pub pp1_b2: u64,
+    /// Primes up to pp1_b2 for P+1 stage-2.
     pub pp1_primes: Vec<u64>,
     /// Primes for ECM, one list per (B1,B2) bound pair.
     pub ecm_primes: Vec<Vec<u64>>,
@@ -35,19 +58,25 @@ pub struct CofactorConfig {
 
 impl CofactorConfig {
     /// Build a CofactorConfig for the given large-prime bound exponent.
+    ///
+    /// P-1/P+1 bounds are size-dependent:
+    /// - lpb <= 19 (c30/c45): B1=315/B2=2205 (P-1), B1=525/B2=3255 (P+1)
+    /// - lpb >= 20 (c60+):    B1=1000/B2=7000 (P-1), B1=1500/B2=9000 (P+1)
     pub fn new(lpb: u32) -> Self {
-        // P-1: B1=1000, B2=7000 (was 315/2205). For 19-bit prime p,
-        // P(p-1 is 1000-smooth) ≈ 0.17 vs 0.09 with B1=315.
-        let pm1_primes = sieve_primes(7000);
-        // P+1: B1=1500, B2=9000 (was 525/3255).
-        let pp1_primes = sieve_primes(9000);
+        let (pm1_b1, pm1_b2, pp1_b1, pp1_b2) = pm1_pp1_bounds(lpb);
+        let pm1_primes = sieve_primes(pm1_b2);
+        let pp1_primes = sieve_primes(pp1_b2);
         let ecm_bound_list = ecm::ecm_bounds(lpb);
         let ecm_primes = ecm_bound_list
             .iter()
             .map(|&(_, b2)| sieve_primes(b2))
             .collect();
         Self {
+            pm1_b1,
+            pm1_b2,
             pm1_primes,
+            pp1_b1,
+            pp1_b2,
             pp1_primes,
             ecm_primes,
             ecm_bounds: ecm_bound_list,
@@ -110,14 +139,15 @@ pub fn cofactorize(
         return CofactResult::NotSmooth;
     }
 
-    // Step 2: Pollard P-1 (CADO defaults: B1=315, B2=2205).
-    if let Some(f) = pm1::pm1(cofactor, 1000, 7000) {
+    // Step 2: Pollard P-1 with size-dependent bounds.
+    let (pm1_b1, pm1_b2, pp1_b1, pp1_b2) = pm1_pp1_bounds(lpb);
+    if let Some(f) = pm1::pm1(cofactor, pm1_b1, pm1_b2) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
 
-    // Step 3: Williams P+1 (CADO defaults: B1=525, B2=3255).
-    if let Some(f) = pp1::pp1(cofactor, 1500, 9000) {
+    // Step 3: Williams P+1 with size-dependent bounds.
+    if let Some(f) = pp1::pp1(cofactor, pp1_b1, pp1_b2) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
@@ -165,12 +195,12 @@ pub fn cofactorize_with_config(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1_with_primes(cofactor, 1000, 7000, &config.pm1_primes) {
+    if let Some(f) = pm1::pm1_with_primes(cofactor, config.pm1_b1, config.pm1_b2, &config.pm1_primes) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
 
-    if let Some(f) = pp1::pp1_with_primes(cofactor, 1500, 9000, &config.pp1_primes) {
+    if let Some(f) = pp1::pp1_with_primes(cofactor, config.pp1_b1, config.pp1_b2, &config.pp1_primes) {
         let other = cofactor / f;
         return check_split(factors, f, other, lp_bound);
     }
@@ -225,12 +255,14 @@ pub fn cofactorize_u128(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1(c, 1000, 7000) {
+    let (pm1_b1, pm1_b2, pp1_b1, pp1_b2) = pm1_pp1_bounds(lpb);
+
+    if let Some(f) = pm1::pm1(c, pm1_b1, pm1_b2) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
 
-    if let Some(f) = pp1::pp1(c, 1500, 9000) {
+    if let Some(f) = pp1::pp1(c, pp1_b1, pp1_b2) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
@@ -281,12 +313,12 @@ pub fn cofactorize_u128_with_config(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1_with_primes(c, 1000, 7000, &config.pm1_primes) {
+    if let Some(f) = pm1::pm1_with_primes(c, config.pm1_b1, config.pm1_b2, &config.pm1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
 
-    if let Some(f) = pp1::pp1_with_primes(c, 1500, 9000, &config.pp1_primes) {
+    if let Some(f) = pp1::pp1_with_primes(c, config.pp1_b1, config.pp1_b2, &config.pp1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound as u64);
     }
@@ -370,12 +402,12 @@ pub fn cofactorize_big_with_config(
         return CofactResult::NotSmooth;
     }
 
-    if let Some(f) = pm1::pm1_with_primes(c, 1000, 7000, &config.pm1_primes) {
+    if let Some(f) = pm1::pm1_with_primes(c, config.pm1_b1, config.pm1_b2, &config.pm1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound);
     }
 
-    if let Some(f) = pp1::pp1_with_primes(c, 1500, 9000, &config.pp1_primes) {
+    if let Some(f) = pp1::pp1_with_primes(c, config.pp1_b1, config.pp1_b2, &config.pp1_primes) {
         let other = c / f;
         return check_split(factors, f, other, lp_bound);
     }
