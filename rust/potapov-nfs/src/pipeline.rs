@@ -976,7 +976,21 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
 
         if should_check {
             let filter_start = std::time::Instant::now();
-            let mut filtered = crate::filter::filter_relations_ref(&all_sieve_relations);
+            // For large LP spaces (c60+), LP singleton filtering kills too many
+            // relations — the yield plateaus at ~10-15%. Instead, keep ALL valid
+            // relations and let the matrix pre-elimination handle LP singletons.
+            let skip_lp_filter = std::env::var("POTAPOV_NFS_SKIP_LP_FILTER")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            let mut filtered: Vec<crate::relation::Relation> = if skip_lp_filter {
+                // Dedup only, keep LP singletons
+                let mut deduped: Vec<crate::relation::Relation> = all_sieve_relations.clone();
+                deduped.sort_by(|a, b| a.a.cmp(&b.a).then(a.b.cmp(&b.b)));
+                deduped.dedup_by(|a, b| a.a == b.a && a.b == b.b);
+                deduped
+            } else {
+                crate::filter::filter_relations_ref(&all_sieve_relations)
+            };
             if require_coprime_ab {
                 filtered.retain(|r| gcd_u64(r.a.unsigned_abs(), r.b) == 1);
             }
