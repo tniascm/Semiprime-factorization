@@ -2274,45 +2274,17 @@ fn scatter_bucket_updates_fk_batch(
 
         let start_i_pos = (half_i as u64 % p) as i64;
 
-        walk_buf.push(FkWalkParams {
-            inc_a,
-            inc_b,
-            u_a,
-            u_b,
-            u_a_neg: u_a < 0,
-            start_x: start_i_pos,
-            start_ic: start_i_pos - half_width,
-            logp,
-        });
-    }
-
-    // --- Phase 2: execute all FK walks ---
-    // Derived fields computed on-the-fly to keep walk_buf small (56 vs 104 bytes/entry).
-    // walk_buf.len() = number of entries that passed all FK setup checks.
-    // entries.len() - walk_buf.len() = entries that used fallback or small prime paths.
-    //
-    // The inner loop uses branchless step selection: instead of a 4-way if/else chain
-    // to pick (inc_a, inc_b, inc_sum), we use nested conditionals on direct comparisons
-    // that compile to CSEL instructions on aarch64. The double-push case (a_ok && b_ok)
-    // is handled as a separate predictable branch before the step.
-    //
-    // Two code paths (u_a_neg true/false) hoist the comparison-direction branch out of
-    // the inner loop entirely.
-    for params in walk_buf.iter() {
-        let logp = params.logp;
-        let inc_a = params.inc_a;
-        let inc_b = params.inc_b;
+        // --- Fused FK walk: execute immediately instead of buffering ---
+        // Eliminates 56-byte FkWalkParams write+read per entry (~480ns overhead).
         let inc_sum = inc_a + inc_b;
-        let u_a = params.u_a;
-        let u_b = params.u_b;
         let u_sum = u_a + u_b;
         let a_thresh = if u_a < 0 { -half_width - u_a } else { half_width - u_a };
         let b_thresh = if u_b < 0 { -half_width - u_b } else { half_width - u_b };
 
-        let mut x = params.start_x;
-        let mut ic = params.start_ic;
+        let mut x = start_i_pos;
+        let mut ic = start_i_pos - half_width;
 
-        if params.u_a_neg {
+        if u_a < 0 {
             // u_a < 0, u_b > 0: a_ok = (ic >= a_thresh), b_ok = (ic < b_thresh)
             while x < total_area {
                 // Emit at current position (coprime check kept -- filters ~25% of pushes)
