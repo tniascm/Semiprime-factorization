@@ -160,9 +160,9 @@ impl NfsParams {
             mfb1: 38,
             sieve_mfb0: 17,
             sieve_mfb1: 38,
-            log_i: 9,
+            log_i: 10,  // CADO I=10. 2M sieve area → ~4x more rels/SQ
             qmin: 60_000,
-            qrange: 50_000,
+            qrange: 5_000,
             rels_wanted: 30_000,
         }
     }
@@ -254,7 +254,7 @@ mod tests {
     fn test_params_c60() {
         let p = NfsParams::c60();
         assert_eq!(p.degree, 4);
-        assert_eq!(p.log_i, 9);
+        assert_eq!(p.log_i, 10);
         assert_eq!(p.lim0, 80_000);
         assert_eq!(p.lim1, 110_000);
         assert_eq!(p.lpb0, 18);
@@ -263,6 +263,6 @@ mod tests {
         assert_eq!(p.mfb1, 38);
         assert_eq!(p.large_prime_bound_0(), 1 << 18);
         assert_eq!(p.large_prime_bound_1(), 1 << 19);
-        assert_eq!(p.sieve_half_width(), 512);
+        assert_eq!(p.sieve_half_width(), 1024);
     }
 }

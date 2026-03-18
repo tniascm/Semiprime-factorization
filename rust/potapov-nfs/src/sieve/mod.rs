@@ -696,12 +696,7 @@ pub fn sieve_specialq(
                             alg_result
                         };
 
-                        // Always set special_q = None. For SQs in the FB, the exponent
-                        // is folded into the algebraic factor. For SQs beyond the FB,
-                        // NOT creating a separate SQ column avoids 20K+ singleton columns
-                        // that make the matrix unsolvable. The SQ ideal divides the
-                        // algebraic norm by construction — it's handled by cofactoring.
-                        let sq_for_rel: Option<(u64, u64)> = None;
+                        let sq_for_rel = if sq_alg_fb_idx.is_some() { None } else { Some((q, r)) };
                         if let Some(rel) =
                             build_relation(a, b, sq_for_rel, rat_result, alg_result)
                         {
@@ -1325,12 +1320,7 @@ pub fn line_sieve_specialq(
                             alg_result
                         };
 
-                        // Always set special_q = None. For SQs in the FB, the exponent
-                        // is folded into the algebraic factor. For SQs beyond the FB,
-                        // NOT creating a separate SQ column avoids 20K+ singleton columns
-                        // that make the matrix unsolvable. The SQ ideal divides the
-                        // algebraic norm by construction — it's handled by cofactoring.
-                        let sq_for_rel: Option<(u64, u64)> = None;
+                        let sq_for_rel = if sq_alg_fb_idx.is_some() { None } else { Some((q, r)) };
                         if let Some(rel) = build_relation(a, b, sq_for_rel, rat_result, alg_result) {
                             local_rels.push(rel);
                         }
