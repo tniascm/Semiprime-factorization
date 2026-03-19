@@ -151,9 +151,9 @@ impl NfsParams {
             lim0: 80_000,
             lim1: 110_000,
             lpb0: 18,
-            lpb1: 22,      // extends usable SQ range to 4M for surplus
+            lpb1: 21,      // extends usable SQ range to 2M (best deficit -1645)
             mfb0: 17,      // no 2LP on rational (CADO-matched)
-            mfb1: 44,      // 2LP on algebraic (2×lpb1)
+            mfb1: 42,      // 2LP on algebraic (2×lpb1)
             sieve_mfb0: 17,
             sieve_mfb1: 42,
             log_i: 10,
@@ -254,11 +254,11 @@ mod tests {
         assert_eq!(p.lim0, 80_000);
         assert_eq!(p.lim1, 110_000);
         assert_eq!(p.lpb0, 18);
-        assert_eq!(p.lpb1, 22);
+        assert_eq!(p.lpb1, 21);
         assert_eq!(p.mfb0, 17);
-        assert_eq!(p.mfb1, 44);
+        assert_eq!(p.mfb1, 42);
         assert_eq!(p.large_prime_bound_0(), 1 << 18);
-        assert_eq!(p.large_prime_bound_1(), 1 << 22);
+        assert_eq!(p.large_prime_bound_1(), 1 << 21);
         assert_eq!(p.sieve_half_width(), 1024);
     }
 }

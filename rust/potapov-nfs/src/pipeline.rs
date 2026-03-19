@@ -182,6 +182,77 @@ fn effective_max_raw_rels(
     })
 }
 
+fn apply_runtime_param_overrides(mut params: NfsParams) -> NfsParams {
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LIM0")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        params.lim0 = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LIM1")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        params.lim1 = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LPB0")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        params.lpb0 = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LPB1")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        params.lpb1 = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_MFB0")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        params.mfb0 = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_MFB1")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        params.mfb1 = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LOG_I")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        params.log_i = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_QMIN")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        params.qmin = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_QRANGE")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        params.qrange = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_RELS_WANTED")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        params.rels_wanted = v;
+    }
+    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_DEGREE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v >= 2 && v <= 6)
+    {
+        params.degree = v;
+    }
+    params
+}
+
 /// Factor N using the full NFS pipeline.
 ///
 /// Tries multiple polynomial variants (different m values) to avoid the
@@ -194,6 +265,7 @@ fn effective_max_raw_rels(
 ///   4. Linear algebra (GF(2) Gaussian elimination)
 ///   5. Square root and factor extraction
 pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
+    let params = apply_runtime_param_overrides(params.clone());
     let variant_start: u32 = std::env::var("POTAPOV_NFS_VARIANT_START")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
@@ -217,7 +289,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(default_max_variants);
-    let mut run_logger = RunLogger::new(n, params, max_variants);
+    let mut run_logger = RunLogger::new(n, &params, max_variants);
     let fallback_enabled = std::env::var("POTAPOV_NFS_FALLBACK_RHO")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
@@ -308,7 +380,7 @@ pub fn factor_nfs(n: &Integer, params: &NfsParams) -> NfsResult {
                 try_idx + 1, variant_polys.len()
             );
         }
-        let result = factor_nfs_inner(n, params, *variant_id, pre_poly.as_ref(), polyselect_ms);
+        let result = factor_nfs_inner(n, &params, *variant_id, pre_poly.as_ref(), polyselect_ms);
         if let Some(logger) = run_logger.as_mut() {
             logger.log_variant(*variant_id, &result);
         }
@@ -552,77 +624,10 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     let pipeline_start = std::time::Instant::now();
 
     // Optional runtime parameter overrides for reproducible tuning experiments.
-    let mut params = params.clone();
+    let mut params = apply_runtime_param_overrides(params.clone());
     let partial_merge_2lp = std::env::var("POTAPOV_NFS_PARTIAL_MERGE_2LP")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LIM0")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        params.lim0 = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LIM1")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        params.lim1 = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LPB0")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-    {
-        params.lpb0 = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LPB1")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-    {
-        params.lpb1 = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_MFB0")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-    {
-        params.mfb0 = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_MFB1")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-    {
-        params.mfb1 = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_LOG_I")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-    {
-        params.log_i = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_QMIN")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        params.qmin = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_QRANGE")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        params.qrange = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_RELS_WANTED")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        params.rels_wanted = v;
-    }
-    if let Some(v) = std::env::var("POTAPOV_NFS_OVR_DEGREE")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .filter(|&v| v >= 2 && v <= 6)
-    {
-        params.degree = v;
-    }
     if partial_merge_2lp {
         // 2LP requires room for products of two LPs; if mfb is too close to lpb
         // those candidates are rejected before merge can use them.
@@ -1369,8 +1374,19 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             final_filtered.retain(|r| r.is_full());
         }
         if partial_merge_2lp {
-            let (sets, _) =
+            let (sets, stats) =
                 crate::partial_merge::merge_relations_2lp(&final_filtered, partial_merge_max_sets);
+            eprintln!(
+                "  merge2lp: final stats total={} 0lp={} 1lp={} 2lp={} dropped_gt2lp={} lp_nodes={} cycles={} set_rows={}",
+                stats.total_relations,
+                stats.relations_0lp,
+                stats.relations_1lp,
+                stats.relations_2lp,
+                stats.relations_dropped_gt2lp,
+                stats.lp_nodes,
+                stats.cycles_found,
+                stats.output_sets
+            );
             final_partial_sets = Some(sets);
         }
         filter_time_ms += filter_start.elapsed().as_secs_f64() * 1000.0;
@@ -4759,15 +4775,22 @@ fn compute_alg_lp_ideal(a: i64, b: u64, p: u64) -> Option<(u64, u64)> {
 
 /// Compute F(a, b) = c_0 * b^d + c_1 * a * b^{d-1} + ... + c_d * a^d
 /// using rug::Integer for exact BigInt arithmetic (no overflow).
+/// Uses incremental powers: a_pow *= a, b_pow /= b each iteration (O(d) muls).
 fn eval_f_homogeneous_bigint(a: i64, b: u64, f_coeffs: &[Integer]) -> Integer {
     let d = f_coeffs.len() - 1;
     let a_int = Integer::from(a);
     let b_int = Integer::from(b);
+    // Start: a_pow = 1, b_pow = b^d. Each step: a_pow *= a, b_pow /= b.
+    let mut a_pow = Integer::from(1);
+    let mut b_pow = Integer::from(&b_int).pow(d as u32);
     let mut result = Integer::from(0);
-    for (i, c) in f_coeffs.iter().enumerate() {
-        let a_pow = a_int.clone().pow(i as u32);
-        let b_pow = b_int.clone().pow((d - i) as u32);
+    for c in f_coeffs.iter() {
         result += Integer::from(c * &a_pow) * &b_pow;
+        a_pow *= &a_int;
+        if !b_pow.is_zero() {
+            // Exact division: b_pow goes from b^d down to b^0.
+            b_pow /= &b_int;
+        }
     }
     result
 }
