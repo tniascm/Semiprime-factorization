@@ -1883,15 +1883,82 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
     result.viability.zero_cols_dropped_initial = dropped_cols;
     let mut singleton_rows_dropped = 0usize;
     let mut zero_cols_dropped_post_singleton = 0usize;
-    // Singleton pruning: only safe with positive excess (cascading internal loop
-    // destroys entire matrix when excess < 0). For c60+ with SQ columns, the
-    // iterative merge below handles column elimination without cascade damage.
+    // Two-phase singleton pruning:
+    // Phase 1: SQ-only singleton prune (safe even with deficit).
+    //   Removes rows that reference singleton SQ columns. Each removal
+    //   costs 1 row + 1 SQ col (net 0 on excess) but may cascade to
+    //   drop FB/other columns to zero (net +1 each). Safe because
+    //   we ONLY target SQ singletons, never triggering the destructive
+    //   cascade that happens with general singleton pruning.
+    // Phase 2: Full singleton prune (only if excess > 200 after Phase 1).
     let excess_before = matrix.len() as i64 - ncols as i64;
-    let do_prune = singleton_prune && excess_before > 200;
-    if singleton_prune && !do_prune {
+    let sq_range = &matrix_layout.sq;
+    if singleton_prune && !sq_range.is_empty() && excess_before <= 200 {
+        let rows_before = matrix.len();
+        let cols_before = ncols;
+        let nwords = (ncols + 63) / 64;
+        // Build SQ-only singleton mask: only columns in SQ range with weight 1.
+        let mut col_counts = vec![0u32; ncols];
+        for row in &matrix {
+            for (wi, &word) in row.bits.iter().enumerate() {
+                let mut w = word;
+                while w != 0 {
+                    let bit = w.trailing_zeros() as usize;
+                    let col = wi * 64 + bit;
+                    if col < ncols { col_counts[col] += 1; }
+                    w &= w - 1;
+                }
+            }
+        }
+        let mut sq_singleton_mask = vec![0u64; nwords];
+        let mut sq_singletons = 0usize;
+        for col in sq_range.clone() {
+            if col < ncols && col_counts[col] == 1 {
+                sq_singleton_mask[col / 64] |= 1u64 << (col % 64);
+                sq_singletons += 1;
+            }
+        }
+        if sq_singletons > 0 {
+            // Remove rows touching any SQ singleton column.
+            let old_matrix = std::mem::take(&mut matrix);
+            let old_sources = std::mem::take(&mut row_sources);
+            let mut new_matrix = Vec::with_capacity(old_matrix.len());
+            let mut new_sources = Vec::with_capacity(old_sources.len());
+            let mut removed = 0usize;
+            for (row, src) in old_matrix.into_iter().zip(old_sources.into_iter()) {
+                let touches_sq_singleton = row.bits.iter()
+                    .zip(sq_singleton_mask.iter())
+                    .any(|(&rw, &sm)| (rw & sm) != 0);
+                if touches_sq_singleton {
+                    removed += 1;
+                } else {
+                    new_matrix.push(row);
+                    new_sources.push(src);
+                }
+            }
+            matrix = new_matrix;
+            row_sources = new_sources;
+            singleton_rows_dropped = removed;
+            if compact_zero_cols {
+                let (m2, nc2, dropped2) = compact_zero_columns(matrix, ncols);
+                matrix = m2;
+                ncols = nc2;
+                zero_cols_dropped_post_singleton = dropped2;
+            }
+            eprintln!(
+                "  LA: SQ-singleton-prune removed_rows={} sq_singletons={} rows {}->{} cols {}->{} (zero_cols_dropped={})",
+                removed, sq_singletons, rows_before, matrix.len(), cols_before, ncols, zero_cols_dropped_post_singleton
+            );
+        }
+    }
+    // Phase 2: Full singleton prune if we now have excess.
+    let excess_after_sq = matrix.len() as i64 - ncols as i64;
+    let do_prune = singleton_prune && excess_after_sq > 200;
+    if singleton_prune && !do_prune && excess_before > 200 {
+        // Only log if Phase 1 didn't already explain the skip
         eprintln!(
-            "  LA: skipping singleton-prune (excess {} too low, need >200)",
-            excess_before
+            "  LA: skipping full singleton-prune (excess {} too low, need >200)",
+            excess_after_sq
         );
     }
     if do_prune {
@@ -1899,14 +1966,14 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
         let cols_before = ncols;
         let (pruned_matrix, pruned_sources, removed_rows) =
             prune_singleton_columns(matrix, row_sources, ncols, singleton_min_weight);
-        singleton_rows_dropped = removed_rows;
+        singleton_rows_dropped += removed_rows;
         matrix = pruned_matrix;
         row_sources = pruned_sources;
         if compact_zero_cols {
             let (m2, nc2, dropped2) = compact_zero_columns(matrix, ncols);
             matrix = m2;
             ncols = nc2;
-            zero_cols_dropped_post_singleton = dropped2;
+            zero_cols_dropped_post_singleton += dropped2;
         }
         eprintln!(
             "  LA: singleton-prune min_weight={} removed_rows={} rows {}->{} cols {}->{} (extra_dropped_zero_cols={})",
