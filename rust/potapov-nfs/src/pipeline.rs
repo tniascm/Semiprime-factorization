@@ -3420,22 +3420,28 @@ fn build_matrix_with_lp_columns(
     sq_pairs.dedup();
 
     let mut rat_lp_set: HashSet<u64> = HashSet::new();
-    let mut alg_lp_set: HashSet<(u64, u64)> = HashSet::new();
+    // Consolidate algebraic LPs by PRIME only (not root). Different roots
+    // (ideals above the same prime) share one column. This dramatically
+    // reduces LP column count: 22K (prime,root) → ~8K unique primes.
+    // Algebraically: the column tracks parity of the prime p in the
+    // algebraic norm, which is correct for GF(2) null space since
+    // all ideals above p contribute to the same prime's valuation.
+    let mut alg_lp_set: HashSet<u64> = HashSet::new();
     for r in rels {
         if let Some(lp) = r.rat_lp {
             rat_lp_set.insert(lp);
         }
-        if let Some(lp) = r.alg_lp {
-            alg_lp_set.insert(lp);
+        if let Some((p, _r)) = r.alg_lp {
+            alg_lp_set.insert(p); // prime only, not (prime, root)
         }
     }
     let mut rat_lps: Vec<u64> = rat_lp_set.into_iter().collect();
     rat_lps.sort_unstable();
     let rat_lp_map: HashMap<u64, usize> = rat_lps.iter().enumerate().map(|(i, &p)| (p, i)).collect();
 
-    let mut alg_lps: Vec<(u64, u64)> = alg_lp_set.into_iter().collect();
+    let mut alg_lps: Vec<u64> = alg_lp_set.into_iter().collect();
     alg_lps.sort_unstable();
-    let alg_lp_map: HashMap<(u64, u64), usize> = alg_lps.iter().enumerate().map(|(i, &pr)| (pr, i)).collect();
+    let alg_lp_map: HashMap<u64, usize> = alg_lps.iter().enumerate().map(|(i, &p)| (p, i)).collect();
 
     let n_sq = sq_pairs.len();
     let n_rat_lp = rat_lps.len();
@@ -3493,9 +3499,9 @@ fn build_matrix_with_lp_columns(
                     row.flip(rat_lp_base + idx);
                 }
             }
-            // Algebraic LP column
-            if let Some(lp) = rel.alg_lp {
-                if let Some(&idx) = alg_lp_map.get(&lp) {
+            // Algebraic LP column (prime-only, consolidating ideals above same prime)
+            if let Some((p, _r)) = rel.alg_lp {
+                if let Some(&idx) = alg_lp_map.get(&p) {
                     row.flip(alg_lp_base + idx);
                 }
             }
