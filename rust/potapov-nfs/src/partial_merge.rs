@@ -196,10 +196,9 @@ pub fn merge_relations_2lp(
             break;
         }
 
-        // Use prime-only matching for the merge graph (strips root from
-        // algebraic LPs). This dramatically increases collision rate: all
-        // relations with the same LP prime p collide, regardless of root.
-        let keys = normalize_lp_keys_for_merge(&rel.lp_keys);
+        // Full (prime, root) matching: algebraically correct. Different roots
+        // are different ideals — merging them creates wrong parity.
+        let keys = normalize_lp_keys(&rel.lp_keys);
         match keys.len() {
             0 => {
                 stats.relations_0lp += 1;
