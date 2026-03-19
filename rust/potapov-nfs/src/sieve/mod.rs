@@ -2617,6 +2617,16 @@ fn build_relation(
             lp_set.insert(key);
         }
     }
+    // Remove LP keys that match the SQ prime to avoid double-counting.
+    // For q > lim1: the SQ column tracks q's parity. If cofactoring also
+    // found q as an LP, the matrix would flip q's bit TWICE (SQ col + LP),
+    // cancelling out → sqrt fails with alg_not_square on every dependency.
+    if let Some((sq_prime, _)) = special_q {
+        lp_set.retain(|key| match key {
+            LpKey::Algebraic(p, _) => *p != sq_prime,
+            _ => true,
+        });
+    }
     let mut lp_keys: Vec<LpKey> = lp_set.into_iter().collect();
     lp_keys.sort_unstable();
     if lp_keys.len() > max_lp_keys {
