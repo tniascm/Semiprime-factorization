@@ -1737,36 +1737,6 @@ fn factor_nfs_inner(n: &Integer, params: &NfsParams, variant: u32, pre_poly: Opt
             set_count,
             layout,
         )
-    } else if partial_merge_active && !use_q_cap {
-        // For c60+ (no q-cap): use LP columns instead of 2LP merge.
-        // 2LP merge destroys rows (14K → 4.5K in audit). LP columns preserve
-        // all filtered relations as rows, with LP primes as sparse columns.
-        // LP singleton columns get removed by the standard singleton prune.
-        let (matrix, nc, set_rows) = build_matrix_with_lp_columns(
-            &gnfs_rels,
-            rat_fb_size,
-            alg_pairs,
-            alg_hd + alg_bad,
-            &quad_chars,
-        );
-        eprintln!(
-            "  LA: LP-column matrix {} x {} from {} relations (qc={})",
-            matrix.len(), nc, set_rows.len(), quad_chars.primes.len(),
-        );
-        let set_count = set_rows.len();
-        let n_sq_cols = gnfs_rels.iter().filter_map(|r| r.special_q)
-            .collect::<HashSet<_>>().len();
-        let layout = MatrixColumnLayout {
-            sq: 0..n_sq_cols,
-            rat_lp: 0..0,
-            alg_lp: 0..0,
-            sign_rat: Some(n_sq_cols),
-            rat_fb: (n_sq_cols + 1)..(n_sq_cols + 1 + rat_fb_size),
-            sign_alg: Some(n_sq_cols + 1 + rat_fb_size),
-            alg_dense: (n_sq_cols + 2 + rat_fb_size)..(n_sq_cols + 2 + rat_fb_size + alg_pairs + alg_hd + alg_bad),
-            qc: (nc - quad_chars.primes.len())..nc,
-        };
-        (matrix, nc, set_rows, "lp_columns", set_count, layout)
     } else if partial_merge_active {
         let (matrix, nc, set_rows) = build_matrix_from_sets_lp_resolved(
             &gnfs_rels,
