@@ -151,11 +151,11 @@ impl NfsParams {
             lim0: 80_000,
             lim1: 110_000,
             lpb0: 18,
-            lpb1: 20,      // extends usable SQ range to 1M (CADO uses 19)
+            lpb1: 21,      // extends usable SQ range to 2M for enough rels
             mfb0: 17,      // no 2LP on rational (CADO-matched)
-            mfb1: 40,      // 2LP on algebraic (2×lpb1)
+            mfb1: 42,      // 2LP on algebraic (2×lpb1)
             sieve_mfb0: 17,
-            sieve_mfb1: 40,
+            sieve_mfb1: 42,
             log_i: 10,
             qmin: 2_000,
             qrange: 10_000,  // wider windows for faster coverage of [2K, 2M] range
@@ -254,11 +254,11 @@ mod tests {
         assert_eq!(p.lim0, 80_000);
         assert_eq!(p.lim1, 110_000);
         assert_eq!(p.lpb0, 18);
-        assert_eq!(p.lpb1, 20);
+        assert_eq!(p.lpb1, 21);
         assert_eq!(p.mfb0, 17);
-        assert_eq!(p.mfb1, 40);
+        assert_eq!(p.mfb1, 42);
         assert_eq!(p.large_prime_bound_0(), 1 << 18);
-        assert_eq!(p.large_prime_bound_1(), 1 << 20);
+        assert_eq!(p.large_prime_bound_1(), 1 << 21);
         assert_eq!(p.sieve_half_width(), 1024);
     }
 }

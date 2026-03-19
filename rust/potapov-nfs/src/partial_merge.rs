@@ -82,6 +82,32 @@ fn normalize_lp_keys(keys: &[LpKey]) -> Vec<LpKey> {
     out
 }
 
+/// Normalize LP keys for merge graph: strip roots from algebraic LPs.
+///
+/// For the merge graph (cycle detection), we match on prime only — not (prime, root).
+/// This is critical for merge efficiency: different relations with the same LP prime p
+/// but different roots (r = a/b mod p varies per relation) would never collide with
+/// full (p, r) matching. CADO matches on prime only in its merge step.
+///
+/// The full (p, r) ideal identification is preserved in the original relation for
+/// correct matrix column assignment.
+fn normalize_lp_keys_for_merge(keys: &[LpKey]) -> Vec<LpKey> {
+    let mut parity: HashSet<LpKey> = HashSet::new();
+    for &k in keys {
+        // Strip root from algebraic keys: Algebraic(p, r) → Algebraic(p, 0)
+        let merged_key = match k {
+            LpKey::Algebraic(p, _) => LpKey::Algebraic(p, 0),
+            other => other,
+        };
+        if !parity.remove(&merged_key) {
+            parity.insert(merged_key);
+        }
+    }
+    let mut out: Vec<LpKey> = parity.into_iter().collect();
+    out.sort_unstable();
+    out
+}
+
 fn get_or_insert_node(
     key: LpKey,
     map: &mut HashMap<LpKey, usize>,
@@ -170,7 +196,10 @@ pub fn merge_relations_2lp(
             break;
         }
 
-        let keys = normalize_lp_keys(&rel.lp_keys);
+        // Use prime-only matching for the merge graph (strips root from
+        // algebraic LPs). This dramatically increases collision rate: all
+        // relations with the same LP prime p collide, regardless of root.
+        let keys = normalize_lp_keys_for_merge(&rel.lp_keys);
         match keys.len() {
             0 => {
                 stats.relations_0lp += 1;
