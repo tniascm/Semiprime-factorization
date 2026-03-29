@@ -1,0 +1,74 @@
+   Compiling libc v0.2.182
+   Compiling zerocopy v0.8.39
+   Compiling cfg-if v1.0.4
+   Compiling autocfg v1.5.0
+   Compiling crossbeam-utils v0.8.21
+   Compiling proc-macro2 v1.0.106
+   Compiling num-traits v0.2.19
+   Compiling unicode-ident v1.0.22
+   Compiling quote v1.0.44
+   Compiling getrandom v0.2.17
+   Compiling radium v0.7.0
+   Compiling rand_core v0.6.4
+   Compiling serde_core v1.0.228
+   Compiling crossbeam-epoch v0.9.18
+   Compiling allocator-api2 v0.2.21
+   Compiling equivalent v1.0.2
+   Compiling rayon-core v1.13.0
+   Compiling num-integer v0.1.46
+   Compiling tap v1.0.1
+   Compiling foldhash v0.1.5
+   Compiling zmij v1.0.19
+   Compiling hashbrown v0.15.5
+   Compiling wyz v0.5.1
+   Compiling crossbeam-deque v0.8.6
+   Compiling syn v2.0.114
+   Compiling funty v2.0.0
+   Compiling gmp-mpfr-sys v1.6.8
+   Compiling serde v1.0.228
+   Compiling either v1.15.0
+   Compiling serde_json v1.0.149
+   Compiling ppv-lite86 v0.2.21
+   Compiling bitvec v1.0.1
+   Compiling serde_derive v1.0.228
+   Compiling rand_chacha v0.3.1
+   Compiling lru v0.12.5
+   Compiling rand v0.8.5
+   Compiling num-bigint v0.4.6
+   Compiling libm v0.2.16
+   Compiling itoa v1.0.17
+   Compiling memchr v2.8.0
+   Compiling num-modular v0.5.1
+   Compiling num-prime v0.4.4
+   Compiling rayon v1.11.0
+   Compiling rug v1.28.1
+   Compiling az v1.3.0
+   Compiling factoring-core v0.1.0 (/app/rust/factoring-core)
+   Compiling classical-nfs v0.1.0 (/app/rust/classical-nfs)
+   Compiling lattice-reduction v0.1.0 (/app/rust/lattice-reduction)
+   Compiling smooth-pilatte v0.1.0 (/app/rust/smooth-pilatte)
+    Finished `release` profile [optimized] target(s) in 38.52s
+     Running `target/release/smooth-pilatte`
+=== Smooth-Pilatte: Lattice-Geometric Smooth Relation Finder ===
+Prong 2 of the six-prong factoring plan
+
+--- Section 1: Lattice Quality Analysis ---
+   16-bit: dim= 4, hermite=0.9124, ortho_defect=1.2039, svn=15.10, vecs=5, smooth_prob=4.92e-5
+   24-bit: dim= 5, hermite=0.9074, ortho_defect=1.3097, svn=18.68, vecs=6, smooth_prob=3.39e-6
+   32-bit: dim= 6, hermite=0.9830, ortho_defect=1.7662, svn=26.00, vecs=7, smooth_prob=1.85e-8
+   40-bit: dim= 7, hermite=1.0505, ortho_defect=2.6895, svn=30.87, vecs=8, smooth_prob=4.50e-10
+   48-bit: dim= 7, hermite=1.0490, ortho_defect=2.7167, svn=36.72, vecs=8, smooth_prob=2.74e-13
+   56-bit: dim= 8, hermite=1.1346, ortho_defect=4.7614, svn=42.19, vecs=9, smooth_prob=3.98e-15
+   64-bit: dim= 8, hermite=1.1468, ortho_defect=4.7798, svn=46.04, vecs=9, smooth_prob=1.79e-18
+
+--- Section 2: Factoring Benchmarks ---
+   16-bit: FACTORED | dim= 4 | vecs=10000 | smooth=  0 (rate=0.0000) | deps=0 | gcd=73 | 9.6ms [verified]
+   20-bit: FACTORED | dim= 5 | vecs=10001 | smooth=  0 (rate=0.0000) | deps=0 | gcd=214 | 8.3ms [verified]
+   24-bit: FACTORED | dim= 5 | vecs=10001 | smooth=  0 (rate=0.0000) | deps=0 | gcd=2726 | 12.1ms [verified]
+   28-bit: FACTORED | dim= 6 | vecs=10002 | smooth=  0 (rate=0.0000) | deps=0 | gcd=1957 | 12.9ms [verified]
+   32-bit: FACTORED | dim=18 | vecs=10014 | smooth=  0 (rate=0.0000) | deps=0 | gcd=7709 | 465.6ms [verified]
+   36-bit: FACTORED | dim= 6 | vecs=10002 | smooth=  0 (rate=0.0000) | deps=0 | gcd=10801 | 97.4ms [verified]
+   40-bit: FAILED   | dim= 7 | vecs=    0 | smooth=  0 (rate=0.0000) | deps=0 | gcd=0 | 2429.5ms
+   48-bit: FAILED   | dim= 7 | vecs=    0 | smooth=  0 (rate=0.0000) | deps=0 | gcd=0 | 2336.7ms
+
+--- Section 3: Dimension Scaling ---

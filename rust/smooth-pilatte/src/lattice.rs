@@ -5,7 +5,7 @@
 //! and exponents are bounded by O(log n). This module constructs lattices whose
 //! short vectors encode smooth relations, then reduces them with LLL.
 
-use lattice_reduction::{basis_quality, lll_reduce, BasisQuality, LatticeBasis, LllParams};
+use lattice_reduction::{basis_quality, lll_reduce, bkz_reduce, BasisQuality, LatticeBasis, LllParams, BkzParams};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 
@@ -116,13 +116,13 @@ fn smooth_probability(n_bits: u32, smoothness_bound: u64) -> f64 {
 ///
 /// The LLL-reduced short vectors have small exponent entries (bounded by O(log n))
 /// and encode smooth relations modulo N.
-pub fn build_pilatte_lattice(n: &BigUint, dimension: usize) -> PilatteLatticeResult {
+pub fn build_pilatte_lattice(n: &BigUint, dimension: usize, use_bkz: bool, bkz_block_size: usize) -> PilatteLatticeResult {
     let primes = first_n_primes(dimension);
-    build_pilatte_lattice_with_primes(n, &primes)
+    build_pilatte_lattice_with_primes(n, &primes, use_bkz, bkz_block_size)
 }
 
 /// Build the Pilatte lattice with explicit factor base.
-pub fn build_pilatte_lattice_with_primes(n: &BigUint, primes: &[u64]) -> PilatteLatticeResult {
+pub fn build_pilatte_lattice_with_primes(n: &BigUint, primes: &[u64], use_bkz: bool, bkz_block_size: usize) -> PilatteLatticeResult {
     let d = primes.len();
     let dim = d + 1;
     let n_bits = n.bits() as u32;
@@ -154,8 +154,16 @@ pub fn build_pilatte_lattice_with_primes(n: &BigUint, primes: &[u64]) -> Pilatte
     basis[d][d] = (m * ln_n).round();
 
     // LLL-reduce
-    let params = LllParams::default();
-    lll_reduce(&mut basis, &params);
+    if use_bkz {
+        let params = BkzParams {
+            block_size: bkz_block_size,
+            lll_params: LllParams::default(),
+        };
+        bkz_reduce(&mut basis, &params);
+    } else {
+        let params = LllParams::default();
+        lll_reduce(&mut basis, &params);
+    }
 
     let quality = basis_quality(&basis);
     let smooth_prob = smooth_probability(n_bits, *primes.last().unwrap_or(&2));
@@ -181,7 +189,7 @@ pub fn build_pilatte_lattice_with_primes(n: &BigUint, primes: &[u64]) -> Pilatte
 /// Pilatte's zero-density proof implies that smooth representations favor
 /// smaller primes. We weight the lattice rows to make LLL prefer short vectors
 /// with larger exponents on small primes and smaller exponents on large primes.
-pub fn build_weighted_pilatte_lattice(n: &BigUint, dimension: usize) -> PilatteLatticeResult {
+pub fn build_weighted_pilatte_lattice(n: &BigUint, dimension: usize, use_bkz: bool, bkz_block_size: usize) -> PilatteLatticeResult {
     let primes = first_n_primes(dimension);
     let d = primes.len();
     let dim = d + 1;
@@ -208,8 +216,16 @@ pub fn build_weighted_pilatte_lattice(n: &BigUint, dimension: usize) -> PilatteL
 
     basis[d][d] = (m * ln_n).round();
 
-    let params = LllParams::default();
-    lll_reduce(&mut basis, &params);
+    if use_bkz {
+        let params = BkzParams {
+            block_size: bkz_block_size,
+            lll_params: LllParams::default(),
+        };
+        bkz_reduce(&mut basis, &params);
+    } else {
+        let params = LllParams::default();
+        lll_reduce(&mut basis, &params);
+    }
 
     let quality = basis_quality(&basis);
     let smooth_prob = smooth_probability(n_bits, *primes.last().unwrap_or(&2));
@@ -282,7 +298,7 @@ mod tests {
     #[test]
     fn test_build_pilatte_lattice() {
         let n = BigUint::from(15347u64); // 103 * 149
-        let result = build_pilatte_lattice(&n, 6);
+        let result = build_pilatte_lattice(&n, 6, false, 2);
 
         // Check dimensions: (d+1) x (d+1) = 7x7
         assert_eq!(result.basis.len(), 7);
@@ -299,7 +315,7 @@ mod tests {
     #[test]
     fn test_extract_exponent_vectors() {
         let n = BigUint::from(15347u64);
-        let result = build_pilatte_lattice(&n, 6);
+        let result = build_pilatte_lattice(&n, 6, false, 2);
         let vectors = extract_exponent_vectors(&result);
 
         assert!(!vectors.is_empty(), "Should extract at least one exponent vector");
@@ -311,8 +327,8 @@ mod tests {
     #[test]
     fn test_weighted_vs_standard() {
         let n = BigUint::from(15347u64);
-        let standard = build_pilatte_lattice(&n, 6);
-        let weighted = build_weighted_pilatte_lattice(&n, 6);
+        let standard = build_pilatte_lattice(&n, 6, false, 2);
+        let weighted = build_weighted_pilatte_lattice(&n, 6, false, 2);
 
         assert_eq!(standard.basis.len(), weighted.basis.len());
         assert!(weighted.quality.shortest_vector_norm > 0.0);

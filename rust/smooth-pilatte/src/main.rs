@@ -63,7 +63,7 @@ fn main() {
     for &bits in &[16u32, 24, 32, 40, 48, 56, 64] {
         let target = generate_rsa_target(bits, &mut rng);
         let dim = pilatte_dimension(bits);
-        let result = build_pilatte_lattice(&target.n, dim);
+        let result = build_pilatte_lattice(&target.n, dim, true, 20);
         let vectors = extract_exponent_vectors(&result);
 
         let quality = LatticeQualityResult {

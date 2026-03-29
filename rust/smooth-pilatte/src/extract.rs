@@ -69,6 +69,8 @@ pub struct PilatteConfig {
     pub try_weighted: bool,
     /// Maximum dimension to try with scaling.
     pub max_dimension: usize,
+    pub use_bkz: bool,
+    pub bkz_block_size: usize,
 }
 
 impl Default for PilatteConfig {
@@ -79,6 +81,8 @@ impl Default for PilatteConfig {
             max_enum_vectors: 10_000,
             try_weighted: true,
             max_dimension: 50,
+            use_bkz: true,
+            bkz_block_size: 20,
         }
     }
 }
@@ -160,9 +164,9 @@ fn try_factor_with_lattice(
 ) -> Option<PilatteFactorResult> {
     // Build and reduce lattice
     let lattice_result = if weighted {
-        build_weighted_pilatte_lattice(n, dimension)
+        build_weighted_pilatte_lattice(n, dimension, config.use_bkz, config.bkz_block_size)
     } else {
-        build_pilatte_lattice(n, dimension)
+        build_pilatte_lattice(n, dimension, config.use_bkz, config.bkz_block_size)
     };
 
     let primes = &lattice_result.params.primes;
